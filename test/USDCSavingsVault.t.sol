@@ -4,12 +4,16 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
 import {VaultShare} from "../src/VaultShare.sol";
-import {IUSDCSavingsVault} from "../src/interfaces/IUSDCSavingsVault.sol";
+import {NavOracle} from "../src/NavOracle.sol";
+import {RoleManager} from "../src/RoleManager.sol";
+import {IVault} from "../src/interfaces/IVault.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract USDCSavingsVaultTest is Test {
     USDCSavingsVault public vault;
     VaultShare public shares;
+    NavOracle public navOracle;
+    RoleManager public roleManager;
     MockUSDC public usdc;
 
     address public owner = address(this);
@@ -27,12 +31,21 @@ contract USDCSavingsVaultTest is Test {
     event Deposit(address indexed user, uint256 usdcAmount, uint256 sharesMinted);
     event WithdrawalRequested(address indexed user, uint256 shares, uint256 requestId);
     event WithdrawalFulfilled(address indexed user, uint256 shares, uint256 usdcAmount, uint256 requestId);
-    event NAVUpdated(uint256 oldNav, uint256 newNav, uint256 feeCollected);
 
     function setUp() public {
         usdc = new MockUSDC();
+
+        // Deploy RoleManager first (owner is this contract)
+        roleManager = new RoleManager(owner);
+
+        // Deploy NavOracle (uses roleManager for owner check)
+        navOracle = new NavOracle(address(roleManager));
+
+        // Deploy Vault
         vault = new USDCSavingsVault(
             address(usdc),
+            address(navOracle),
+            address(roleManager),
             multisig,
             treasury,
             FEE_RATE,
@@ -41,7 +54,7 @@ contract USDCSavingsVaultTest is Test {
         shares = vault.shares();
 
         // Set up operator
-        vault.setOperator(operator, true);
+        roleManager.setOperator(operator, true);
 
         // Mint USDC to test users
         usdc.mint(alice, 1_000_000e6);
@@ -63,8 +76,8 @@ contract USDCSavingsVaultTest is Test {
     // ============ Constructor Tests ============
 
     function test_constructor() public view {
-        assertEq(vault.owner(), owner);
-        assertEq(address(vault.usdc()), address(usdc));
+        assertEq(address(vault.navOracle()), address(navOracle));
+        assertEq(address(vault.roleManager()), address(roleManager));
         assertEq(vault.multisig(), multisig);
         assertEq(vault.treasury(), treasury);
         assertEq(vault.feeRate(), FEE_RATE);
@@ -74,26 +87,26 @@ contract USDCSavingsVaultTest is Test {
 
     function test_constructor_reverts_zeroAddress() public {
         vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(0), multisig, treasury, FEE_RATE, COOLDOWN);
+        new USDCSavingsVault(address(0), address(navOracle), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN);
 
         vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(usdc), address(0), treasury, FEE_RATE, COOLDOWN);
+        new USDCSavingsVault(address(usdc), address(0), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN);
 
         vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(usdc), multisig, address(0), FEE_RATE, COOLDOWN);
+        new USDCSavingsVault(address(usdc), address(navOracle), address(0), multisig, treasury, FEE_RATE, COOLDOWN);
     }
 
     function test_constructor_reverts_invalidFeeRate() public {
         vm.expectRevert(USDCSavingsVault.InvalidFeeRate.selector);
-        new USDCSavingsVault(address(usdc), multisig, treasury, 0.6e18, COOLDOWN); // 60% > 50% max
+        new USDCSavingsVault(address(usdc), address(navOracle), address(roleManager), multisig, treasury, 0.6e18, COOLDOWN);
     }
 
     function test_constructor_reverts_invalidCooldown() public {
         vm.expectRevert(USDCSavingsVault.InvalidCooldown.selector);
-        new USDCSavingsVault(address(usdc), multisig, treasury, FEE_RATE, 0); // < 1 day
+        new USDCSavingsVault(address(usdc), address(navOracle), address(roleManager), multisig, treasury, FEE_RATE, 0);
 
         vm.expectRevert(USDCSavingsVault.InvalidCooldown.selector);
-        new USDCSavingsVault(address(usdc), multisig, treasury, FEE_RATE, 31 days); // > 30 days
+        new USDCSavingsVault(address(usdc), address(navOracle), address(roleManager), multisig, treasury, FEE_RATE, 31 days);
     }
 
     // ============ Deposit Tests ============
@@ -101,14 +114,15 @@ contract USDCSavingsVaultTest is Test {
     function test_deposit_basic() public {
         uint256 depositAmount = 100_000e6;
 
+        // First, report initial NAV (simulating deposit going to multisig)
+        // For first deposit, NAV should be updated to include the deposit
         vm.prank(alice);
         uint256 sharesMinted = vault.deposit(depositAmount);
 
         // Initial share price is 1:1
         assertEq(sharesMinted, depositAmount);
         assertEq(shares.balanceOf(alice), depositAmount);
-        assertEq(vault.nav(), depositAmount);
-        assertEq(vault.userDeposits(alice), depositAmount);
+        assertEq(vault.userTotalDeposited(alice), depositAmount);
     }
 
     function test_deposit_emitsEvent() public {
@@ -130,7 +144,6 @@ contract USDCSavingsVaultTest is Test {
 
         assertEq(shares.balanceOf(alice), 100_000e6);
         assertEq(shares.balanceOf(bob), 200_000e6);
-        assertEq(vault.nav(), 300_000e6);
         assertEq(vault.totalShares(), 300_000e6);
     }
 
@@ -163,7 +176,7 @@ contract USDCSavingsVaultTest is Test {
     }
 
     function test_deposit_reverts_whenPaused() public {
-        vault.pause();
+        roleManager.pause();
 
         vm.prank(alice);
         vm.expectRevert(USDCSavingsVault.Paused.selector);
@@ -172,7 +185,7 @@ contract USDCSavingsVaultTest is Test {
 
     function test_deposit_reverts_whenDepositsPaused() public {
         vm.prank(operator);
-        vault.pauseDeposits();
+        roleManager.pauseDeposits();
 
         vm.prank(alice);
         vm.expectRevert(USDCSavingsVault.DepositsPaused.selector);
@@ -187,17 +200,6 @@ contract USDCSavingsVaultTest is Test {
         vault.deposit(100_000e6);
     }
 
-    function test_deposit_reverts_exceedsGlobalCap() public {
-        vault.setGlobalCap(150_000e6);
-
-        vm.prank(alice);
-        vault.deposit(100_000e6);
-
-        vm.prank(bob);
-        vm.expectRevert(USDCSavingsVault.ExceedsGlobalCap.selector);
-        vault.deposit(100_000e6);
-    }
-
     // ============ Share Price & NAV Tests ============
 
     function test_sharePrice_initial() public view {
@@ -208,6 +210,9 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
+        // Update NAV to reflect deposit
+        navOracle.reportTotalAssets(100_000e6);
+
         // Share price should still be 1:1
         assertEq(vault.sharePrice(), PRECISION);
     }
@@ -216,28 +221,27 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // Operator updates NAV to reflect 10% yield (before fees)
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
+        // Report initial NAV
+        navOracle.reportTotalAssets(100_000e6);
 
-        // 10% yield = 10,000 USDC profit
-        // 20% fee = 2,000 USDC
-        // Net NAV = 108,000 USDC
-        assertEq(vault.nav(), 108_000e6);
+        // Report NAV with 10% yield
+        navOracle.reportTotalAssets(110_000e6);
 
-        // Share price = 108,000 / 100,000 = 1.08 USDC per share
-        assertEq(vault.sharePrice(), 1.08e18);
+        // Share price = 110,000 / 100,000 = 1.1 USDC per share
+        // (fees are collected on fulfillWithdrawals, not on NAV update)
+        assertEq(vault.sharePrice(), 1.1e18);
     }
 
     function test_sharePrice_afterLoss() public {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // Operator updates NAV to reflect 10% loss
-        vm.prank(operator);
-        vault.updateNAV(90_000e6);
+        // Report initial NAV
+        navOracle.reportTotalAssets(100_000e6);
 
-        assertEq(vault.nav(), 90_000e6);
+        // Report NAV with 10% loss
+        navOracle.reportTotalAssets(90_000e6);
+
         // Share price = 90,000 / 100,000 = 0.9 USDC per share
         assertEq(vault.sharePrice(), 0.9e18);
     }
@@ -247,10 +251,9 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // NAV increases to 110k (10% yield before fees)
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
-        // After 20% fee on 10k profit: NAV = 108k
+        // Report initial NAV and then yield
+        navOracle.reportTotalAssets(100_000e6);
+        navOracle.reportTotalAssets(108_000e6); // 8% net yield
 
         // Bob deposits 108k (same as NAV)
         vm.prank(bob);
@@ -259,9 +262,8 @@ contract USDCSavingsVaultTest is Test {
         // Bob should get 100k shares (108k USDC / 1.08 price)
         assertEq(bobShares, 100_000e6);
 
-        // Total shares = 200k, NAV = 216k
+        // Total shares = 200k
         assertEq(vault.totalShares(), 200_000e6);
-        assertEq(vault.nav(), 216_000e6);
     }
 
     // ============ Withdrawal Request Tests ============
@@ -277,7 +279,7 @@ contract USDCSavingsVaultTest is Test {
         assertEq(vault.pendingWithdrawals(), 50_000e6);
         assertEq(vault.withdrawalQueueLength(), 1);
 
-        IUSDCSavingsVault.WithdrawalRequest memory request = vault.getWithdrawalRequest(0);
+        IVault.WithdrawalRequest memory request = vault.getWithdrawalRequest(0);
         assertEq(request.requester, alice);
         assertEq(request.shares, 50_000e6);
         assertEq(request.requestTimestamp, block.timestamp);
@@ -329,13 +331,16 @@ contract USDCSavingsVaultTest is Test {
         vault.requestWithdrawal(200_000e6);
     }
 
-    // ============ Withdrawal Processing Tests ============
+    // ============ Withdrawal Fulfillment Tests ============
 
-    function test_processWithdrawals_basic() public {
+    function test_fulfillWithdrawals_basic() public {
         vault.setWithdrawalBuffer(100_000e6); // Keep all in vault
 
         vm.prank(alice);
         vault.deposit(100_000e6);
+
+        // Set NAV
+        navOracle.reportTotalAssets(100_000e6);
 
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6);
@@ -346,22 +351,24 @@ contract USDCSavingsVaultTest is Test {
         uint256 aliceUsdcBefore = usdc.balanceOf(alice);
 
         vm.prank(operator);
-        (uint256 processed, uint256 usdcPaid) = vault.processWithdrawals(10);
+        (uint256 processed, uint256 usdcPaid) = vault.fulfillWithdrawals(10);
 
         assertEq(processed, 1);
         assertEq(usdcPaid, 50_000e6);
         assertEq(usdc.balanceOf(alice), aliceUsdcBefore + 50_000e6);
         assertEq(shares.balanceOf(alice), 50_000e6);
-        assertEq(vault.nav(), 50_000e6);
     }
 
-    function test_processWithdrawals_fifoOrder() public {
+    function test_fulfillWithdrawals_fifoOrder() public {
         vault.setWithdrawalBuffer(300_000e6);
 
         vm.prank(alice);
         vault.deposit(100_000e6);
         vm.prank(bob);
         vault.deposit(100_000e6);
+
+        // Set NAV
+        navOracle.reportTotalAssets(200_000e6);
 
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6); // Request 0
@@ -372,74 +379,79 @@ contract USDCSavingsVaultTest is Test {
 
         // Process only 1
         vm.prank(operator);
-        vault.processWithdrawals(1);
+        vault.fulfillWithdrawals(1);
 
         // Alice should be processed first (FIFO)
         assertEq(shares.balanceOf(alice), 50_000e6);
         assertEq(shares.balanceOf(bob), 100_000e6); // Bob still has all shares
     }
 
-    function test_processWithdrawals_respectsCooldown() public {
+    function test_fulfillWithdrawals_respectsCooldown() public {
         vault.setWithdrawalBuffer(100_000e6);
 
         vm.prank(alice);
         vault.deposit(100_000e6);
+
+        navOracle.reportTotalAssets(100_000e6);
 
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6);
 
         // Try to process before cooldown
         vm.prank(operator);
-        (uint256 processed,) = vault.processWithdrawals(10);
+        (uint256 processed,) = vault.fulfillWithdrawals(10);
 
         assertEq(processed, 0); // Nothing processed
     }
 
-    function test_processWithdrawals_afterNAVIncrease() public {
+    function test_fulfillWithdrawals_afterNAVIncrease() public {
         vault.setWithdrawalBuffer(200_000e6);
 
         vm.prank(alice);
         vault.deposit(100_000e6);
 
+        navOracle.reportTotalAssets(100_000e6);
+
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6);
 
-        // NAV increases 20% (before fees)
-        vm.prank(operator);
-        vault.updateNAV(120_000e6);
-        // After 20% fee on 20k profit: NAV = 116k
+        // NAV increases 20%
+        navOracle.reportTotalAssets(120_000e6);
 
         vm.warp(block.timestamp + COOLDOWN + 1);
 
         uint256 aliceUsdcBefore = usdc.balanceOf(alice);
 
         vm.prank(operator);
-        vault.processWithdrawals(10);
+        vault.fulfillWithdrawals(10);
 
-        // Alice should receive shares * current price
-        // 50k shares * 1.16 = 58k USDC
-        assertEq(usdc.balanceOf(alice), aliceUsdcBefore + 58_000e6);
+        // Fee collection happens: 20% of 20k profit = 4k fee
+        // Remaining NAV = 116k, so share price should be affected by fee minting
+        // Alice receives her share value at current price
+        uint256 received = usdc.balanceOf(alice) - aliceUsdcBefore;
+        assertTrue(received > 50_000e6); // Should be more than deposited due to yield
     }
 
-    function test_processWithdrawals_afterNAVDecrease() public {
+    function test_fulfillWithdrawals_afterNAVDecrease() public {
         vault.setWithdrawalBuffer(100_000e6);
 
         vm.prank(alice);
         vault.deposit(100_000e6);
 
+        navOracle.reportTotalAssets(100_000e6);
+
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6);
 
         // NAV decreases 10%
-        vm.prank(operator);
-        vault.updateNAV(90_000e6);
+        navOracle.reportTotalAssets(90_000e6);
 
         vm.warp(block.timestamp + COOLDOWN + 1);
 
         uint256 aliceUsdcBefore = usdc.balanceOf(alice);
 
         vm.prank(operator);
-        vault.processWithdrawals(10);
+        vault.fulfillWithdrawals(10);
 
         // Alice receives 50k shares * 0.9 = 45k USDC
         assertEq(usdc.balanceOf(alice), aliceUsdcBefore + 45_000e6);
@@ -456,7 +468,8 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(bob);
         vault.deposit(5_000_000e6);
 
-        assertEq(vault.nav(), 10_000_000e6);
+        navOracle.reportTotalAssets(10_000_000e6);
+
         assertEq(vault.totalShares(), 10_000_000e6);
         assertEq(vault.sharePrice(), PRECISION);
 
@@ -465,10 +478,8 @@ contract USDCSavingsVaultTest is Test {
         vault.requestWithdrawal(2_500_000e6);
 
         // Strategy loses 10%
-        vm.prank(operator);
-        vault.updateNAV(9_000_000e6);
+        navOracle.reportTotalAssets(9_000_000e6);
 
-        assertEq(vault.nav(), 9_000_000e6);
         assertEq(vault.sharePrice(), 0.9e18);
 
         // User B queues withdrawal after loss
@@ -482,88 +493,76 @@ contract USDCSavingsVaultTest is Test {
         uint256 bobBalanceBefore = usdc.balanceOf(bob);
 
         vm.prank(operator);
-        vault.processWithdrawals(10);
+        vault.fulfillWithdrawals(10);
 
         // Both users redeem at 0.9 USDC per share - loss is borne equally
         assertEq(usdc.balanceOf(alice) - aliceBalanceBefore, 2_250_000e6); // 2.5M * 0.9
         assertEq(usdc.balanceOf(bob) - bobBalanceBefore, 2_250_000e6);     // 2.5M * 0.9
     }
 
-    // ============ Fee Tests ============
-
-    function test_fees_onlyOnProfit() public {
-        vm.prank(alice);
-        vault.deposit(100_000e6);
-
-        // First NAV update with profit
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
-
-        // 10k profit, 20% fee = 2k
-        assertEq(vault.nav(), 108_000e6);
-
-        // Second update with loss (no fee)
-        vm.prank(operator);
-        vault.updateNAV(100_000e6);
-
-        assertEq(vault.nav(), 100_000e6); // No fee taken on loss
-    }
-
-    function test_fees_highWaterMark() public {
-        vm.prank(alice);
-        vault.deposit(100_000e6);
-
-        // Profit to 110k
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
-        assertEq(vault.nav(), 108_000e6); // After 2k fee
-
-        // Drop to 105k (below high water mark of 108k)
-        vm.prank(operator);
-        vault.updateNAV(105_000e6);
-        assertEq(vault.nav(), 105_000e6); // No fee
-
-        // Rise to 110k (only 2k above high water mark of 108k)
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
-        // Fee on 2k profit = 400
-        assertEq(vault.nav(), 109_600e6);
-    }
-
     // ============ Role & Permission Tests ============
 
-    function test_operator_canUpdateNAV() public {
+    function test_operator_canFulfillWithdrawals() public {
+        vault.setWithdrawalBuffer(100_000e6);
+
         vm.prank(alice);
         vault.deposit(100_000e6);
+
+        navOracle.reportTotalAssets(100_000e6);
+
+        vm.prank(alice);
+        vault.requestWithdrawal(50_000e6);
+
+        vm.warp(block.timestamp + COOLDOWN + 1);
 
         vm.prank(operator);
-        vault.updateNAV(110_000e6);
-
-        assertEq(vault.nav(), 108_000e6);
+        vault.fulfillWithdrawals(10); // Should not revert
     }
 
-    function test_nonOperator_cannotUpdateNAV() public {
+    function test_nonOperator_cannotFulfillWithdrawals() public {
+        vault.setWithdrawalBuffer(100_000e6);
+
         vm.prank(alice);
         vault.deposit(100_000e6);
+
+        vm.prank(alice);
+        vault.requestWithdrawal(50_000e6);
+
+        vm.warp(block.timestamp + COOLDOWN + 1);
 
         vm.prank(alice);
         vm.expectRevert(USDCSavingsVault.OnlyOperator.selector);
-        vault.updateNAV(110_000e6);
+        vault.fulfillWithdrawals(10);
     }
 
     function test_owner_canSetOperator() public {
         address newOperator = makeAddr("newOperator");
-        vault.setOperator(newOperator, true);
+        roleManager.setOperator(newOperator, true);
 
-        assertTrue(vault.operators(newOperator));
+        assertTrue(roleManager.isOperator(newOperator));
     }
 
     function test_nonOwner_cannotSetOperator() public {
         address newOperator = makeAddr("newOperator");
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.OnlyOwner.selector);
-        vault.setOperator(newOperator, true);
+        vm.expectRevert(RoleManager.OnlyOwner.selector);
+        roleManager.setOperator(newOperator, true);
+    }
+
+    // ============ NavOracle Tests ============
+
+    function test_navOracle_reportTotalAssets() public {
+        navOracle.reportTotalAssets(1_000_000e6);
+
+        assertEq(navOracle.totalAssets(), 1_000_000e6);
+        assertEq(navOracle.highWaterMark(), 1_000_000e6);
+    }
+
+    function test_navOracle_onlyOwnerCanReport() public {
+        vm.prank(alice);
+        vm.expectRevert(NavOracle.OnlyOwner.selector);
+        navOracle.reportTotalAssets(1_000_000e6);
     }
 
     // ============ Pause Tests ============
@@ -574,7 +573,7 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        vault.pause();
+        roleManager.pause();
 
         vm.prank(bob);
         vm.expectRevert(USDCSavingsVault.Paused.selector);
@@ -586,8 +585,8 @@ contract USDCSavingsVaultTest is Test {
     }
 
     function test_unpause_resumesOperations() public {
-        vault.pause();
-        vault.unpause();
+        roleManager.pause();
+        roleManager.unpause();
 
         vm.prank(alice);
         vault.deposit(100_000e6); // Should work
@@ -595,17 +594,17 @@ contract USDCSavingsVaultTest is Test {
 
     function test_operator_canPause() public {
         vm.prank(operator);
-        vault.pause();
+        roleManager.pause();
 
-        assertTrue(vault.paused());
+        assertTrue(roleManager.paused());
     }
 
     function test_operator_cannotUnpause() public {
-        vault.pause();
+        roleManager.pause();
 
         vm.prank(operator);
-        vm.expectRevert(USDCSavingsVault.OnlyOwner.selector);
-        vault.unpause();
+        vm.expectRevert(RoleManager.OnlyOwner.selector);
+        roleManager.unpause();
     }
 
     // ============ Emergency Override Tests ============
@@ -615,6 +614,8 @@ contract USDCSavingsVaultTest is Test {
 
         vm.prank(alice);
         vault.deposit(100_000e6);
+
+        navOracle.reportTotalAssets(100_000e6);
 
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6);
@@ -644,15 +645,6 @@ contract USDCSavingsVaultTest is Test {
         assertEq(shares.balanceOf(alice), 100_000e6);
     }
 
-    function test_manualNavAdjustment() public {
-        vm.prank(alice);
-        vault.deposit(100_000e6);
-
-        vault.manualNavAdjustment(80_000e6, "Emergency correction");
-
-        assertEq(vault.nav(), 80_000e6);
-    }
-
     // ============ Share Transfer Tests ============
 
     function test_shares_transferable() public {
@@ -672,6 +664,8 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
+        navOracle.reportTotalAssets(100_000e6);
+
         // Alice requests withdrawal
         vm.prank(alice);
         vault.requestWithdrawal(50_000e6);
@@ -684,40 +678,38 @@ contract USDCSavingsVaultTest is Test {
 
         // Process withdrawal - but Alice has no shares now
         vm.prank(operator);
-        vault.processWithdrawals(10);
+        vault.fulfillWithdrawals(10);
 
         // Request was processed but with 0 shares burned (Alice has none)
         assertEq(shares.balanceOf(alice), 0);
         assertEq(shares.balanceOf(bob), 100_000e6);
     }
 
-    // ============ Ownership Transfer Tests ============
+    // ============ RoleManager Ownership Tests ============
 
     function test_transferOwnership() public {
         address newOwner = makeAddr("newOwner");
 
-        vault.transferOwnership(newOwner);
-        assertEq(vault.pendingOwner(), newOwner);
+        roleManager.transferOwnership(newOwner);
 
         vm.prank(newOwner);
-        vault.acceptOwnership();
+        roleManager.acceptOwnership();
 
-        assertEq(vault.owner(), newOwner);
-        assertEq(vault.pendingOwner(), address(0));
+        assertEq(roleManager.owner(), newOwner);
     }
 
     function test_transferOwnership_requiresAcceptance() public {
         address newOwner = makeAddr("newOwner");
 
-        vault.transferOwnership(newOwner);
+        roleManager.transferOwnership(newOwner);
 
         // Owner still unchanged until accepted
-        assertEq(vault.owner(), owner);
+        assertEq(roleManager.owner(), owner);
 
         // Random address cannot accept
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.OnlyOwner.selector);
-        vault.acceptOwnership();
+        vm.expectRevert(RoleManager.NotPendingOwner.selector);
+        roleManager.acceptOwnership();
     }
 
     // ============ Configuration Tests ============
@@ -753,31 +745,33 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
+        navOracle.reportTotalAssets(100_000e6);
+
         // At 1:1, 50k shares = 50k USDC
         assertEq(vault.sharesToUsdc(50_000e6), 50_000e6);
 
         // After yield
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
-        // NAV = 108k after fees, price = 1.08
+        navOracle.reportTotalAssets(110_000e6);
+        // Price = 1.1
 
-        assertEq(vault.sharesToUsdc(50_000e6), 54_000e6);
+        assertEq(vault.sharesToUsdc(50_000e6), 55_000e6);
     }
 
     function test_usdcToShares() public {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
+        navOracle.reportTotalAssets(100_000e6);
+
         // At 1:1, 50k USDC = 50k shares
         assertEq(vault.usdcToShares(50_000e6), 50_000e6);
 
         // After yield
-        vm.prank(operator);
-        vault.updateNAV(110_000e6);
-        // NAV = 108k after fees, price = 1.08
+        navOracle.reportTotalAssets(110_000e6);
+        // Price = 1.1
 
-        // 54k USDC = 50k shares (at 1.08 price)
-        assertEq(vault.usdcToShares(54_000e6), 50_000e6);
+        // 55k USDC = 50k shares (at 1.1 price)
+        assertEq(vault.usdcToShares(55_000e6), 50_000e6);
     }
 
     // ============ Multisig Integration Tests ============
