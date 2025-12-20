@@ -10,9 +10,14 @@ import {IRoleManager} from "./interfaces/IRoleManager.sol";
  * @dev Owner reports total assets from off-chain strategy positions
  *
  * The oracle tracks:
- * - Current total assets
- * - High water mark for fee calculations
+ * - Current total assets (authoritative source for NAV)
+ * - High water mark (informational only - Vault.feeHighWaterMark is canonical for fees)
  * - Last report timestamp
+ *
+ * DESIGN NOTE: The highWaterMark in this contract is for informational/monitoring
+ * purposes only. The canonical high-water mark for fee calculations is stored in
+ * USDCSavingsVault.feeHighWaterMark. This separation ensures fee accounting authority
+ * remains within the vault contract.
  */
 contract NavOracle is INavOracle {
     // ============ Storage ============
