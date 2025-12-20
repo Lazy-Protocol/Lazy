@@ -8,6 +8,27 @@ import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {VaultShare} from "./VaultShare.sol";
 
 /**
+ * @title ReentrancyGuard
+ * @notice Minimal reentrancy protection (follows OpenZeppelin pattern)
+ */
+abstract contract ReentrancyGuard {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+    uint256 private _status;
+
+    constructor() {
+        _status = _NOT_ENTERED;
+    }
+
+    modifier nonReentrant() {
+        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
+    }
+}
+
+/**
  * @title USDCSavingsVault
  * @notice A USDC-denominated savings vault with share-based NAV model
  * @dev Uses external INavOracle for NAV data and IRoleManager for access control
@@ -23,6 +44,7 @@ import {VaultShare} from "./VaultShare.sol";
  * - Share escrow on withdrawal request (prevents double-spend)
  * - Protocol fees only on positive yield (via share minting)
  * - Operator-only withdrawal fulfillment
+ * - Reentrancy protection on state-changing functions
  *
  * =============================================================================
  * FORMAL INVARIANT SPECIFICATION
@@ -74,13 +96,47 @@ import {VaultShare} from "./VaultShare.sol";
  *   - Terminate gracefully if available liquidity is insufficient
  *
  * =============================================================================
+ * EXPLICIT DESIGN STATEMENTS
+ * =============================================================================
+ *
+ * STATEMENT D.1 — Emergency Scope Declaration
+ * ----------------------------------------------------------------------------
+ * Emergency overrides (forceProcessWithdrawal, cancelWithdrawal) exist to
+ * restore liveness or user safety for individual withdrawals, not to rebalance
+ * protocol state globally. These functions preserve invariants I.1 and I.2.
+ *
+ * STATEMENT D.2 — Oracle Trust Assumption
+ * ----------------------------------------------------------------------------
+ * NAV updates are trusted inputs controlled by governance. The protocol does
+ * not attempt to algorithmically defend against oracle manipulation. The
+ * protocol does not enforce time-based NAV freshness. totalAssets remains at
+ * the last reported value until updated by governance. This may result in
+ * withdrawals being processed at a stale NAV during periods of strategy unwind
+ * or operational disruption. This behavior is intentional and reflects the
+ * trust-based nature of NAV reporting.
+ *
+ * STATEMENT D.3 — Fee Accounting Rule
+ * ----------------------------------------------------------------------------
+ * Protocol fees are only realized on NAV updates via _collectFees(). Emergency
+ * withdrawals (forceProcessWithdrawal) may bypass fee realization without
+ * escaping fee liability long-term — fees are collected on subsequent NAV
+ * increases relative to the vault's canonical high-water mark.
+ *
+ * STATEMENT D.4 — Queue Append-Only Design
+ * ----------------------------------------------------------------------------
+ * The withdrawal queue is append-only. Processed entries are marked with
+ * shares=0 and skipped via withdrawalQueueHead cursor. Entries are never
+ * deleted. This is intentional to preserve FIFO ordering, maintain requestId
+ * stability, and avoid costly array shifts.
+ *
+ * =============================================================================
  * SINGLE-LINE SUMMARY
  * =============================================================================
  * The only way value exits the system is by destroying shares at current NAV;
  * all shares, regardless of state, rise and fall together.
  * =============================================================================
  */
-contract USDCSavingsVault is IVault {
+contract USDCSavingsVault is IVault, ReentrancyGuard {
     // ============ Constants ============
 
     uint256 public constant PRECISION = 1e18;
@@ -108,8 +164,8 @@ contract USDCSavingsVault is IVault {
     uint256 public withdrawalBuffer; // USDC to retain for withdrawals
     uint256 public cooldownPeriod; // Minimum time before withdrawal fulfillment
 
-    // Fee tracking
-    uint256 public lastFeeHighWaterMark; // High water mark for fee calculation
+    // Fee tracking (canonical source for fee calculations - see Statement D.3)
+    uint256 public feeHighWaterMark; // Canonical high water mark for fee calculation
 
     // User tracking
     mapping(address => uint256) public userTotalDeposited; // Cumulative deposits (for cap enforcement)
@@ -321,6 +377,7 @@ contract USDCSavingsVault is IVault {
      */
     function deposit(uint256 usdcAmount)
         external
+        nonReentrant
         whenNotPaused
         whenDepositsNotPaused
         returns (uint256 sharesMinted)
@@ -370,6 +427,7 @@ contract USDCSavingsVault is IVault {
      */
     function requestWithdrawal(uint256 shareAmount)
         external
+        nonReentrant
         whenNotPaused
         whenWithdrawalsNotPaused
         returns (uint256 requestId)
@@ -409,6 +467,7 @@ contract USDCSavingsVault is IVault {
      */
     function fulfillWithdrawals(uint256 count)
         external
+        nonReentrant
         onlyOperator
         whenNotPaused
         whenWithdrawalsNotPaused
@@ -495,7 +554,7 @@ contract USDCSavingsVault is IVault {
      * @notice Receive funds from multisig for withdrawal processing
      * @param amount Amount of USDC being sent
      */
-    function receiveFundsFromMultisig(uint256 amount) external onlyMultisig {
+    function receiveFundsFromMultisig(uint256 amount) external nonReentrant onlyMultisig {
         bool success = usdc.transferFrom(msg.sender, address(this), amount);
         if (!success) revert TransferFailed();
 
@@ -578,7 +637,7 @@ contract USDCSavingsVault is IVault {
      * @dev Invariant I.1: Still burns shares at current NAV
      * @dev WARNING: Skips FIFO order - use only in emergencies
      */
-    function forceProcessWithdrawal(uint256 requestId) external onlyOwner {
+    function forceProcessWithdrawal(uint256 requestId) external nonReentrant onlyOwner {
         if (requestId >= withdrawalQueue.length) revert InvalidRequestId();
 
         WithdrawalRequest storage request = withdrawalQueue[requestId];
@@ -611,7 +670,7 @@ contract USDCSavingsVault is IVault {
      * @param requestId Request ID to cancel
      * @dev Invariant I.2: Returns escrowed shares to original requester
      */
-    function cancelWithdrawal(uint256 requestId) external onlyOwner {
+    function cancelWithdrawal(uint256 requestId) external nonReentrant onlyOwner {
         if (requestId >= withdrawalQueue.length) revert InvalidRequestId();
 
         WithdrawalRequest storage request = withdrawalQueue[requestId];
@@ -669,9 +728,9 @@ contract USDCSavingsVault is IVault {
         uint256 currentAssets = totalAssets();
 
         // INVARIANT I.4: Only assess fees on positive changes
-        if (currentAssets <= lastFeeHighWaterMark) return;
+        if (currentAssets <= feeHighWaterMark) return;
 
-        uint256 profit = currentAssets - lastFeeHighWaterMark;
+        uint256 profit = currentAssets - feeHighWaterMark;
         uint256 fee = (profit * feeRate) / PRECISION;
 
         // ASSERT I.4: Fee cannot exceed profit
@@ -691,6 +750,6 @@ contract USDCSavingsVault is IVault {
             }
         }
 
-        lastFeeHighWaterMark = currentAssets;
+        feeHighWaterMark = currentAssets;
     }
 }
