@@ -2,22 +2,28 @@
 pragma solidity ^0.8.24;
 
 import {IERC20} from "./interfaces/IERC20.sol";
-import {IUSDCSavingsVault} from "./interfaces/IUSDCSavingsVault.sol";
+import {IVault} from "./interfaces/IVault.sol";
+import {INavOracle} from "./interfaces/INavOracle.sol";
+import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {VaultShare} from "./VaultShare.sol";
 
 /**
  * @title USDCSavingsVault
  * @notice A USDC-denominated savings vault with share-based NAV model
- * @dev Users deposit USDC, receive shares, and earn yield via NAV updates
+ * @dev Uses external INavOracle for NAV data and IRoleManager for access control
+ *
+ * Architecture:
+ * - INavOracle.totalAssets(): Source of truth for NAV
+ * - IRoleManager.paused(): Controls pause state
+ * - IRoleManager.isOperator(): Controls operator access
  *
  * Key features:
  * - Share-based accounting (1 USDC = 1 share initially)
  * - Async withdrawal queue with FIFO processing
- * - NAV updates by operator for yield/loss distribution
  * - Protocol fees only on positive yield
- * - Emergency controls and role-based permissions
+ * - Operator-only withdrawal fulfillment
  */
-contract USDCSavingsVault is IUSDCSavingsVault {
+contract USDCSavingsVault is IVault {
     // ============ Constants ============
 
     uint256 public constant PRECISION = 1e18;
@@ -29,20 +35,14 @@ contract USDCSavingsVault is IUSDCSavingsVault {
 
     IERC20 public immutable usdc;
     VaultShare public immutable shares;
+    INavOracle public immutable navOracle;
+    IRoleManager public immutable roleManager;
 
     // ============ State ============
 
-    // Roles
-    address public owner;
-    address public pendingOwner;
-    mapping(address => bool) public operators;
+    // Addresses
     address public multisig;
     address public treasury;
-
-    // NAV and accounting
-    uint256 public nav; // Total NAV in USDC (6 decimals)
-    uint256 public lastNavUpdateTime;
-    uint256 public highWaterMark; // For fee calculation
 
     // Configuration
     uint256 public feeRate; // Fee rate on profits (18 decimals, e.g., 0.2e18 = 20%)
@@ -51,19 +51,17 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     uint256 public withdrawalBuffer; // USDC to retain for withdrawals
     uint256 public cooldownPeriod; // Minimum time before withdrawal fulfillment
 
+    // Fee tracking
+    uint256 public lastFeeHighWaterMark; // Local high water mark for fee calculation
+    uint256 public accruedFees; // Fees owed to treasury (not yet collected)
+
     // User tracking
-    mapping(address => uint256) public userDeposits; // Total USDC deposited per user
     mapping(address => uint256) public userTotalDeposited; // Cumulative deposits (for cap enforcement)
 
     // Withdrawal queue
     WithdrawalRequest[] public withdrawalQueue;
     uint256 public withdrawalQueueHead; // Index of next request to process
     uint256 public pendingWithdrawalShares; // Total shares in queue
-
-    // Pause states
-    bool public paused;
-    bool public depositsPaused;
-    bool public withdrawalsPaused;
 
     // ============ Errors ============
 
@@ -79,25 +77,21 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     error ExceedsGlobalCap();
     error InsufficientShares();
     error InsufficientLiquidity();
-    error CooldownNotMet();
     error InvalidFeeRate();
     error InvalidCooldown();
     error InvalidRequestId();
     error RequestAlreadyProcessed();
-    error NotRequester();
     error TransferFailed();
-    error NoSharesOutstanding();
-    error SharesMismatch();
 
     // ============ Modifiers ============
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert OnlyOwner();
+        if (msg.sender != roleManager.owner()) revert OnlyOwner();
         _;
     }
 
     modifier onlyOperator() {
-        if (!operators[msg.sender] && msg.sender != owner) revert OnlyOperator();
+        if (!roleManager.isOperator(msg.sender)) revert OnlyOperator();
         _;
     }
 
@@ -107,17 +101,17 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     }
 
     modifier whenNotPaused() {
-        if (paused) revert Paused();
+        if (roleManager.paused()) revert Paused();
         _;
     }
 
     modifier whenDepositsNotPaused() {
-        if (depositsPaused) revert DepositsPaused();
+        if (roleManager.depositsPaused()) revert DepositsPaused();
         _;
     }
 
     modifier whenWithdrawalsNotPaused() {
-        if (withdrawalsPaused) revert WithdrawalsPaused();
+        if (roleManager.withdrawalsPaused()) revert WithdrawalsPaused();
         _;
     }
 
@@ -126,6 +120,8 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     /**
      * @notice Initialize the vault
      * @param _usdc USDC token address
+     * @param _navOracle NavOracle contract address
+     * @param _roleManager RoleManager contract address
      * @param _multisig Multisig address for strategy funds
      * @param _treasury Treasury address for fees
      * @param _feeRate Initial fee rate (18 decimals)
@@ -133,35 +129,44 @@ contract USDCSavingsVault is IUSDCSavingsVault {
      */
     constructor(
         address _usdc,
+        address _navOracle,
+        address _roleManager,
         address _multisig,
         address _treasury,
         uint256 _feeRate,
         uint256 _cooldownPeriod
     ) {
         if (_usdc == address(0)) revert ZeroAddress();
+        if (_navOracle == address(0)) revert ZeroAddress();
+        if (_roleManager == address(0)) revert ZeroAddress();
         if (_multisig == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
         if (_feeRate > MAX_FEE_RATE) revert InvalidFeeRate();
         if (_cooldownPeriod < MIN_COOLDOWN || _cooldownPeriod > MAX_COOLDOWN) revert InvalidCooldown();
 
         usdc = IERC20(_usdc);
+        navOracle = INavOracle(_navOracle);
+        roleManager = IRoleManager(_roleManager);
         shares = new VaultShare(address(this));
 
-        owner = msg.sender;
         multisig = _multisig;
         treasury = _treasury;
         feeRate = _feeRate;
         cooldownPeriod = _cooldownPeriod;
-
-        // Set initial operator to owner
-        operators[msg.sender] = true;
-        emit OperatorUpdated(msg.sender, true);
     }
 
     // ============ View Functions ============
 
     /**
-     * @notice Calculate current share price
+     * @notice Get total assets from NavOracle
+     * @return Total assets in USDC (6 decimals)
+     */
+    function totalAssets() public view returns (uint256) {
+        return navOracle.totalAssets();
+    }
+
+    /**
+     * @notice Calculate current share price using NavOracle.totalAssets()
      * @return price Share price in USDC (18 decimal precision)
      * @dev Returns 1e18 (representing 1 USDC per share) when no shares exist
      */
@@ -170,9 +175,13 @@ contract USDCSavingsVault is IUSDCSavingsVault {
         if (totalShareSupply == 0) {
             return PRECISION; // 1 USDC = 1 share initially
         }
-        // sharePrice = NAV / totalShares
-        // NAV is in 6 decimals (USDC), we want 18 decimal precision
-        return (nav * PRECISION) / totalShareSupply;
+        // Deduct accrued fees from NAV for accurate share price
+        uint256 nav = totalAssets();
+        if (accruedFees >= nav) {
+            return 0;
+        }
+        uint256 effectiveNav = nav - accruedFees;
+        return (effectiveNav * PRECISION) / totalShareSupply;
     }
 
     /**
@@ -232,7 +241,9 @@ contract USDCSavingsVault is IUSDCSavingsVault {
      * @return Number of shares
      */
     function usdcToShares(uint256 usdcAmount) public view returns (uint256) {
-        return (usdcAmount * PRECISION) / sharePrice();
+        uint256 price = sharePrice();
+        if (price == 0) return 0;
+        return (usdcAmount * PRECISION) / price;
     }
 
     // ============ User Functions ============
@@ -258,8 +269,9 @@ contract USDCSavingsVault is IUSDCSavingsVault {
         }
 
         // Check global cap
+        uint256 currentAssets = totalAssets();
         if (globalCap > 0) {
-            if (nav + usdcAmount > globalCap) {
+            if (currentAssets + usdcAmount > globalCap) {
                 revert ExceedsGlobalCap();
             }
         }
@@ -268,11 +280,7 @@ contract USDCSavingsVault is IUSDCSavingsVault {
         sharesMinted = usdcToShares(usdcAmount);
 
         // Update user tracking
-        userDeposits[msg.sender] += usdcAmount;
         userTotalDeposited[msg.sender] += usdcAmount;
-
-        // Update NAV
-        nav += usdcAmount;
 
         // Mint shares to user
         shares.mint(msg.sender, sharesMinted);
@@ -317,42 +325,21 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     // ============ Operator Functions ============
 
     /**
-     * @notice Update the NAV and collect fees on profit
-     * @param newNav New NAV value
-     */
-    function updateNAV(uint256 newNav) external onlyOperator whenNotPaused {
-        uint256 oldNav = nav;
-        uint256 feeCollected = 0;
-
-        // Calculate fee on profit above high water mark
-        if (newNav > highWaterMark && feeRate > 0) {
-            uint256 profit = newNav - highWaterMark;
-            feeCollected = (profit * feeRate) / PRECISION;
-            newNav -= feeCollected;
-            highWaterMark = newNav;
-        } else if (newNav > highWaterMark) {
-            highWaterMark = newNav;
-        }
-
-        nav = newNav;
-        lastNavUpdateTime = block.timestamp;
-
-        emit NAVUpdated(oldNav, newNav, feeCollected);
-    }
-
-    /**
-     * @notice Process pending withdrawals from the queue
+     * @notice Fulfill pending withdrawals from the queue (operator only)
      * @param count Maximum number of withdrawals to process
      * @return processed Number of withdrawals processed
      * @return usdcPaid Total USDC paid out
      */
-    function processWithdrawals(uint256 count)
+    function fulfillWithdrawals(uint256 count)
         external
         onlyOperator
         whenNotPaused
         whenWithdrawalsNotPaused
         returns (uint256 processed, uint256 usdcPaid)
     {
+        // Collect any pending fees before processing withdrawals
+        _collectFees();
+
         uint256 available = availableLiquidity();
         uint256 head = withdrawalQueueHead;
         uint256 queueLen = withdrawalQueue.length;
@@ -399,13 +386,6 @@ contract USDCSavingsVault is IUSDCSavingsVault {
             // Burn shares
             shares.burn(request.requester, sharesToBurn);
 
-            // Update NAV
-            if (usdcOut > nav) {
-                nav = 0;
-            } else {
-                nav -= usdcOut;
-            }
-
             // Update pending shares
             pendingWithdrawalShares -= request.shares;
             request.shares = 0;
@@ -425,6 +405,8 @@ contract USDCSavingsVault is IUSDCSavingsVault {
         withdrawalQueueHead = head;
     }
 
+    // ============ Multisig Functions ============
+
     /**
      * @notice Receive funds from multisig for withdrawal processing
      * @param amount Amount of USDC being sent
@@ -437,17 +419,6 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     }
 
     // ============ Owner Functions ============
-
-    /**
-     * @notice Set operator status for an address
-     * @param operator Address to update
-     * @param status New operator status
-     */
-    function setOperator(address operator, bool status) external onlyOwner {
-        if (operator == address(0)) revert ZeroAddress();
-        operators[operator] = status;
-        emit OperatorUpdated(operator, status);
-    }
 
     /**
      * @notice Update multisig address
@@ -517,54 +488,6 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     }
 
     /**
-     * @notice Pause all operations
-     */
-    function pause() external onlyOperator {
-        paused = true;
-        emit Paused(msg.sender);
-    }
-
-    /**
-     * @notice Unpause all operations
-     */
-    function unpause() external onlyOwner {
-        paused = false;
-        emit Unpaused(msg.sender);
-    }
-
-    /**
-     * @notice Pause deposits only
-     */
-    function pauseDeposits() external onlyOperator {
-        depositsPaused = true;
-        emit DepositsPaused(msg.sender);
-    }
-
-    /**
-     * @notice Unpause deposits
-     */
-    function unpauseDeposits() external onlyOwner {
-        depositsPaused = false;
-        emit DepositsUnpaused(msg.sender);
-    }
-
-    /**
-     * @notice Pause withdrawals only
-     */
-    function pauseWithdrawals() external onlyOperator {
-        withdrawalsPaused = true;
-        emit WithdrawalsPaused(msg.sender);
-    }
-
-    /**
-     * @notice Unpause withdrawals
-     */
-    function unpauseWithdrawals() external onlyOwner {
-        withdrawalsPaused = false;
-        emit WithdrawalsUnpaused(msg.sender);
-    }
-
-    /**
      * @notice Force process a specific withdrawal (emergency)
      * @param requestId Request ID to process
      */
@@ -586,12 +509,6 @@ contract USDCSavingsVault is IUSDCSavingsVault {
             if (usdcOut > availableLiquidity()) revert InsufficientLiquidity();
 
             shares.burn(request.requester, sharesToBurn);
-
-            if (usdcOut > nav) {
-                nav = 0;
-            } else {
-                nav -= usdcOut;
-            }
 
             bool success = usdc.transfer(request.requester, usdcOut);
             if (!success) revert TransferFailed();
@@ -621,35 +538,10 @@ contract USDCSavingsVault is IUSDCSavingsVault {
     }
 
     /**
-     * @notice Manually adjust NAV (emergency, with reason)
-     * @param newNav New NAV value
-     * @param reason Reason for adjustment
+     * @notice Collect accrued fees to treasury
      */
-    function manualNavAdjustment(uint256 newNav, string calldata reason) external onlyOwner {
-        uint256 oldNav = nav;
-        nav = newNav;
-        lastNavUpdateTime = block.timestamp;
-
-        // Note: reason is emitted for transparency, stored on-chain in event logs
-        emit NAVUpdated(oldNav, newNav, 0);
-    }
-
-    /**
-     * @notice Initiate ownership transfer
-     * @param newOwner New owner address
-     */
-    function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert ZeroAddress();
-        pendingOwner = newOwner;
-    }
-
-    /**
-     * @notice Accept ownership transfer
-     */
-    function acceptOwnership() external {
-        if (msg.sender != pendingOwner) revert OnlyOwner();
-        owner = pendingOwner;
-        pendingOwner = address(0);
+    function collectFees() external onlyOwner {
+        _collectFees();
     }
 
     // ============ Internal Functions ============
@@ -665,5 +557,34 @@ contract USDCSavingsVault is IUSDCSavingsVault {
             if (!success) revert TransferFailed();
             emit FundsForwardedToMultisig(excess);
         }
+    }
+
+    /**
+     * @notice Calculate and collect fees on profit
+     * @dev Called before withdrawal fulfillment to ensure accurate share price
+     */
+    function _collectFees() internal {
+        if (feeRate == 0) return;
+
+        uint256 currentAssets = totalAssets();
+        if (currentAssets <= lastFeeHighWaterMark) return;
+
+        uint256 profit = currentAssets - lastFeeHighWaterMark;
+        uint256 fee = (profit * feeRate) / PRECISION;
+
+        if (fee > 0) {
+            // Mint fee shares to treasury
+            uint256 totalShareSupply = shares.totalSupply();
+            if (totalShareSupply > 0) {
+                // feeShares = fee * totalShares / (currentAssets - fee)
+                uint256 feeShares = (fee * totalShareSupply) / (currentAssets - fee);
+                if (feeShares > 0) {
+                    shares.mint(treasury, feeShares);
+                    emit FeeCollected(feeShares, treasury);
+                }
+            }
+        }
+
+        lastFeeHighWaterMark = currentAssets;
     }
 }

@@ -2,10 +2,17 @@
 pragma solidity ^0.8.24;
 
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
+import {NavOracle} from "../src/NavOracle.sol";
+import {RoleManager} from "../src/RoleManager.sol";
 
 /**
  * @title DeployScript
- * @notice Deployment script for USDCSavingsVault
+ * @notice Deployment script for the USDC Savings Vault system
+ *
+ * Deploys:
+ * 1. RoleManager - Access control and pause management
+ * 2. NavOracle - NAV reporting oracle
+ * 3. USDCSavingsVault - Main vault contract
  *
  * Usage:
  * forge script script/Deploy.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast --verify
@@ -14,22 +21,39 @@ import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
  * - USDC_ADDRESS: Address of USDC token
  * - MULTISIG_ADDRESS: Address of multisig for strategy funds
  * - TREASURY_ADDRESS: Address of treasury for fees
+ * - OWNER_ADDRESS: Address of the owner (governance)
  * - FEE_RATE: Fee rate in 18 decimals (e.g., 0.2e18 = 20%)
  * - COOLDOWN_PERIOD: Cooldown in seconds (e.g., 604800 = 7 days)
  */
 contract DeployScript {
-    function run() external returns (USDCSavingsVault vault) {
+    struct DeployedContracts {
+        RoleManager roleManager;
+        NavOracle navOracle;
+        USDCSavingsVault vault;
+    }
+
+    function run() external returns (DeployedContracts memory deployed) {
         // Load configuration from environment
         address usdc = vm.envAddress("USDC_ADDRESS");
         address multisig = vm.envAddress("MULTISIG_ADDRESS");
         address treasury = vm.envAddress("TREASURY_ADDRESS");
+        address owner = vm.envAddress("OWNER_ADDRESS");
         uint256 feeRate = vm.envUint("FEE_RATE");
         uint256 cooldownPeriod = vm.envUint("COOLDOWN_PERIOD");
 
         vm.startBroadcast();
 
-        vault = new USDCSavingsVault(
+        // 1. Deploy RoleManager
+        deployed.roleManager = new RoleManager(owner);
+
+        // 2. Deploy NavOracle
+        deployed.navOracle = new NavOracle(address(deployed.roleManager));
+
+        // 3. Deploy Vault
+        deployed.vault = new USDCSavingsVault(
             usdc,
+            address(deployed.navOracle),
+            address(deployed.roleManager),
             multisig,
             treasury,
             feeRate,
@@ -38,7 +62,7 @@ contract DeployScript {
 
         vm.stopBroadcast();
 
-        return vault;
+        return deployed;
     }
 
     // Forge VM interface for environment variables
