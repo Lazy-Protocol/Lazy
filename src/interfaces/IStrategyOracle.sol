@@ -17,8 +17,9 @@ pragma solidity ^0.8.24;
 interface IStrategyOracle {
     // ============ Events ============
 
-    event YieldReported(int256 yieldDelta, uint256 newAccumulatedYield, uint256 timestamp);
+    event YieldReported(int256 yieldDelta, int256 newAccumulatedYield, uint256 timestamp);
     event VaultSet(address indexed vault);
+    event MaxYieldChangeUpdated(uint256 oldValue, uint256 newValue);
 
     // ============ View Functions ============
 

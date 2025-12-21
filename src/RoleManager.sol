@@ -151,11 +151,20 @@ contract RoleManager is IRoleManager {
     /**
      * @notice Accept ownership transfer
      * @dev Must be called by the pending owner
+     * @dev Automatically revokes old owner's explicit operator status for security
      */
     function acceptOwnership() external {
         if (msg.sender != pendingOwner) revert NotPendingOwner();
 
-        emit OwnershipTransferred(owner, msg.sender);
+        address oldOwner = owner;
+
+        // Revoke old owner's explicit operator status (security: prevents lingering access)
+        if (operators[oldOwner]) {
+            operators[oldOwner] = false;
+            emit OperatorUpdated(oldOwner, false);
+        }
+
+        emit OwnershipTransferred(oldOwner, msg.sender);
 
         owner = msg.sender;
         pendingOwner = address(0);
