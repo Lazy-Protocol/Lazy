@@ -13,7 +13,7 @@ contract VaultShare is IERC20 {
 
     string public constant name = "USDC Savings Vault Share";
     string public constant symbol = "svUSDC";
-    uint8 public constant decimals = 6; // Same as USDC
+    uint8 public constant decimals = 18; // Standard ERC20 decimals
 
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;

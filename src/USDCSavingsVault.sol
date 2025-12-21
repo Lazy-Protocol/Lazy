@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "./interfaces/IERC20.sol";
 import {IVault} from "./interfaces/IVault.sol";
-import {INavOracle} from "./interfaces/INavOracle.sol";
+import {IStrategyOracle} from "./interfaces/IStrategyOracle.sol";
 import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {VaultShare} from "./VaultShare.sol";
 
@@ -31,18 +31,19 @@ abstract contract ReentrancyGuard {
 /**
  * @title USDCSavingsVault
  * @notice A USDC-denominated savings vault with share-based NAV model
- * @dev Uses external INavOracle for NAV data and IRoleManager for access control
+ * @dev Uses external IStrategyOracle for yield reporting and IRoleManager for access control
  *
  * Architecture:
- * - INavOracle.totalAssets(): Source of truth for NAV
- * - IRoleManager.paused(): Controls pause state
- * - IRoleManager.isOperator(): Controls operator access
+ * - Vault tracks deposits/withdrawals automatically (totalDeposited, totalWithdrawn)
+ * - IStrategyOracle.accumulatedYield(): Yield from off-chain strategies (owner-reported)
+ * - totalAssets = totalDeposited - totalWithdrawn + accumulatedYield
+ * - IRoleManager: Controls pause state and operator access
  *
  * Key features:
  * - Share-based accounting (1 USDC = 1 share initially)
  * - Async withdrawal queue with FIFO processing
  * - Share escrow on withdrawal request (prevents double-spend)
- * - Protocol fees only on positive yield (via share minting)
+ * - Protocol fees only on yield (via share minting, price-based HWM)
  * - Operator-only withdrawal fulfillment
  * - Reentrancy protection on state-changing functions
  *
@@ -82,7 +83,7 @@ abstract contract ReentrancyGuard {
  * INVARIANT I.4 — Fee Isolation
  * ----------------------------------------------------------------------------
  * Protocol fees SHALL:
- *   - Be assessed only on positive changes to totalAssets
+ *   - Be assessed only on share price increases (yield, not deposits)
  *   - Be capped by MAX_FEE_RATE
  *   - Be paid exclusively via minting new shares to Treasury
  *
@@ -107,20 +108,15 @@ abstract contract ReentrancyGuard {
  *
  * STATEMENT D.2 — Oracle Trust Assumption
  * ----------------------------------------------------------------------------
- * NAV updates are trusted inputs controlled by governance. The protocol does
- * not attempt to algorithmically defend against oracle manipulation. The
- * protocol does not enforce time-based NAV freshness. totalAssets remains at
- * the last reported value until updated by governance. This may result in
- * withdrawals being processed at a stale NAV during periods of strategy unwind
- * or operational disruption. This behavior is intentional and reflects the
- * trust-based nature of NAV reporting.
+ * Yield reports are trusted inputs controlled by governance. The protocol does
+ * not attempt to algorithmically defend against oracle manipulation. Deposits
+ * and withdrawals are tracked automatically; only yield requires reporting.
  *
  * STATEMENT D.3 — Fee Accounting Rule
  * ----------------------------------------------------------------------------
- * Protocol fees are only realized on NAV updates via _collectFees(). Emergency
- * withdrawals (forceProcessWithdrawal) may bypass fee realization without
- * escaping fee liability long-term — fees are collected on subsequent NAV
- * increases relative to the vault's canonical high-water mark.
+ * Protocol fees are assessed on share PRICE increases, not NAV increases.
+ * This ensures fees are only charged on yield, not on deposits.
+ * Fee shares are minted immediately when yield is reported via collectFees().
  *
  * STATEMENT D.4 — Queue Append-Only Design
  * ----------------------------------------------------------------------------
@@ -144,11 +140,15 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     uint256 public constant MIN_COOLDOWN = 1 days;
     uint256 public constant MAX_COOLDOWN = 30 days;
 
+    // Initial share price: 1 USDC (6 decimals) = 1 share (18 decimals)
+    // Price is scaled to 18 decimals: 1e6 means 1 USDC per share
+    uint256 public constant INITIAL_SHARE_PRICE = 1e6;
+
     // ============ Immutables ============
 
     IERC20 public immutable usdc;
     VaultShare public immutable shares;
-    INavOracle public immutable navOracle;
+    IStrategyOracle public immutable strategyOracle;
     IRoleManager public immutable roleManager;
 
     // ============ State ============
@@ -164,8 +164,12 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     uint256 public withdrawalBuffer; // USDC to retain for withdrawals
     uint256 public cooldownPeriod; // Minimum time before withdrawal fulfillment
 
-    // Fee tracking (canonical source for fee calculations - see Statement D.3)
-    uint256 public feeHighWaterMark; // Canonical high water mark for fee calculation
+    // NAV tracking (deposits and withdrawals tracked automatically)
+    uint256 public totalDeposited; // Cumulative USDC deposited
+    uint256 public totalWithdrawn; // Cumulative USDC withdrawn
+
+    // Fee tracking (price-based high water mark)
+    uint256 public priceHighWaterMark; // HWM for fee calculation (18 decimals)
 
     // User tracking
     mapping(address => uint256) public userTotalDeposited; // Cumulative deposits (for cap enforcement)
@@ -182,6 +186,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     error OnlyMultisig();
     error ZeroAddress();
     error ZeroAmount();
+    error ZeroShares();
     error Paused();
     error DepositsPaused();
     error WithdrawalsPaused();
@@ -233,7 +238,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     /**
      * @notice Initialize the vault
      * @param _usdc USDC token address
-     * @param _navOracle NavOracle contract address
+     * @param _strategyOracle StrategyOracle contract address
      * @param _roleManager RoleManager contract address
      * @param _multisig Multisig address for strategy funds
      * @param _treasury Treasury address for fees
@@ -242,7 +247,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      */
     constructor(
         address _usdc,
-        address _navOracle,
+        address _strategyOracle,
         address _roleManager,
         address _multisig,
         address _treasury,
@@ -250,7 +255,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         uint256 _cooldownPeriod
     ) {
         if (_usdc == address(0)) revert ZeroAddress();
-        if (_navOracle == address(0)) revert ZeroAddress();
+        if (_strategyOracle == address(0)) revert ZeroAddress();
         if (_roleManager == address(0)) revert ZeroAddress();
         if (_multisig == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
@@ -258,7 +263,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         if (_cooldownPeriod < MIN_COOLDOWN || _cooldownPeriod > MAX_COOLDOWN) revert InvalidCooldown();
 
         usdc = IERC20(_usdc);
-        navOracle = INavOracle(_navOracle);
+        strategyOracle = IStrategyOracle(_strategyOracle);
         roleManager = IRoleManager(_roleManager);
         shares = new VaultShare(address(this));
 
@@ -266,29 +271,39 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         treasury = _treasury;
         feeRate = _feeRate;
         cooldownPeriod = _cooldownPeriod;
+
+        // Initialize price HWM to 1:1 (1 USDC = 1 share)
+        priceHighWaterMark = INITIAL_SHARE_PRICE;
     }
 
     // ============ View Functions ============
 
     /**
-     * @notice Get total assets from NavOracle
+     * @notice Get total assets (NAV) computed from deposits, withdrawals, and yield
      * @return Total assets in USDC (6 decimals)
+     * @dev totalAssets = totalDeposited - totalWithdrawn + accumulatedYield
      * @dev Invariant I.3: This value applies uniformly to all shares
      */
     function totalAssets() public view returns (uint256) {
-        return navOracle.totalAssets();
+        int256 yield = strategyOracle.accumulatedYield();
+        int256 nav = int256(totalDeposited) - int256(totalWithdrawn) + yield;
+
+        // NAV cannot be negative (would mean more withdrawn than deposited + yield)
+        // In practice this shouldn't happen, but we protect against it
+        return nav > 0 ? uint256(nav) : 0;
     }
 
     /**
-     * @notice Calculate current share price using NavOracle.totalAssets()
-     * @return price Share price in USDC (18 decimal precision)
-     * @dev Returns 1e18 (representing 1 USDC per share) when no shares exist
+     * @notice Calculate current share price
+     * @return price Share price scaled to 18 decimals
+     * @dev Returns INITIAL_SHARE_PRICE (1e6) when no shares exist, meaning 1 USDC = 1 share
+     * @dev With 18 decimal shares and 6 decimal USDC: price = (NAV * 1e18) / totalShares
      * @dev Invariant I.3: Price applies to ALL shares equally (user, escrowed, treasury)
      */
     function sharePrice() public view returns (uint256) {
         uint256 totalShareSupply = shares.totalSupply();
         if (totalShareSupply == 0) {
-            return PRECISION; // 1 USDC = 1 share initially
+            return INITIAL_SHARE_PRICE; // 1 USDC = 1 share initially
         }
         uint256 nav = totalAssets();
         return (nav * PRECISION) / totalShareSupply;
@@ -331,7 +346,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     }
 
     /**
-     * @notice Get vault's USDC balance
+     * @notice Get vault's USDC balance (available for withdrawals)
      * @return Available USDC in vault
      */
     function availableLiquidity() public view returns (uint256) {
@@ -374,6 +389,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @param usdcAmount Amount of USDC to deposit
      * @return sharesMinted Number of shares minted
      * @dev Invariant I.1: Shares minted = usdcAmount / sharePrice
+     * @dev Deposits auto-update totalAssets via totalDeposited tracking
      */
     function deposit(uint256 usdcAmount)
         external
@@ -399,8 +415,15 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
             }
         }
 
-        // Calculate shares to mint
+        // Calculate shares to mint BEFORE updating totalDeposited
+        // This ensures the price used is the pre-deposit price
         sharesMinted = usdcToShares(usdcAmount);
+
+        // M-1 Fix: Ensure user receives at least 1 share
+        if (sharesMinted == 0) revert ZeroShares();
+
+        // Update deposit tracking (auto-updates NAV via totalAssets())
+        totalDeposited += usdcAmount;
 
         // Update user tracking
         userTotalDeposited[msg.sender] += usdcAmount;
@@ -482,7 +505,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
 
         // Snapshot for invariant check
         uint256 sharesBefore = shares.totalSupply();
-        uint256 navBefore = totalAssets();
 
         while (processed < count && head < queueLen) {
             WithdrawalRequest storage request = withdrawalQueue[head];
@@ -493,10 +515,10 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
                 continue;
             }
 
-            // Check cooldown (per-request maturity)
+            // H-2 Fix: If cooldown not met, stop processing (maintain FIFO)
+            // Don't skip past immature requests - they should be processed first
             if (block.timestamp < request.requestTimestamp + cooldownPeriod) {
-                head++;
-                continue;
+                break; // Stop here, wait for this request to mature
             }
 
             uint256 sharesToBurn = request.shares;
@@ -517,6 +539,9 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
             pendingWithdrawalShares -= sharesToBurn;
             request.shares = 0;
 
+            // Track withdrawal for NAV calculation
+            totalWithdrawn += usdcOut;
+
             // Transfer USDC to requester
             // INVARIANT I.1: USDC only exits when shares are burned
             bool success = usdc.transfer(request.requester, usdcOut);
@@ -536,11 +561,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // If shares were burned, totalShares decreased proportionally to USDC paid
         if (processed > 0) {
             uint256 sharesAfter = shares.totalSupply();
-            uint256 sharesBurned = sharesBefore - sharesAfter;
-
-            // Verify: sharesBurned corresponds to usdcPaid at the NAV
-            // Allow for rounding: sharesBurned * navBefore / sharesBefore ≈ usdcPaid
-            // We check that no value was created (shares decreased, USDC exited)
+            // Verify: shares decreased when USDC exited
             assert(sharesAfter < sharesBefore || usdcPaid == 0);
         }
 
@@ -643,6 +664,9 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         WithdrawalRequest storage request = withdrawalQueue[requestId];
         if (request.shares == 0) revert RequestAlreadyProcessed();
 
+        // Collect fees before processing
+        _collectFees();
+
         uint256 sharesToBurn = request.shares;
         uint256 usdcOut = sharesToUsdc(sharesToBurn);
 
@@ -654,6 +678,9 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // Update state
         pendingWithdrawalShares -= sharesToBurn;
         request.shares = 0;
+
+        // Track withdrawal for NAV calculation
+        totalWithdrawn += usdcOut;
 
         // Transfer USDC
         bool success = usdc.transfer(request.requester, usdcOut);
@@ -696,6 +723,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     /**
      * @notice Manually trigger fee collection
      * @dev Invariant I.4: Fees paid via share minting only
+     * @dev Should be called after yield is reported to StrategyOracle
      */
     function collectFees() external onlyOwner {
         _collectFees();
@@ -717,32 +745,47 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     }
 
     /**
-     * @notice Calculate and collect fees on profit via share minting
-     * @dev Invariant I.4: Fees are ONLY collected on positive yield
+     * @notice Calculate and collect fees on yield via share minting
+     * @dev Invariant I.4: Fees are ONLY collected on share price increases
      * @dev Invariant I.4: Fees are ONLY paid via minting shares to treasury
      * @dev Invariant I.4: No USDC is transferred for fees
+     *
+     * Fee calculation uses price-based HWM:
+     * - Deposits: NAV ↑, shares ↑, price unchanged → no fees
+     * - Withdrawals: NAV ↓, shares ↓, price unchanged → no fees
+     * - Yield: NAV ↑, shares unchanged, price ↑ → FEES
      */
     function _collectFees() internal {
         if (feeRate == 0) return;
 
-        uint256 currentAssets = totalAssets();
+        uint256 totalShareSupply = shares.totalSupply();
+        if (totalShareSupply == 0) return;
 
-        // INVARIANT I.4: Only assess fees on positive changes
-        if (currentAssets <= feeHighWaterMark) return;
+        uint256 currentPrice = sharePrice();
 
-        uint256 profit = currentAssets - feeHighWaterMark;
+        // INVARIANT I.4: Only assess fees on price increases (yield)
+        if (currentPrice <= priceHighWaterMark) return;
+
+        // Calculate price gain and corresponding profit
+        uint256 priceGain = currentPrice - priceHighWaterMark;
+
+        // Profit in USDC = priceGain * totalShares / PRECISION
+        // (priceGain is in 18 decimals, shares in 6 decimals)
+        uint256 profit = (priceGain * totalShareSupply) / PRECISION;
+
+        // Fee is percentage of profit
         uint256 fee = (profit * feeRate) / PRECISION;
 
         // ASSERT I.4: Fee cannot exceed profit
         assert(fee <= profit);
 
         if (fee > 0) {
-            uint256 totalShareSupply = shares.totalSupply();
-            if (totalShareSupply > 0) {
-                // INVARIANT I.4: Pay fee by minting shares to treasury
-                // feeShares = fee * totalShares / (currentAssets - fee)
-                // This dilutes existing holders proportionally
-                uint256 feeShares = (fee * totalShareSupply) / (currentAssets - fee);
+            // INVARIANT I.4: Pay fee by minting shares to treasury
+            // feeShares = fee / currentPrice (in proper decimals)
+            // This dilutes existing holders proportionally
+            uint256 currentNav = totalAssets();
+            if (currentNav > fee) {
+                uint256 feeShares = (fee * totalShareSupply) / (currentNav - fee);
                 if (feeShares > 0) {
                     shares.mint(treasury, feeShares);
                     emit FeeCollected(feeShares, treasury);
@@ -750,6 +793,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
             }
         }
 
-        feeHighWaterMark = currentAssets;
+        // Update HWM to POST-dilution price
+        // This ensures next cycle only fees NEW gains
+        priceHighWaterMark = sharePrice();
     }
 }
