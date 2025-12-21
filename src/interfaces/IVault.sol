@@ -69,13 +69,6 @@ interface IVault {
      */
     function getWithdrawalRequest(uint256 requestId) external view returns (WithdrawalRequest memory);
 
-    /**
-     * @notice Get user's cumulative deposits
-     * @param user User address
-     * @return Total deposited
-     */
-    function userTotalDeposited(address user) external view returns (uint256);
-
     // ============ User Functions ============
 
     /**

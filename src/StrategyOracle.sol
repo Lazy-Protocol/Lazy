@@ -85,6 +85,7 @@ contract StrategyOracle is IStrategyOracle {
      *      Recommended: Set to expected max daily yield * safety factor
      */
     function setMaxYieldChange(uint256 _maxChange) external onlyOwner {
+        emit MaxYieldChangeUpdated(maxYieldChangePerReport, _maxChange);
         maxYieldChangePerReport = _maxChange;
     }
 
@@ -112,6 +113,6 @@ contract StrategyOracle is IStrategyOracle {
         accumulatedYield += yieldDelta;
         lastReportTime = block.timestamp;
 
-        emit YieldReported(yieldDelta, uint256(accumulatedYield > 0 ? accumulatedYield : int256(0)), block.timestamp);
+        emit YieldReported(yieldDelta, accumulatedYield, block.timestamp);
     }
 }

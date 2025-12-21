@@ -175,9 +175,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     // Fee tracking (price-based high water mark)
     uint256 public priceHighWaterMark; // HWM for fee calculation (18 decimals)
 
-    // User tracking
-    mapping(address => uint256) public userTotalDeposited; // Cumulative deposits (for cap enforcement)
-
     // Withdrawal queue
     WithdrawalRequest[] public withdrawalQueue;
     uint256 public withdrawalQueueHead; // Index of next request to process
@@ -204,9 +201,13 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     error InvalidRequestId();
     error RequestAlreadyProcessed();
     error TransferFailed();
-    error InvariantViolation();
     error Unauthorized();
     error TooManyPendingRequests();
+    error NotAContract();
+    // Invariant violation errors (should never occur if code is correct)
+    error EscrowBalanceMismatch();
+    error SharesNotBurned();
+    error FeeExceedsProfit();
 
     // ============ Modifiers ============
 
@@ -270,6 +271,9 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         if (_roleManager == address(0)) revert ZeroAddress();
         if (_multisig == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
+        if (_usdc.code.length == 0) revert NotAContract();
+        if (_strategyOracle.code.length == 0) revert NotAContract();
+        if (_roleManager.code.length == 0) revert NotAContract();
         if (_feeRate > MAX_FEE_RATE) revert InvalidFeeRate();
         if (_cooldownPeriod < MIN_COOLDOWN || _cooldownPeriod > MAX_COOLDOWN) revert InvalidCooldown();
 
@@ -441,9 +445,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // Update deposit tracking (auto-updates NAV via totalAssets())
         totalDeposited += usdcAmount;
 
-        // Update user tracking
-        userTotalDeposited[msg.sender] += usdcAmount;
-
         // Mint shares to user
         shares.mint(msg.sender, sharesMinted);
 
@@ -492,8 +493,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         pendingWithdrawalShares += shareAmount;
         userPendingRequests[msg.sender]++;
 
-        // ASSERT I.2: Verify escrow invariant
-        assert(shares.balanceOf(address(this)) >= pendingWithdrawalShares);
+        // INVARIANT I.2: Verify escrow balance matches pending shares
+        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalRequested(msg.sender, shareAmount, requestId);
     }
@@ -578,16 +579,16 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
 
         withdrawalQueueHead = head;
 
-        // ASSERT I.1: Conservation of value
+        // INVARIANT I.1: Conservation of value
         // If shares were burned, totalShares decreased proportionally to USDC paid
         if (processed > 0) {
             uint256 sharesAfter = shares.totalSupply();
             // Verify: shares decreased when USDC exited
-            assert(sharesAfter < sharesBefore || usdcPaid == 0);
+            if (sharesAfter >= sharesBefore && usdcPaid > 0) revert SharesNotBurned();
         }
 
-        // ASSERT I.2: Escrow balance matches pending shares
-        assert(shares.balanceOf(address(this)) == pendingWithdrawalShares);
+        // INVARIANT I.2: Escrow balance matches pending shares
+        if (shares.balanceOf(address(this)) != pendingWithdrawalShares) revert EscrowBalanceMismatch();
     }
 
     // ============ Multisig Functions ============
@@ -666,6 +667,9 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     /**
      * @notice Update cooldown period
      * @param newCooldown New cooldown in seconds
+     * @dev IMPORTANT: This change affects ALL pending withdrawals, including existing ones.
+     *      Increasing the cooldown will delay fulfillment of requests already in the queue.
+     *      This is expected governance behavior - use with caution during active operations.
      */
     function setCooldownPeriod(uint256 newCooldown) external onlyOwner {
         if (newCooldown < MIN_COOLDOWN || newCooldown > MAX_COOLDOWN) revert InvalidCooldown();
@@ -708,8 +712,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         bool success = usdc.transfer(request.requester, usdcOut);
         if (!success) revert TransferFailed();
 
-        // ASSERT I.2: Escrow invariant maintained
-        assert(shares.balanceOf(address(this)) == pendingWithdrawalShares);
+        // INVARIANT I.2: Escrow balance matches pending shares
+        if (shares.balanceOf(address(this)) != pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalForced(request.requester, sharesToBurn, usdcOut, requestId);
     }
@@ -745,8 +749,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         bool success = shares.transfer(requester, sharesToReturn);
         if (!success) revert TransferFailed();
 
-        // ASSERT I.2: Escrow invariant maintained
-        assert(shares.balanceOf(address(this)) == pendingWithdrawalShares);
+        // INVARIANT I.2: Escrow balance matches pending shares
+        if (shares.balanceOf(address(this)) != pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalCancelled(requester, sharesToReturn, requestId);
     }
@@ -812,6 +816,11 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @dev Clears storage for processed entries (shares=0) up to withdrawalQueueHead.
      *      This reclaims storage slots and provides gas refunds.
      *      Note: Array length doesn't shrink, but storage is cleared.
+     *
+     *      PUBLICLY CALLABLE: This function has no access control by design.
+     *      Anyone can call it to clean up processed entries and receive gas refunds.
+     *      This is safe because it only deletes already-processed entries (shares=0)
+     *      and cannot affect pending or unprocessed withdrawals.
      */
     function purgeProcessedWithdrawals(uint256 count) external returns (uint256 purged) {
         uint256 head = withdrawalQueueHead;
@@ -877,8 +886,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // Fee is percentage of profit
         uint256 fee = (profit * feeRate) / PRECISION;
 
-        // ASSERT I.4: Fee cannot exceed profit
-        assert(fee <= profit);
+        // INVARIANT I.4: Fee cannot exceed profit
+        if (fee > profit) revert FeeExceedsProfit();
 
         // C-1 Fix: Guard against division by zero or invalid state
         // Skip fee collection if fee >= NAV (prevents revert, preserves liveness)
