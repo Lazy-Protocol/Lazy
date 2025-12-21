@@ -28,11 +28,16 @@ contract StrategyOracle is IStrategyOracle {
     uint256 public lastReportTime;
     address public vault;
 
+    // H-1: Optional yield bounds to prevent accidental misreporting
+    // If set to 0, no bounds are enforced (default for backward compatibility)
+    uint256 public maxYieldChangePerReport;
+
     // ============ Errors ============
 
     error OnlyOwner();
     error OnlyOwnerOrVault();
     error ZeroAddress();
+    error YieldChangeTooLarge();
 
     // ============ Constructor ============
 
@@ -72,6 +77,16 @@ contract StrategyOracle is IStrategyOracle {
     }
 
     /**
+     * @notice Set maximum yield change per report (H-1 safety bounds)
+     * @param _maxChange Maximum absolute yield change allowed per report (in USDC, 6 decimals)
+     * @dev Set to 0 to disable bounds checking. Only callable by owner.
+     *      Recommended: Set to expected max daily yield * safety factor
+     */
+    function setMaxYieldChange(uint256 _maxChange) external onlyOwner {
+        maxYieldChangePerReport = _maxChange;
+    }
+
+    /**
      * @notice Report yield from strategy operations
      * @param yieldDelta Change in yield (positive for gains, negative for losses)
      * @dev Callable by owner or authorized vault.
@@ -82,8 +97,16 @@ contract StrategyOracle is IStrategyOracle {
      *
      * When called by the vault via reportYieldAndCollectFees(), fees are
      * collected atomically in the same transaction.
+     *
+     * H-1: If maxYieldChangePerReport is set, enforces bounds to prevent misreporting.
      */
     function reportYield(int256 yieldDelta) external onlyOwnerOrVault {
+        // H-1: Check yield bounds if enabled
+        if (maxYieldChangePerReport > 0) {
+            uint256 absoluteDelta = yieldDelta >= 0 ? uint256(yieldDelta) : uint256(-yieldDelta);
+            if (absoluteDelta > maxYieldChangePerReport) revert YieldChangeTooLarge();
+        }
+
         accumulatedYield += yieldDelta;
         lastReportTime = block.timestamp;
 

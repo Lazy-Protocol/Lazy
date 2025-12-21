@@ -12,6 +12,8 @@ import {VaultShare} from "./VaultShare.sol";
  * @notice Minimal reentrancy protection (follows OpenZeppelin pattern)
  */
 abstract contract ReentrancyGuard {
+    error ReentrantCall();
+
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
     uint256 private _status;
@@ -21,7 +23,7 @@ abstract contract ReentrancyGuard {
     }
 
     modifier nonReentrant() {
-        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        if (_status == _ENTERED) revert ReentrantCall();
         _status = _ENTERED;
         _;
         _status = _NOT_ENTERED;
@@ -139,6 +141,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     uint256 public constant MAX_FEE_RATE = 0.5e18; // 50% max fee
     uint256 public constant MIN_COOLDOWN = 1 days;
     uint256 public constant MAX_COOLDOWN = 30 days;
+    uint256 public constant CANCELLATION_WINDOW = 1 hours; // H-3: User can cancel within this window
 
     // Initial share price: 1 USDC (6 decimals) = 1 share (18 decimals)
     // Price is scaled to 18 decimals: 1e6 means 1 USDC per share
@@ -200,6 +203,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     error RequestAlreadyProcessed();
     error TransferFailed();
     error InvariantViolation();
+    error Unauthorized();
 
     // ============ Modifiers ============
 
@@ -404,9 +408,10 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // This ensures depositors buy at the post-fee price
         _collectFees();
 
-        // Check per-user cap
+        // Check per-user cap (M-2: based on current holdings value, not cumulative deposits)
         if (perUserCap > 0) {
-            if (userTotalDeposited[msg.sender] + usdcAmount > perUserCap) {
+            uint256 currentHoldingsValue = sharesToUsdc(shares.balanceOf(msg.sender));
+            if (currentHoldingsValue + usdcAmount > perUserCap) {
                 revert ExceedsUserCap();
             }
         }
@@ -693,19 +698,27 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // ASSERT I.2: Escrow invariant maintained
         assert(shares.balanceOf(address(this)) == pendingWithdrawalShares);
 
-        emit WithdrawalFulfilled(request.requester, sharesToBurn, usdcOut, requestId);
+        emit WithdrawalForced(request.requester, sharesToBurn, usdcOut, requestId);
     }
 
     /**
-     * @notice Cancel a queued withdrawal (emergency)
+     * @notice Cancel a queued withdrawal (emergency, or by user within grace period)
      * @param requestId Request ID to cancel
      * @dev Invariant I.2: Returns escrowed shares to original requester
+     * @dev H-3: Users can cancel within CANCELLATION_WINDOW, owner can cancel anytime
      */
-    function cancelWithdrawal(uint256 requestId) external nonReentrant onlyOwner {
+    function cancelWithdrawal(uint256 requestId) external nonReentrant {
         if (requestId >= withdrawalQueue.length) revert InvalidRequestId();
 
         WithdrawalRequest storage request = withdrawalQueue[requestId];
         if (request.shares == 0) revert RequestAlreadyProcessed();
+
+        // H-3: Allow owner always, or requester within cancellation window
+        bool isOwner = msg.sender == roleManager.owner();
+        bool isRequesterInWindow = msg.sender == request.requester &&
+            block.timestamp < request.requestTimestamp + CANCELLATION_WINDOW;
+
+        if (!isOwner && !isRequesterInWindow) revert Unauthorized();
 
         uint256 sharesToReturn = request.shares;
         address requester = request.requester;
@@ -750,6 +763,22 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         _collectFees();
     }
 
+    /**
+     * @notice Recover orphaned shares sent directly to vault (H-2)
+     * @dev If someone accidentally transfers shares to the vault (not via requestWithdrawal),
+     *      those shares become stuck. This function burns them to prevent dilution.
+     * @return recovered Amount of orphaned shares burned
+     */
+    function recoverOrphanedShares() external onlyOwner returns (uint256 recovered) {
+        uint256 vaultShareBalance = shares.balanceOf(address(this));
+        recovered = vaultShareBalance - pendingWithdrawalShares;
+
+        if (recovered > 0) {
+            shares.burn(address(this), recovered);
+            emit OrphanedSharesRecovered(recovered);
+        }
+    }
+
     // ============ Internal Functions ============
 
     /**
@@ -791,7 +820,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         uint256 priceGain = currentPrice - priceHighWaterMark;
 
         // Profit in USDC = priceGain * totalShares / PRECISION
-        // (priceGain is in 18 decimals, shares in 6 decimals)
+        // (priceGain is in 18 decimals, shares in 18 decimals)
         uint256 profit = (priceGain * totalShareSupply) / PRECISION;
 
         // Fee is percentage of profit
@@ -800,22 +829,28 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // ASSERT I.4: Fee cannot exceed profit
         assert(fee <= profit);
 
-        if (fee > 0) {
-            // INVARIANT I.4: Pay fee by minting shares to treasury
-            // feeShares = fee / currentPrice (in proper decimals)
-            // This dilutes existing holders proportionally
-            uint256 currentNav = totalAssets();
-            if (currentNav > fee) {
-                uint256 feeShares = (fee * totalShareSupply) / (currentNav - fee);
-                if (feeShares > 0) {
-                    shares.mint(treasury, feeShares);
-                    emit FeeCollected(feeShares, treasury);
-                }
-            }
+        // C-1 Fix: Guard against division by zero or invalid state
+        // Skip fee collection if fee >= NAV (prevents revert, preserves liveness)
+        uint256 currentNav = totalAssets();
+        if (fee == 0 || fee >= currentNav) {
+            // Update HWM even if no fees collected to prevent re-processing
+            priceHighWaterMark = sharePrice();
+            return;
+        }
+
+        // INVARIANT I.4: Pay fee by minting shares to treasury
+        // feeShares = fee / currentPrice (in proper decimals)
+        // This dilutes existing holders proportionally
+        uint256 feeShares = (fee * totalShareSupply) / (currentNav - fee);
+        if (feeShares > 0) {
+            shares.mint(treasury, feeShares);
+            emit FeeCollected(feeShares, treasury);
         }
 
         // Update HWM to POST-dilution price
         // This ensures next cycle only fees NEW gains
+        uint256 oldHWM = priceHighWaterMark;
         priceHighWaterMark = sharePrice();
+        emit PriceHWMUpdated(oldHWM, priceHighWaterMark);
     }
 }
