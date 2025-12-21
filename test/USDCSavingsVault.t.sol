@@ -57,6 +57,9 @@ contract USDCSavingsVaultTest is Test {
         // Set up operator
         roleManager.setOperator(operator, true);
 
+        // Authorize vault to report yield (for atomic yield+fee collection)
+        strategyOracle.setVault(address(vault));
+
         // Mint USDC to test users
         usdc.mint(alice, 1_000_000e6);
         usdc.mint(bob, 1_000_000e6);
@@ -500,6 +503,47 @@ contract USDCSavingsVaultTest is Test {
 
         // No fees on loss
         assertEq(shares.balanceOf(treasury), 0);
+    }
+
+    function test_reportYieldAndCollectFees_atomic() public {
+        vm.prank(alice);
+        vault.deposit(100_000e6);
+
+        // Use atomic function - reports yield AND collects fees in one tx
+        vault.reportYieldAndCollectFees(20_000e6);
+
+        // Yield should be reported
+        assertEq(strategyOracle.accumulatedYield(), 20_000e6);
+
+        // Fees should be collected immediately
+        assertTrue(shares.balanceOf(treasury) > 0);
+
+        // Price HWM should be updated
+        assertTrue(vault.priceHighWaterMark() > 1e6);
+    }
+
+    function test_reportYieldAndCollectFees_noFeeOnLoss() public {
+        vm.prank(alice);
+        vault.deposit(100_000e6);
+
+        // Report loss atomically
+        vault.reportYieldAndCollectFees(-10_000e6);
+
+        // Loss recorded
+        assertEq(strategyOracle.accumulatedYield(), -10_000e6);
+
+        // No fees minted
+        assertEq(shares.balanceOf(treasury), 0);
+    }
+
+    function test_reportYieldAndCollectFees_onlyOwner() public {
+        vm.prank(alice);
+        vault.deposit(100_000e6);
+
+        // Non-owner cannot call
+        vm.prank(alice);
+        vm.expectRevert();
+        vault.reportYieldAndCollectFees(1_000e6);
     }
 
     // ============ FIFO Bug Fix Test (H-2) ============

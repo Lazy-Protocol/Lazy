@@ -7,7 +7,7 @@ import {IRoleManager} from "./interfaces/IRoleManager.sol";
 /**
  * @title StrategyOracle
  * @notice Oracle contract for reporting yield from off-chain strategies
- * @dev Owner reports yield deltas, vault uses this to compute total NAV
+ * @dev Owner or authorized vault reports yield deltas, vault uses this to compute total NAV
  *
  * Architecture:
  * - Vault tracks deposits/withdrawals automatically
@@ -26,10 +26,13 @@ contract StrategyOracle is IStrategyOracle {
 
     int256 public accumulatedYield;
     uint256 public lastReportTime;
+    address public vault;
 
     // ============ Errors ============
 
     error OnlyOwner();
+    error OnlyOwnerOrVault();
+    error ZeroAddress();
 
     // ============ Constructor ============
 
@@ -49,21 +52,38 @@ contract StrategyOracle is IStrategyOracle {
         _;
     }
 
+    modifier onlyOwnerOrVault() {
+        if (msg.sender != roleManager.owner() && msg.sender != vault) revert OnlyOwnerOrVault();
+        _;
+    }
+
     // ============ Owner Functions ============
+
+    /**
+     * @notice Set the authorized vault address
+     * @param _vault Address of the vault that can report yield
+     * @dev Only callable by owner. The vault can then call reportYield
+     *      to atomically report yield and collect fees.
+     */
+    function setVault(address _vault) external onlyOwner {
+        if (_vault == address(0)) revert ZeroAddress();
+        vault = _vault;
+        emit VaultSet(_vault);
+    }
 
     /**
      * @notice Report yield from strategy operations
      * @param yieldDelta Change in yield (positive for gains, negative for losses)
-     * @dev Only callable by owner.
+     * @dev Callable by owner or authorized vault.
      *
      * Examples:
      * - Strategy earned 1000 USDC: reportYield(1000e6)
      * - Strategy lost 500 USDC: reportYield(-500e6)
      *
-     * Note: The vault should call collectFees() after this to realize fees on gains.
+     * When called by the vault via reportYieldAndCollectFees(), fees are
+     * collected atomically in the same transaction.
      */
-    function reportYield(int256 yieldDelta) external onlyOwner {
-        int256 oldYield = accumulatedYield;
+    function reportYield(int256 yieldDelta) external onlyOwnerOrVault {
         accumulatedYield += yieldDelta;
         lastReportTime = block.timestamp;
 

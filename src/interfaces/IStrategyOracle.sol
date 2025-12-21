@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 /**
  * @title IStrategyOracle
  * @notice Interface for reporting yield from off-chain strategies
- * @dev Owner reports yield deltas (gains/losses), not total NAV
+ * @dev Owner or authorized vault reports yield deltas (gains/losses), not total NAV
  *
  * The vault computes totalAssets as:
  *   totalAssets = totalDeposited - totalWithdrawn + accumulatedYield
@@ -18,6 +18,7 @@ interface IStrategyOracle {
     // ============ Events ============
 
     event YieldReported(int256 yieldDelta, uint256 newAccumulatedYield, uint256 timestamp);
+    event VaultSet(address indexed vault);
 
     // ============ View Functions ============
 
@@ -34,12 +35,25 @@ interface IStrategyOracle {
      */
     function lastReportTime() external view returns (uint256);
 
+    /**
+     * @notice Get the authorized vault address
+     * @return Vault address that can report yield
+     */
+    function vault() external view returns (address);
+
     // ============ Owner Functions ============
 
     /**
      * @notice Report yield from strategy operations
      * @param yieldDelta Change in yield (positive for gains, negative for losses)
-     * @dev Only callable by owner. This triggers fee collection in the vault.
+     * @dev Callable by owner or authorized vault
      */
     function reportYield(int256 yieldDelta) external;
+
+    /**
+     * @notice Set the authorized vault address
+     * @param _vault Address of the vault that can report yield
+     * @dev Only callable by owner
+     */
+    function setVault(address _vault) external;
 }

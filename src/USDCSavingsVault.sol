@@ -733,6 +733,23 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         _collectFees();
     }
 
+    /**
+     * @notice Report yield and collect fees atomically
+     * @param yieldDelta Change in yield (positive for gains, negative for losses)
+     * @dev This is the RECOMMENDED way to report yield. It ensures:
+     *      1. Yield is reported to the oracle
+     *      2. Fees are collected immediately (no gap for arbitrage)
+     *
+     * Note: Requires this vault to be set as authorized in StrategyOracle via setVault()
+     */
+    function reportYieldAndCollectFees(int256 yieldDelta) external onlyOwner {
+        // Report yield to oracle (vault must be authorized via strategyOracle.setVault())
+        strategyOracle.reportYield(yieldDelta);
+
+        // Collect fees immediately - no gap between yield report and fee collection
+        _collectFees();
+    }
+
     // ============ Internal Functions ============
 
     /**
