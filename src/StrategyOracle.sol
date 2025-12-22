@@ -39,7 +39,7 @@ contract StrategyOracle is IStrategyOracle {
     uint256 public maxYieldChangePercent = 0.1e18;
 
     // C-1 Fix: Minimum interval between yield reports to prevent compounding bypass
-    uint256 public constant MIN_REPORT_INTERVAL = 7 days;
+    uint256 public constant MIN_REPORT_INTERVAL = 1 days;
 
     // ============ Errors ============
 
@@ -114,7 +114,7 @@ contract StrategyOracle is IStrategyOracle {
      * H-1: If maxYieldChangePercent is set (default 10%), enforces bounds to prevent misreporting.
      *      Yield delta cannot exceed maxYieldChangePercent of vault's current NAV.
      *
-     * C-1 Fix: Enforces MIN_REPORT_INTERVAL (7 days) between reports to prevent
+     * C-1 Fix: Enforces MIN_REPORT_INTERVAL (1 day) between reports to prevent
      *          compounding bypass of the yield bounds.
      */
     function reportYield(int256 yieldDelta) external onlyOwnerOrVault {
