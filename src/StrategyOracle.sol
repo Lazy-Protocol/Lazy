@@ -4,6 +4,11 @@ pragma solidity ^0.8.24;
 import {IStrategyOracle} from "./interfaces/IStrategyOracle.sol";
 import {IRoleManager} from "./interfaces/IRoleManager.sol";
 
+/// @dev Minimal interface to avoid circular dependency
+interface IVaultMinimal {
+    function totalAssets() external view returns (uint256);
+}
+
 /**
  * @title StrategyOracle
  * @notice Oracle contract for reporting yield from off-chain strategies
@@ -28,9 +33,10 @@ contract StrategyOracle is IStrategyOracle {
     uint256 public lastReportTime;
     address public vault;
 
-    // H-1: Optional yield bounds to prevent accidental misreporting
-    // If set to 0, no bounds are enforced (default for backward compatibility)
-    uint256 public maxYieldChangePerReport;
+    // H-1: Percentage-based yield bounds to prevent accidental misreporting
+    // Default 10% (0.1e18). Set to 0 to disable bounds checking.
+    // Yield delta cannot exceed this percentage of the vault's current NAV.
+    uint256 public maxYieldChangePercent = 0.1e18;
 
     // ============ Errors ============
 
@@ -79,14 +85,14 @@ contract StrategyOracle is IStrategyOracle {
     }
 
     /**
-     * @notice Set maximum yield change per report (H-1 safety bounds)
-     * @param _maxChange Maximum absolute yield change allowed per report (in USDC, 6 decimals)
+     * @notice Set maximum yield change percentage (H-1 safety bounds)
+     * @param _maxPercent Maximum yield change as percentage of NAV (18 decimals, e.g., 0.1e18 = 10%)
      * @dev Set to 0 to disable bounds checking. Only callable by owner.
-     *      Recommended: Set to expected max daily yield * safety factor
+     *      Default is 10% (0.1e18). Yield deltas exceeding this % of vault NAV will revert.
      */
-    function setMaxYieldChange(uint256 _maxChange) external onlyOwner {
-        emit MaxYieldChangeUpdated(maxYieldChangePerReport, _maxChange);
-        maxYieldChangePerReport = _maxChange;
+    function setMaxYieldChangePercent(uint256 _maxPercent) external onlyOwner {
+        emit MaxYieldChangeUpdated(maxYieldChangePercent, _maxPercent);
+        maxYieldChangePercent = _maxPercent;
     }
 
     /**
@@ -101,13 +107,19 @@ contract StrategyOracle is IStrategyOracle {
      * When called by the vault via reportYieldAndCollectFees(), fees are
      * collected atomically in the same transaction.
      *
-     * H-1: If maxYieldChangePerReport is set, enforces bounds to prevent misreporting.
+     * H-1: If maxYieldChangePercent is set (default 10%), enforces bounds to prevent misreporting.
+     *      Yield delta cannot exceed maxYieldChangePercent of vault's current NAV.
      */
     function reportYield(int256 yieldDelta) external onlyOwnerOrVault {
-        // H-1: Check yield bounds if enabled
-        if (maxYieldChangePerReport > 0) {
-            uint256 absoluteDelta = yieldDelta >= 0 ? uint256(yieldDelta) : uint256(-yieldDelta);
-            if (absoluteDelta > maxYieldChangePerReport) revert YieldChangeTooLarge();
+        // H-1: Check yield bounds if enabled and vault is set
+        if (maxYieldChangePercent > 0 && vault != address(0)) {
+            uint256 nav = IVaultMinimal(vault).totalAssets();
+            // Only enforce if vault has assets (skip on first deposit or empty vault)
+            if (nav > 0) {
+                uint256 absoluteDelta = yieldDelta >= 0 ? uint256(yieldDelta) : uint256(-yieldDelta);
+                uint256 maxAllowed = (nav * maxYieldChangePercent) / 1e18;
+                if (absoluteDelta > maxAllowed) revert YieldChangeTooLarge();
+            }
         }
 
         accumulatedYield += yieldDelta;

@@ -178,7 +178,7 @@ Users can monitor pending timelocked changes via public state variables:
 
 3. **Price-Based HWM**: Fees only on share price increases (yield), not deposits.
 
-4. **Yield Bounds**: Optional `maxYieldChangePerReport` prevents accidental misreporting.
+4. **Yield Bounds**: Default 10% `maxYieldChangePercent` prevents accidental misreporting (yield delta cannot exceed 10% of NAV).
 
 5. **Per-User Limits**: Maximum 10 pending withdrawal requests per user prevents queue spam.
 
@@ -249,3 +249,27 @@ constructor(
     string memory _shareSymbol  // Share token symbol (e.g., "svUSDC")
 )
 ```
+
+## Audit History
+
+The codebase has undergone security review with the following fixes applied:
+
+| ID | Severity | Issue | Resolution |
+|----|----------|-------|------------|
+| C-1 | Critical | Fee division edge case | Guard: skip if fee >= NAV |
+| H-1 | High | Unrestricted yield reporting | 10% yield bounds (default) |
+| H-2 | High | Orphaned shares stuck | `recoverOrphanedShares()` |
+| H-3 | High | User can't cancel withdrawal | 1-hour cancellation window |
+| M-1 | Medium | Unbounded withdrawal queue | Per-user limit (10) + purge function |
+| M-2 | Medium | No timelock on critical changes | 1-3 day timelocks implemented |
+| L-1 | Low | Missing MaxYieldChange event | Event added |
+| L-2 | Low | Unused userTotalDeposited | Removed |
+| L-3 | Low | No contract code checks | Added in constructor |
+| L-4 | Low | Cooldown affects existing requests | Documented as expected |
+| I-1 | Info | YieldReported masks negative | Fixed to show int256 |
+| I-2 | Info | purgeProcessedWithdrawals public | Documented as intentional |
+| I-3 | Info | assert() consumes all gas | Replaced with custom errors |
+
+## License
+
+MIT

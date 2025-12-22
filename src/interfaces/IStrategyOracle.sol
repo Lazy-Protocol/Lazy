@@ -42,6 +42,12 @@ interface IStrategyOracle {
      */
     function vault() external view returns (address);
 
+    /**
+     * @notice Get the maximum yield change percentage
+     * @return Max yield change as percentage of NAV (18 decimals, default 0.1e18 = 10%)
+     */
+    function maxYieldChangePercent() external view returns (uint256);
+
     // ============ Owner Functions ============
 
     /**
@@ -57,4 +63,11 @@ interface IStrategyOracle {
      * @dev Only callable by owner
      */
     function setVault(address _vault) external;
+
+    /**
+     * @notice Set maximum yield change percentage
+     * @param _maxPercent Max yield change as percentage of NAV (18 decimals, e.g., 0.1e18 = 10%)
+     * @dev Set to 0 to disable bounds checking. Only callable by owner.
+     */
+    function setMaxYieldChangePercent(uint256 _maxPercent) external;
 }
