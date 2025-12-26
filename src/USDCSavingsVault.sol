@@ -602,8 +602,10 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
             if (sharesAfter >= sharesBefore && usdcPaid > 0) revert SharesNotBurned();
         }
 
-        // INVARIANT I.2: Escrow balance matches pending shares
-        if (shares.balanceOf(address(this)) != pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        // INVARIANT I.2: Escrow balance covers pending shares
+        // Note: Balance may exceed pending if shares were donated directly to vault
+        // (orphaned shares can be recovered via recoverOrphanedShares)
+        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
     }
 
     // ============ Multisig Functions ============
@@ -828,8 +830,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         bool success = usdc.transfer(request.requester, usdcOut);
         if (!success) revert TransferFailed();
 
-        // INVARIANT I.2: Escrow balance matches pending shares
-        if (shares.balanceOf(address(this)) != pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        // INVARIANT I.2: Escrow balance covers pending shares
+        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalForced(request.requester, sharesToBurn, usdcOut, requestId);
     }
@@ -865,8 +867,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         bool success = shares.transfer(requester, sharesToReturn);
         if (!success) revert TransferFailed();
 
-        // INVARIANT I.2: Escrow balance matches pending shares
-        if (shares.balanceOf(address(this)) != pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        // INVARIANT I.2: Escrow balance covers pending shares
+        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalCancelled(requester, sharesToReturn, requestId);
     }
