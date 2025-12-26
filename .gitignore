@@ -16,3 +16,6 @@ out/
 # Coverage
 coverage/
 lcov.info
+
+# macOS
+.DS_Store
