@@ -34,9 +34,10 @@ contract StrategyOracle is IStrategyOracle {
     address public vault;
 
     // H-1: Percentage-based yield bounds to prevent accidental misreporting
-    // Default 10% (0.1e18). Set to 0 to disable bounds checking.
+    // Default 1% (0.01e18). Set to 0 to disable bounds checking.
     // Yield delta cannot exceed this percentage of the vault's current NAV.
-    uint256 public maxYieldChangePercent = 0.1e18;
+    // Can be adjusted post-deployment via setMaxYieldChangePercent() (owner-only).
+    uint256 public maxYieldChangePercent = 0.01e18;
 
     // C-1 Fix: Minimum interval between yield reports to prevent compounding bypass
     uint256 public constant MIN_REPORT_INTERVAL = 1 days;
@@ -90,9 +91,10 @@ contract StrategyOracle is IStrategyOracle {
 
     /**
      * @notice Set maximum yield change percentage (H-1 safety bounds)
-     * @param _maxPercent Maximum yield change as percentage of NAV (18 decimals, e.g., 0.1e18 = 10%)
+     * @param _maxPercent Maximum yield change as percentage of NAV (18 decimals, e.g., 0.01e18 = 1%)
      * @dev Set to 0 to disable bounds checking. Only callable by owner.
-     *      Default is 10% (0.1e18). Yield deltas exceeding this % of vault NAV will revert.
+     *      Default is 1% (0.01e18). Yield deltas exceeding this % of vault NAV will revert.
+     *      This limit can be adjusted post-deployment to accommodate different strategy profiles.
      */
     function setMaxYieldChangePercent(uint256 _maxPercent) external onlyOwner {
         emit MaxYieldChangeUpdated(maxYieldChangePercent, _maxPercent);
@@ -111,7 +113,7 @@ contract StrategyOracle is IStrategyOracle {
      * When called by the vault via reportYieldAndCollectFees(), fees are
      * collected atomically in the same transaction.
      *
-     * H-1: If maxYieldChangePercent is set (default 10%), enforces bounds to prevent misreporting.
+     * H-1: If maxYieldChangePercent is set (default 1%), enforces bounds to prevent misreporting.
      *      Yield delta cannot exceed maxYieldChangePercent of vault's current NAV.
      *
      * C-1 Fix: Enforces MIN_REPORT_INTERVAL (1 day) between reports to prevent
