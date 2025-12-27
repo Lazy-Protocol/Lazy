@@ -7,7 +7,7 @@ import {IRoleManager} from "./interfaces/IRoleManager.sol";
 /**
  * @title NavOracle
  * @notice Oracle contract for reporting total assets (NAV)
- * @dev Owner reports total assets from off-chain strategy positions
+ * @dev Owner reports total assets from external on-chain strategy positions
  *
  * The oracle tracks:
  * - Current total assets (authoritative source for NAV)

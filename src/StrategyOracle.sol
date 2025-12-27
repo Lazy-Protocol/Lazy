@@ -11,7 +11,7 @@ interface IVaultMinimal {
 
 /**
  * @title StrategyOracle
- * @notice Oracle contract for reporting yield from off-chain strategies
+ * @notice Oracle contract for reporting yield from external on-chain strategies
  * @dev Owner or authorized vault reports yield deltas, vault uses this to compute total NAV
  *
  * Architecture:
