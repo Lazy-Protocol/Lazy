@@ -220,6 +220,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     error EscrowBalanceMismatch();
     error SharesNotBurned();
     error FeeExceedsProfit();
+    error QueueHeadRegression(); // I.5: FIFO ordering violated
     // Timelock errors
     error TimelockNotExpired();
     error NoPendingChange();
@@ -592,6 +593,8 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
             emit WithdrawalFulfilled(request.requester, sharesToBurn, usdcOut, head - 1);
         }
 
+        // INVARIANT I.5: Queue head must only advance (FIFO ordering)
+        if (head < withdrawalQueueHead) revert QueueHeadRegression();
         withdrawalQueueHead = head;
 
         // INVARIANT I.1: Conservation of value
