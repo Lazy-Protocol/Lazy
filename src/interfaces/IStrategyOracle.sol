@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 /**
  * @title IStrategyOracle
- * @notice Interface for reporting yield from off-chain strategies
+ * @notice Interface for reporting yield from external on-chain strategies
  * @dev Owner or authorized vault reports yield deltas (gains/losses), not total NAV
  *
  * The vault computes totalAssets as:

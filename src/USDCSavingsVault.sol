@@ -15,7 +15,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  *
  * Architecture:
  * - Vault tracks deposits/withdrawals automatically (totalDeposited, totalWithdrawn)
- * - IStrategyOracle.accumulatedYield(): Yield from off-chain strategies (owner-reported)
+ * - IStrategyOracle.accumulatedYield(): Yield from external on-chain strategies (owner-reported)
  * - totalAssets = totalDeposited - totalWithdrawn + accumulatedYield
  * - IRoleManager: Controls pause state and operator access
  *
