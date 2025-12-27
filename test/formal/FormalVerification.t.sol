@@ -282,15 +282,12 @@ contract FormalVerification is Test {
         vault.deposit(amount);
 
         uint256 treasuryBefore = shares.balanceOf(treasury);
-        uint256 priceBefore = vault.sharePrice();
 
-        // Report yield
+        // Report yield - fees are collected atomically
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(yield);
-        vault.collectFees();
+        vault.reportYieldAndCollectFees(yield);
 
         uint256 treasuryAfter = shares.balanceOf(treasury);
-        uint256 priceAfterFees = vault.sharePrice();
 
         if (yield <= 0) {
             // PROVE: No fees on loss
@@ -299,9 +296,6 @@ contract FormalVerification is Test {
 
         // PROVE: Treasury only gets shares, never loses them
         assert(treasuryAfter >= treasuryBefore);
-
-        // PROVE: After fee collection, HWM is updated (no double-charging)
-        assert(vault.priceHighWaterMark() >= priceBefore);
     }
 
     // ============ INVARIANT: Access Control ============

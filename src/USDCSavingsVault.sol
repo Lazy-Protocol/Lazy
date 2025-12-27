@@ -23,7 +23,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * - Share-based accounting (1 USDC = 1 share initially)
  * - Async withdrawal queue with FIFO processing
  * - Share escrow on withdrawal request (prevents double-spend)
- * - Protocol fees only on yield (via share minting, price-based HWM)
+ * - Protocol fees on positive yield (via share minting to treasury)
  * - Operator-only withdrawal fulfillment
  * - Reentrancy protection on state-changing functions
  *
@@ -94,9 +94,10 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  *
  * STATEMENT D.3 — Fee Accounting Rule
  * ----------------------------------------------------------------------------
- * Protocol fees are assessed on share PRICE increases, not NAV increases.
- * This ensures fees are only charged on yield, not on deposits.
- * Fee shares are minted immediately when yield is reported via collectFees().
+ * Protocol fees are calculated as a percentage of positive yield at report time.
+ * When reportYieldAndCollectFees() is called with positive yield:
+ *   fee = yield * feeRate / PRECISION
+ * Fee shares are minted directly to treasury. No USDC is transferred for fees.
  *
  * STATEMENT D.4 — Queue Append-Only Design
  * ----------------------------------------------------------------------------
@@ -174,9 +175,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     uint256 public totalDeposited; // Cumulative USDC deposited
     uint256 public totalWithdrawn; // Cumulative USDC withdrawn
 
-    // Fee tracking (price-based high water mark)
-    uint256 public priceHighWaterMark; // HWM for fee calculation (18 decimals)
-
     // Withdrawal queue
     WithdrawalRequest[] public withdrawalQueue;
     uint256 public withdrawalQueueHead; // Index of next request to process
@@ -219,7 +217,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     // Invariant violation errors (should never occur if code is correct)
     error EscrowBalanceMismatch();
     error SharesNotBurned();
-    error FeeExceedsProfit();
     error QueueHeadRegression(); // I.5: FIFO ordering violated
     // Timelock errors
     error TimelockNotExpired();
@@ -302,9 +299,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         treasury = _treasury;
         feeRate = _feeRate;
         cooldownPeriod = _cooldownPeriod;
-
-        // Initialize price HWM to 1:1 (1 USDC = 1 share)
-        priceHighWaterMark = INITIAL_SHARE_PRICE;
     }
 
     // ============ View Functions ============
@@ -431,10 +425,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     {
         if (usdcAmount == 0) revert ZeroAmount();
 
-        // Collect any pending fees before deposit
-        // This ensures depositors buy at the post-fee price
-        _collectFees();
-
         // Check per-user cap (M-2: based on current holdings value, not cumulative deposits)
         if (perUserCap > 0) {
             uint256 currentHoldingsValue = sharesToUsdc(shares.balanceOf(msg.sender));
@@ -533,9 +523,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         whenWithdrawalsNotPaused
         returns (uint256 processed, uint256 usdcPaid)
     {
-        // Collect any pending fees before processing withdrawals
-        _collectFees();
-
         uint256 available = availableLiquidity();
         uint256 head = withdrawalQueueHead;
         uint256 queueLen = withdrawalQueue.length;
@@ -810,9 +797,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         WithdrawalRequest storage request = withdrawalQueue[requestId];
         if (request.shares == 0) revert RequestAlreadyProcessed();
 
-        // Collect fees before processing
-        _collectFees();
-
         uint256 sharesToBurn = request.shares;
         uint256 usdcOut = sharesToUsdc(sharesToBurn);
 
@@ -877,32 +861,15 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     }
 
     /**
-     * @notice Manually trigger fee collection
-     * @dev Invariant I.4: Fees paid via share minting only
-     * @dev Should be called after yield is reported to StrategyOracle
-     */
-    function collectFees() external onlyOwner {
-        _collectFees();
-    }
-
-    /**
-     * @notice Reset price HWM to current share price (M-4 emergency fix)
-     * @dev Use if HWM was incorrectly set due to oracle error or misreporting.
-     *      This allows fee collection to resume from current price.
-     *      WARNING: Should only be used in emergencies as it may skip owed fees.
-     */
-    function resetPriceHWM() external onlyOwner {
-        uint256 oldHWM = priceHighWaterMark;
-        priceHighWaterMark = sharePrice();
-        emit PriceHWMUpdated(oldHWM, priceHighWaterMark);
-    }
-
-    /**
      * @notice Report yield and collect fees atomically
      * @param yieldDelta Change in yield (positive for gains, negative for losses)
-     * @dev This is the RECOMMENDED way to report yield. It ensures:
-     *      1. Yield is reported to the oracle
-     *      2. Fees are collected immediately (no gap for arbitrage)
+     * @dev This is the ONLY way to report yield and collect fees. Fees are:
+     *      - Collected as a percentage of positive yield only
+     *      - Paid via minting shares to treasury (no USDC transfer)
+     *      - Applied at report time (simple, predictable)
+     *
+     * Fee model: fee = positiveYield * feeRate / PRECISION
+     * This is simpler than HWM-based fees - every positive yield report triggers fees.
      *
      * Note: Requires this vault to be set as authorized in StrategyOracle via setVault()
      */
@@ -910,8 +877,20 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // Report yield to oracle (vault must be authorized via strategyOracle.setVault())
         strategyOracle.reportYield(yieldDelta);
 
-        // Collect fees immediately - no gap between yield report and fee collection
-        _collectFees();
+        // Collect fees directly from positive yield
+        if (yieldDelta > 0 && feeRate > 0) {
+            uint256 yield = uint256(yieldDelta);
+            uint256 fee = (yield * feeRate) / PRECISION;
+
+            if (fee > 0) {
+                // Convert fee to shares at current price (post-yield)
+                uint256 feeShares = usdcToShares(fee);
+                if (feeShares > 0) {
+                    shares.mint(treasury, feeShares);
+                    emit FeeCollected(feeShares, treasury);
+                }
+            }
+        }
     }
 
     /**
@@ -975,63 +954,4 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         }
     }
 
-    /**
-     * @notice Calculate and collect fees on yield via share minting
-     * @dev Invariant I.4: Fees are ONLY collected on share price increases
-     * @dev Invariant I.4: Fees are ONLY paid via minting shares to treasury
-     * @dev Invariant I.4: No USDC is transferred for fees
-     *
-     * Fee calculation uses price-based HWM:
-     * - Deposits: NAV ↑, shares ↑, price unchanged → no fees
-     * - Withdrawals: NAV ↓, shares ↓, price unchanged → no fees
-     * - Yield: NAV ↑, shares unchanged, price ↑ → FEES
-     */
-    function _collectFees() internal {
-        if (feeRate == 0) return;
-
-        uint256 totalShareSupply = shares.totalSupply();
-        if (totalShareSupply == 0) return;
-
-        uint256 currentPrice = sharePrice();
-
-        // INVARIANT I.4: Only assess fees on price increases (yield)
-        if (currentPrice <= priceHighWaterMark) return;
-
-        // Calculate price gain and corresponding profit
-        uint256 priceGain = currentPrice - priceHighWaterMark;
-
-        // Profit in USDC = priceGain * totalShares / PRECISION
-        // (priceGain is in 18 decimals, shares in 18 decimals)
-        uint256 profit = (priceGain * totalShareSupply) / PRECISION;
-
-        // Fee is percentage of profit
-        uint256 fee = (profit * feeRate) / PRECISION;
-
-        // INVARIANT I.4: Fee cannot exceed profit
-        if (fee > profit) revert FeeExceedsProfit();
-
-        // C-1 Fix: Guard against division by zero or invalid state
-        // Skip fee collection if fee >= NAV (prevents revert, preserves liveness)
-        uint256 currentNav = totalAssets();
-        if (fee == 0 || fee >= currentNav) {
-            // Update HWM even if no fees collected to prevent re-processing
-            priceHighWaterMark = sharePrice();
-            return;
-        }
-
-        // INVARIANT I.4: Pay fee by minting shares to treasury
-        // feeShares = fee / currentPrice (in proper decimals)
-        // This dilutes existing holders proportionally
-        uint256 feeShares = (fee * totalShareSupply) / (currentNav - fee);
-        if (feeShares > 0) {
-            shares.mint(treasury, feeShares);
-            emit FeeCollected(feeShares, treasury);
-        }
-
-        // Update HWM to POST-dilution price
-        // This ensures next cycle only fees NEW gains
-        uint256 oldHWM = priceHighWaterMark;
-        priceHighWaterMark = sharePrice();
-        emit PriceHWMUpdated(oldHWM, priceHighWaterMark);
-    }
 }

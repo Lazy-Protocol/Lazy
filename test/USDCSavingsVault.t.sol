@@ -105,7 +105,6 @@ contract USDCSavingsVaultTest is Test {
         assertEq(vault.feeRate(), FEE_RATE);
         assertEq(vault.cooldownPeriod(), COOLDOWN);
         assertEq(vault.sharePrice(), INITIAL_SHARE_PRICE); // 1 USDC = 1 share initially
-        assertEq(vault.priceHighWaterMark(), INITIAL_SHARE_PRICE);
     }
 
     function test_constructor_reverts_zeroAddress() public {
@@ -273,21 +272,19 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // 8% yield
-        strategyOracle.reportYield(8_000e6);
+        // 8% yield - using atomic fee collection
+        // Fee = 20% of 8k profit = 1.6k USDC worth of shares minted to treasury
+        vault.reportYieldAndCollectFees(8_000e6);
 
         // Bob deposits 108k (same as NAV)
-        // Note: Fee collection happens BEFORE deposit, which dilutes shares
-        // Fee = 20% of 8k profit = 1.6k USDC worth of shares minted to treasury
-        // This affects the share price Bob gets
+        // After fee collection, share price has been diluted
         vm.prank(bob);
         uint256 bobShares = vault.deposit(108_000e6);
 
         // After fee collection:
-        // - feeShares ≈ 1503.76 shares minted to treasury
-        // - totalShares before Bob ≈ 101,503.76
-        // - sharePrice ≈ 108k / 101,503.76 ≈ 1.064e6
-        // Bob's shares ≈ 108k * 1e18 / 1.064e6 ≈ 101,503 shares
+        // - feeShares minted to treasury
+        // - sharePrice slightly reduced due to dilution
+        // Bob gets shares at the post-fee price
 
         // Verify Bob gets reasonable shares (accounting for fee dilution)
         assertTrue(bobShares > toShares(100_000e6), "Bob should get at least 100k shares");
@@ -478,20 +475,11 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // Report yield
-        strategyOracle.reportYield(20_000e6);
+        // Report yield - fees are collected atomically
+        vault.reportYieldAndCollectFees(20_000e6);
 
-        vm.prank(alice);
-        vault.requestWithdrawal(toShares(50_000e6));
-
-        vm.warp(block.timestamp + COOLDOWN + 1);
-
-        // Fulfill triggers fee collection
-        vm.prank(operator);
-        vault.fulfillWithdrawals(10);
-
-        // Treasury should have received fee shares
-        assertTrue(shares.balanceOf(treasury) > 0);
+        // Treasury should have received fee shares immediately
+        assertTrue(shares.balanceOf(treasury) > 0, "Treasury should receive fees on yield report");
     }
 
     function test_feeCollection_noFeeOnDeposit() public {
@@ -502,8 +490,8 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(bob);
         vault.deposit(100_000e6);
 
-        // Manually collect fees
-        vault.collectFees();
+        // Report zero yield - this is how fees are collected now
+        vault.reportYieldAndCollectFees(0);
 
         // Treasury should NOT receive fees (no yield, only deposits)
         assertEq(shares.balanceOf(treasury), 0);
@@ -515,10 +503,8 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // Report loss
-        strategyOracle.reportYield(-10_000e6);
-
-        vault.collectFees();
+        // Report loss via atomic function
+        vault.reportYieldAndCollectFees(-10_000e6);
 
         // No fees on loss
         assertEq(shares.balanceOf(treasury), 0);
@@ -534,11 +520,8 @@ contract USDCSavingsVaultTest is Test {
         // Yield should be reported
         assertEq(strategyOracle.accumulatedYield(), 20_000e6);
 
-        // Fees should be collected immediately
+        // Fees should be collected immediately (20% of 20_000e6 = 4000e6 worth of shares)
         assertTrue(shares.balanceOf(treasury) > 0);
-
-        // Price HWM should be updated
-        assertTrue(vault.priceHighWaterMark() > 1e6);
     }
 
     function test_reportYieldAndCollectFees_noFeeOnLoss() public {

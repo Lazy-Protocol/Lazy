@@ -306,11 +306,8 @@ contract WhitehatAttackPoC is Test {
         vault.deposit(1_000_000e6);
 
         // Report extreme yield to test fee edge cases
-        // 1000% yield
-        strategyOracle.reportYield(10_000_000e6);
-
-        // This should not revert, fees should be collected properly
-        vault.collectFees();
+        // 1000% yield - fees are collected atomically with yield reporting
+        vault.reportYieldAndCollectFees(10_000_000e6);
 
         uint256 treasuryShares = shares.balanceOf(treasury);
         assertTrue(treasuryShares > 0, "Treasury should receive fee shares");

@@ -31,7 +31,6 @@ interface IVault {
     event GlobalCapUpdated(uint256 oldCap, uint256 newCap);
     event WithdrawalBufferUpdated(uint256 oldBuffer, uint256 newBuffer);
     event CooldownPeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
-    event PriceHWMUpdated(uint256 oldHWM, uint256 newHWM);
     event WithdrawalForced(address indexed user, uint256 shares, uint256 usdcAmount, uint256 requestId);
     event OrphanedSharesRecovered(uint256 amount);
     event WithdrawalsPurged(uint256 count);
