@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
 import {VaultShare} from "../src/VaultShare.sol";
-import {StrategyOracle} from "../src/StrategyOracle.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
@@ -15,7 +14,6 @@ import {MockUSDC} from "./mocks/MockUSDC.sol";
 contract BlackhatDeepDive is Test {
     USDCSavingsVault public vault;
     VaultShare public shares;
-    StrategyOracle public strategyOracle;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -33,11 +31,9 @@ contract BlackhatDeepDive is Test {
     function setUp() public {
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
-        strategyOracle = new StrategyOracle(address(roleManager));
 
         vault = new USDCSavingsVault(
             address(usdc),
-            address(strategyOracle),
             address(roleManager),
             multisig,
             treasury,
@@ -48,8 +44,7 @@ contract BlackhatDeepDive is Test {
         );
         shares = vault.shares();
         roleManager.setOperator(operator, true);
-        strategyOracle.setVault(address(vault));
-        strategyOracle.setMaxYieldChangePercent(0);
+        vault.setMaxYieldChangePercent(0);
         vault.setWithdrawalBuffer(type(uint256).max);
 
         usdc.mint(attacker, 100_000_000e6);
@@ -84,7 +79,7 @@ contract BlackhatDeepDive is Test {
 
         // Yield reported
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(200_000e6);
+        vault.reportYieldAndCollectFees(200_000e6);
         console2.log("Yield of 200k reported");
 
         // Now attacker deposits at NEW (higher) price
@@ -103,15 +98,13 @@ contract BlackhatDeepDive is Test {
         // Redeploy fresh
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
-        strategyOracle = new StrategyOracle(address(roleManager));
         vault = new USDCSavingsVault(
-            address(usdc), address(strategyOracle), address(roleManager),
+            address(usdc), address(roleManager),
             multisig, treasury, FEE_RATE, COOLDOWN, "USDC Savings Vault Share", "svUSDC"
         );
         shares = vault.shares();
         roleManager.setOperator(operator, true);
-        strategyOracle.setVault(address(vault));
-        strategyOracle.setMaxYieldChangePercent(0);
+        vault.setMaxYieldChangePercent(0);
         vault.setWithdrawalBuffer(type(uint256).max);
         usdc.mint(attacker, 100_000_000e6);
         usdc.mint(victim, 100_000_000e6);
@@ -135,7 +128,7 @@ contract BlackhatDeepDive is Test {
 
         // Yield reported AFTER attacker deposit
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(200_000e6);
+        vault.reportYieldAndCollectFees(200_000e6);
         console2.log("Yield of 200k reported");
 
         uint256 attackerValueB = vault.sharesToUsdc(attackerSharesB);
@@ -177,7 +170,7 @@ contract BlackhatDeepDive is Test {
         // Owner front-runs with positive yield report
 
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(100_000e6); // 10% yield
+        vault.reportYieldAndCollectFees(100_000e6); // 10% yield
         console2.log("Owner reports 100k yield BEFORE user deposit");
 
         uint256 priceAfterYield = vault.sharePrice();
@@ -229,7 +222,7 @@ contract BlackhatDeepDive is Test {
 
         // Owner reports NEGATIVE yield (deflates price)
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(-200_000e6); // -20% loss
+        vault.reportYieldAndCollectFees(-200_000e6); // -20% loss
 
         uint256 priceAfterLoss = vault.sharePrice();
         console2.log("Price after loss:", priceAfterLoss);
@@ -242,7 +235,7 @@ contract BlackhatDeepDive is Test {
 
         // Wait and report positive yield to restore price
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(400_000e6); // +40% to compensate
+        vault.reportYieldAndCollectFees(400_000e6); // +40% to compensate
 
         uint256 priceAfterRestore = vault.sharePrice();
         console2.log("Price after restore:", priceAfterRestore);
@@ -268,11 +261,11 @@ contract BlackhatDeepDive is Test {
         vault.deposit(1_000_000e6);
 
         // Report yield
-        strategyOracle.reportYield(100_000e6);
+        vault.reportYieldAndCollectFees(100_000e6);
         console2.log("First yield report succeeded");
 
         // Try immediate second report (should fail)
-        try strategyOracle.reportYield(100_000e6) {
+        try vault.reportYieldAndCollectFees(100_000e6) {
             console2.log("VULNERABILITY: Second immediate report succeeded!");
         } catch {
             console2.log("Second immediate report BLOCKED (ReportTooSoon)");
@@ -280,7 +273,7 @@ contract BlackhatDeepDive is Test {
 
         // Wait and try again
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(100_000e6);
+        vault.reportYieldAndCollectFees(100_000e6);
         console2.log("Report after 1 day succeeded");
 
         console2.log("");

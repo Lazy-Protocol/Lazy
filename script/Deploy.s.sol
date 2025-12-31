@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
-import {NavOracle} from "../src/NavOracle.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 
 /**
@@ -11,8 +10,7 @@ import {RoleManager} from "../src/RoleManager.sol";
  *
  * Deploys:
  * 1. RoleManager - Access control and pause management
- * 2. NavOracle - NAV reporting oracle
- * 3. USDCSavingsVault - Main vault contract
+ * 2. USDCSavingsVault - Main vault contract (with internal yield tracking)
  *
  * Usage:
  * forge script script/Deploy.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast --verify
@@ -28,7 +26,6 @@ import {RoleManager} from "../src/RoleManager.sol";
 contract DeployScript {
     struct DeployedContracts {
         RoleManager roleManager;
-        NavOracle navOracle;
         USDCSavingsVault vault;
     }
 
@@ -46,13 +43,9 @@ contract DeployScript {
         // 1. Deploy RoleManager
         deployed.roleManager = new RoleManager(owner);
 
-        // 2. Deploy NavOracle
-        deployed.navOracle = new NavOracle(address(deployed.roleManager));
-
-        // 3. Deploy Vault
+        // 2. Deploy Vault (yield tracking is now internal)
         deployed.vault = new USDCSavingsVault(
             usdc,
-            address(deployed.navOracle),
             address(deployed.roleManager),
             multisig,
             treasury,

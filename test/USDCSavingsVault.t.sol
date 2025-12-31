@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
 import {VaultShare} from "../src/VaultShare.sol";
-import {StrategyOracle} from "../src/StrategyOracle.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {IVault} from "../src/interfaces/IVault.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
@@ -12,7 +11,6 @@ import {MockUSDC} from "./mocks/MockUSDC.sol";
 contract USDCSavingsVaultTest is Test {
     USDCSavingsVault public vault;
     VaultShare public shares;
-    StrategyOracle public strategyOracle;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -39,13 +37,9 @@ contract USDCSavingsVaultTest is Test {
         // Deploy RoleManager first (owner is this contract)
         roleManager = new RoleManager(owner);
 
-        // Deploy StrategyOracle (uses roleManager for owner check)
-        strategyOracle = new StrategyOracle(address(roleManager));
-
-        // Deploy Vault
+        // Deploy Vault (yield tracking is now internal)
         vault = new USDCSavingsVault(
             address(usdc),
-            address(strategyOracle),
             address(roleManager),
             multisig,
             treasury,
@@ -59,12 +53,9 @@ contract USDCSavingsVaultTest is Test {
         // Set up operator
         roleManager.setOperator(operator, true);
 
-        // Authorize vault to report yield (for atomic yield+fee collection)
-        strategyOracle.setVault(address(vault));
-
         // Disable yield bounds for testing (allows arbitrary yield values)
         // Tests can re-enable if specifically testing bounds
-        strategyOracle.setMaxYieldChangePercent(0);
+        vault.setMaxYieldChangePercent(0);
 
         // Mint USDC to test users
         usdc.mint(alice, 1_000_000e6);
@@ -98,7 +89,6 @@ contract USDCSavingsVaultTest is Test {
     // ============ Constructor Tests ============
 
     function test_constructor() public view {
-        assertEq(address(vault.strategyOracle()), address(strategyOracle));
         assertEq(address(vault.roleManager()), address(roleManager));
         assertEq(vault.multisig(), multisig);
         assertEq(vault.treasury(), treasury);
@@ -109,26 +99,26 @@ contract USDCSavingsVaultTest is Test {
 
     function test_constructor_reverts_zeroAddress() public {
         vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(0), address(strategyOracle), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
+        new USDCSavingsVault(address(0), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
 
         vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(usdc), address(0), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
+        new USDCSavingsVault(address(usdc), address(0), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
 
         vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(usdc), address(strategyOracle), address(0), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
+        new USDCSavingsVault(address(usdc), address(roleManager), address(0), treasury, FEE_RATE, COOLDOWN, "Test", "TST");
     }
 
     function test_constructor_reverts_invalidFeeRate() public {
         vm.expectRevert(USDCSavingsVault.InvalidFeeRate.selector);
-        new USDCSavingsVault(address(usdc), address(strategyOracle), address(roleManager), multisig, treasury, 0.6e18, COOLDOWN, "Test", "TST");
+        new USDCSavingsVault(address(usdc), address(roleManager), multisig, treasury, 0.6e18, COOLDOWN, "Test", "TST");
     }
 
     function test_constructor_reverts_invalidCooldown() public {
         vm.expectRevert(USDCSavingsVault.InvalidCooldown.selector);
-        new USDCSavingsVault(address(usdc), address(strategyOracle), address(roleManager), multisig, treasury, FEE_RATE, 0, "Test", "TST");
+        new USDCSavingsVault(address(usdc), address(roleManager), multisig, treasury, FEE_RATE, 0, "Test", "TST");
 
         vm.expectRevert(USDCSavingsVault.InvalidCooldown.selector);
-        new USDCSavingsVault(address(usdc), address(strategyOracle), address(roleManager), multisig, treasury, FEE_RATE, 31 days, "Test", "TST");
+        new USDCSavingsVault(address(usdc), address(roleManager), multisig, treasury, FEE_RATE, 31 days, "Test", "TST");
     }
 
     function test_constructor_shareNameSymbol() public view {
@@ -245,8 +235,13 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.deposit(100_000e6);
 
-        // Report 10% yield (10k on 100k)
-        strategyOracle.reportYield(10_000e6);
+        // Report 10% yield (10k on 100k) - fees not collected in this test
+        // We need to report without fee collection to test raw price change
+        // Use reportYieldAndCollectFees but with 0 fee rate
+        vault.queueFeeRate(0);
+        vm.warp(block.timestamp + 1 days);
+        vault.executeFeeRate();
+        vault.reportYieldAndCollectFees(10_000e6);
 
         // totalAssets = 100k deposited + 10k yield = 110k
         // totalShares = 100k shares (in 18 decimals)
@@ -260,7 +255,7 @@ contract USDCSavingsVaultTest is Test {
         vault.deposit(100_000e6);
 
         // Report 10% loss
-        strategyOracle.reportYield(-10_000e6);
+        vault.reportYieldAndCollectFees(-10_000e6);
 
         // totalAssets = 100k - 10k = 90k
         assertEq(vault.totalAssets(), 90_000e6);
@@ -429,8 +424,8 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(alice);
         vault.requestWithdrawal(toShares(50_000e6));
 
-        // Report 20% yield
-        strategyOracle.reportYield(20_000e6);
+        // Report 20% yield (fees collected atomically)
+        vault.reportYieldAndCollectFees(20_000e6);
 
         vm.warp(block.timestamp + COOLDOWN + 1);
 
@@ -454,7 +449,7 @@ contract USDCSavingsVaultTest is Test {
         vault.requestWithdrawal(toShares(50_000e6));
 
         // Report 10% loss
-        strategyOracle.reportYield(-10_000e6);
+        vault.reportYieldAndCollectFees(-10_000e6);
 
         vm.warp(block.timestamp + COOLDOWN + 1);
 
@@ -518,7 +513,7 @@ contract USDCSavingsVaultTest is Test {
         vault.reportYieldAndCollectFees(20_000e6);
 
         // Yield should be reported
-        assertEq(strategyOracle.accumulatedYield(), 20_000e6);
+        assertEq(vault.accumulatedYield(), 20_000e6);
 
         // Fees should be collected immediately (20% of 20_000e6 = 4000e6 worth of shares)
         assertTrue(shares.balanceOf(treasury) > 0);
@@ -532,7 +527,7 @@ contract USDCSavingsVaultTest is Test {
         vault.reportYieldAndCollectFees(-10_000e6);
 
         // Loss recorded
-        assertEq(strategyOracle.accumulatedYield(), -10_000e6);
+        assertEq(vault.accumulatedYield(), -10_000e6);
 
         // No fees minted
         assertEq(shares.balanceOf(treasury), 0);
@@ -668,7 +663,7 @@ contract USDCSavingsVaultTest is Test {
         vault.deposit(1_000_000e6);
 
         // Report yield to increase price (price = 1e9 = 1000 USDC per share)
-        strategyOracle.reportYield(999_000_000e6);
+        vault.reportYieldAndCollectFees(999_000_000e6);
 
         // Note: Due to high precision (1e18), even tiny deposits get shares
         // 1 wei USDC * 1e18 / 1e9 = 1e9 shares (not 0)
@@ -681,8 +676,8 @@ contract USDCSavingsVaultTest is Test {
         usdc.approve(address(vault), 1);
 
         vm.prank(bob);
-        uint256 shares = vault.deposit(1);
-        assertTrue(shares > 0, "Even tiny deposit should get some shares");
+        uint256 bobShares = vault.deposit(1);
+        assertTrue(bobShares > 0, "Even tiny deposit should get some shares");
     }
 
     // ============ Share Escrow Tests ============
@@ -797,13 +792,14 @@ contract USDCSavingsVaultTest is Test {
         vault.deposit(100_000e6);
 
         // Report 20k yield
-        strategyOracle.reportYield(20_000e6);
+        vault.reportYieldAndCollectFees(20_000e6);
 
+        // Note: with 20% fee, totalAssets is still 120k (fees are shares, not USDC)
         assertEq(vault.totalAssets(), 120_000e6);
 
-        // Request and fulfill 30k withdrawal
+        // Request and fulfill withdrawal
         vm.prank(alice);
-        vault.requestWithdrawal(toShares(25_000e6)); // 25k shares at 1.2 price = 30k USDC
+        vault.requestWithdrawal(toShares(25_000e6)); // 25k shares
 
         vm.warp(block.timestamp + COOLDOWN + 1);
 
@@ -815,28 +811,27 @@ contract USDCSavingsVaultTest is Test {
         assertTrue(vault.totalAssets() > 0);
     }
 
-    // ============ StrategyOracle Tests ============
+    // ============ Yield Reporting Tests ============
 
-    function test_strategyOracle_reportYield() public {
-        strategyOracle.reportYield(1_000_000e6);
+    function test_yieldReporting_basic() public {
+        vault.reportYieldAndCollectFees(1_000_000e6);
 
-        assertEq(strategyOracle.accumulatedYield(), 1_000_000e6);
+        assertEq(vault.accumulatedYield(), 1_000_000e6);
     }
 
-    function test_strategyOracle_reportNegativeYield() public {
-        strategyOracle.reportYield(1_000_000e6);
+    function test_yieldReporting_negative() public {
+        vault.reportYieldAndCollectFees(1_000_000e6);
         // Wait for MIN_REPORT_INTERVAL before second report
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(-500_000e6);
+        vault.reportYieldAndCollectFees(-500_000e6);
 
-        assertEq(strategyOracle.accumulatedYield(), 500_000e6);
+        assertEq(vault.accumulatedYield(), 500_000e6);
     }
 
-    function test_strategyOracle_onlyOwnerCanReport() public {
+    function test_yieldReporting_onlyOwnerCanReport() public {
         vm.prank(alice);
-        // Alice is neither owner nor vault, so she gets OnlyOwnerOrVault error
-        vm.expectRevert(StrategyOracle.OnlyOwnerOrVault.selector);
-        strategyOracle.reportYield(1_000_000e6);
+        vm.expectRevert(USDCSavingsVault.OnlyOwner.selector);
+        vault.reportYieldAndCollectFees(1_000_000e6);
     }
 
     // ============ Multisig Integration Tests ============

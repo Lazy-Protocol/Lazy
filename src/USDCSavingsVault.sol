@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVault} from "./interfaces/IVault.sol";
-import {IStrategyOracle} from "./interfaces/IStrategyOracle.sol";
 import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {VaultShare} from "./VaultShare.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -11,11 +10,11 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /**
  * @title USDCSavingsVault
  * @notice A USDC-denominated savings vault with share-based NAV model
- * @dev Uses external IStrategyOracle for yield reporting and IRoleManager for access control
+ * @dev Uses internal yield tracking and IRoleManager for access control
  *
  * Architecture:
  * - Vault tracks deposits/withdrawals automatically (totalDeposited, totalWithdrawn)
- * - IStrategyOracle.accumulatedYield(): Yield from external on-chain strategies (owner-reported)
+ * - Yield from external on-chain strategies is reported via reportYieldAndCollectFees()
  * - totalAssets = totalDeposited - totalWithdrawn + accumulatedYield
  * - IRoleManager: Controls pause state and operator access
  *
@@ -151,11 +150,13 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     // Price is scaled to 18 decimals: 1e6 means 1 USDC per share
     uint256 public constant INITIAL_SHARE_PRICE = 1e6;
 
+    // Yield reporting constraints
+    uint256 public constant MIN_YIELD_REPORT_INTERVAL = 1 days;
+
     // ============ Immutables ============
 
     IERC20 public immutable usdc;
     VaultShare public immutable shares;
-    IStrategyOracle public immutable strategyOracle;
     IRoleManager public immutable roleManager;
 
     // ============ State ============
@@ -174,6 +175,18 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     // NAV tracking (deposits and withdrawals tracked automatically)
     uint256 public totalDeposited; // Cumulative USDC deposited
     uint256 public totalWithdrawn; // Cumulative USDC withdrawn
+
+    // Yield tracking (previously in StrategyOracle)
+    /// @notice Cumulative yield from external strategies (can be negative for losses)
+    /// @dev Used in NAV calculation: totalAssets = deposits - withdrawals + accumulatedYield
+    int256 public accumulatedYield;
+    /// @notice Timestamp of the last yield report
+    /// @dev Used to enforce MIN_YIELD_REPORT_INTERVAL between reports
+    uint256 public lastYieldReportTime;
+    /// @notice Maximum allowed yield change as percentage of NAV (18 decimals)
+    /// @dev Safety bound: prevents accidental misreporting (e.g., wrong decimals).
+    ///      Default 1% (0.01e18). Set to 0 to disable bounds checking.
+    uint256 public maxYieldChangePercent = 0.01e18;
 
     // Withdrawal queue (append-only design - see STATEMENT D.4)
     /// @notice Array of all withdrawal requests (processed entries have shares=0)
@@ -237,6 +250,9 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     // Timelock errors
     error TimelockNotExpired();
     error NoPendingChange();
+    // Yield reporting errors
+    error YieldChangeTooLarge();
+    error ReportTooSoon();
 
     // ============ Modifiers ============
 
@@ -275,7 +291,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     /**
      * @notice Initialize the vault
      * @param _usdc USDC token address
-     * @param _strategyOracle StrategyOracle contract address
      * @param _roleManager RoleManager contract address
      * @param _multisig Multisig address for strategy funds
      * @param _treasury Treasury address for fees
@@ -286,7 +301,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      */
     constructor(
         address _usdc,
-        address _strategyOracle,
         address _roleManager,
         address _multisig,
         address _treasury,
@@ -296,18 +310,15 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         string memory _shareSymbol
     ) {
         if (_usdc == address(0)) revert ZeroAddress();
-        if (_strategyOracle == address(0)) revert ZeroAddress();
         if (_roleManager == address(0)) revert ZeroAddress();
         if (_multisig == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
         if (_usdc.code.length == 0) revert NotAContract();
-        if (_strategyOracle.code.length == 0) revert NotAContract();
         if (_roleManager.code.length == 0) revert NotAContract();
         if (_feeRate > MAX_FEE_RATE) revert InvalidFeeRate();
         if (_cooldownPeriod < MIN_COOLDOWN || _cooldownPeriod > MAX_COOLDOWN) revert InvalidCooldown();
 
         usdc = IERC20(_usdc);
-        strategyOracle = IStrategyOracle(_strategyOracle);
         roleManager = IRoleManager(_roleManager);
         shares = new VaultShare(address(this), _shareName, _shareSymbol);
 
@@ -326,8 +337,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @dev Invariant I.3: This value applies uniformly to all shares
      */
     function totalAssets() public view returns (uint256) {
-        int256 yield = strategyOracle.accumulatedYield();
-        int256 nav = int256(totalDeposited) - int256(totalWithdrawn) + yield;
+        int256 nav = int256(totalDeposited) - int256(totalWithdrawn) + accumulatedYield;
 
         // NAV cannot be negative (would mean more withdrawn than deposited + yield)
         // In practice this shouldn't happen, but we protect against it
@@ -891,11 +901,32 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * Fee model: fee = positiveYield * feeRate / PRECISION
      * This is simpler than HWM-based fees - every positive yield report triggers fees.
      *
-     * Note: Requires this vault to be set as authorized in StrategyOracle via setVault()
+     * Safety mechanisms:
+     * - Enforces MIN_YIELD_REPORT_INTERVAL (1 day) between reports
+     * - If maxYieldChangePercent is set, enforces bounds to prevent misreporting
      */
     function reportYieldAndCollectFees(int256 yieldDelta) external onlyOwner {
-        // Report yield to oracle (vault must be authorized via strategyOracle.setVault())
-        strategyOracle.reportYield(yieldDelta);
+        // Enforce minimum interval between reports (prevents compounding bypass)
+        if (lastYieldReportTime > 0 && block.timestamp < lastYieldReportTime + MIN_YIELD_REPORT_INTERVAL) {
+            revert ReportTooSoon();
+        }
+
+        // Check yield bounds if enabled
+        if (maxYieldChangePercent > 0) {
+            uint256 nav = totalAssets();
+            // Only enforce if vault has assets (skip on first deposit or empty vault)
+            if (nav > 0) {
+                uint256 absoluteDelta = yieldDelta >= 0 ? uint256(yieldDelta) : uint256(-yieldDelta);
+                uint256 maxAllowed = (nav * maxYieldChangePercent) / 1e18;
+                if (absoluteDelta > maxAllowed) revert YieldChangeTooLarge();
+            }
+        }
+
+        // Update accumulated yield
+        accumulatedYield += yieldDelta;
+        lastYieldReportTime = block.timestamp;
+
+        emit YieldReported(yieldDelta, accumulatedYield, block.timestamp);
 
         // Collect fees directly from positive yield
         if (yieldDelta > 0 && feeRate > 0) {
@@ -911,6 +942,17 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
                 }
             }
         }
+    }
+
+    /**
+     * @notice Set maximum yield change percentage (safety bounds)
+     * @param _maxPercent Maximum yield change as percentage of NAV (18 decimals)
+     * @dev Set to 0 to disable bounds checking. Only callable by owner.
+     *      Default is 1% (0.01e18). Yield deltas exceeding this % of vault NAV will revert.
+     */
+    function setMaxYieldChangePercent(uint256 _maxPercent) external onlyOwner {
+        emit MaxYieldChangeUpdated(maxYieldChangePercent, _maxPercent);
+        maxYieldChangePercent = _maxPercent;
     }
 
     /**

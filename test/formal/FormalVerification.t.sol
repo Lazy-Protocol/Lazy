@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
 import {VaultShare} from "../../src/VaultShare.sol";
-import {StrategyOracle} from "../../src/StrategyOracle.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -22,7 +21,6 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
 contract FormalVerification is Test {
     USDCSavingsVault public vault;
     VaultShare public shares;
-    StrategyOracle public strategyOracle;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -39,11 +37,9 @@ contract FormalVerification is Test {
 
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
-        strategyOracle = new StrategyOracle(address(roleManager));
 
         vault = new USDCSavingsVault(
             address(usdc),
-            address(strategyOracle),
             address(roleManager),
             multisig,
             treasury,
@@ -54,8 +50,7 @@ contract FormalVerification is Test {
         );
         shares = vault.shares();
         roleManager.setOperator(operator, true);
-        strategyOracle.setVault(address(vault));
-        strategyOracle.setMaxYieldChangePercent(0); // Disable for formal verification
+        vault.setMaxYieldChangePercent(0); // Disable for formal verification
         vault.setWithdrawalBuffer(type(uint256).max);
     }
 
@@ -157,7 +152,7 @@ contract FormalVerification is Test {
 
         // Report yield (could be negative)
         vm.warp(block.timestamp + 1 days);
-        strategyOracle.reportYield(yield);
+        vault.reportYieldAndCollectFees(yield);
 
         // PROVE: NAV is never negative
         uint256 nav = vault.totalAssets();

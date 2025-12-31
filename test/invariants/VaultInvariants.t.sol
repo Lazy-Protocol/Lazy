@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
 import {VaultShare} from "../../src/VaultShare.sol";
-import {NavOracle} from "../../src/NavOracle.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -32,7 +31,6 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
 contract VaultInvariantTest is Test {
     USDCSavingsVault public vault;
     VaultShare public shares;
-    NavOracle public navOracle;
     RoleManager public roleManager;
     MockUSDC public usdc;
     VaultHandler public handler;
@@ -53,11 +51,9 @@ contract VaultInvariantTest is Test {
 
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
-        navOracle = new NavOracle(address(roleManager));
 
         vault = new USDCSavingsVault(
             address(usdc),
-            address(navOracle),
             address(roleManager),
             multisig,
             treasury,
@@ -67,6 +63,8 @@ contract VaultInvariantTest is Test {
             "svUSDC"
         );
 
+        vault.setMaxYieldChangePercent(0);
+
         shares = vault.shares();
         roleManager.setOperator(operator, true);
 
@@ -74,7 +72,7 @@ contract VaultInvariantTest is Test {
         vault.setWithdrawalBuffer(type(uint256).max);
 
         // Create handler with access to all components
-        handler = new VaultHandler(vault, usdc, navOracle, roleManager, operator);
+        handler = new VaultHandler(vault, usdc, roleManager, operator);
 
         // Target only the handler for fuzzing
         targetContract(address(handler));
@@ -82,7 +80,6 @@ contract VaultInvariantTest is Test {
         // Exclude system addresses from fuzzing
         excludeSender(address(vault));
         excludeSender(address(shares));
-        excludeSender(address(navOracle));
         excludeSender(address(roleManager));
         excludeSender(address(usdc));
         excludeSender(address(handler));
@@ -108,7 +105,7 @@ contract VaultInvariantTest is Test {
         uint256 totalShareSupply = shares.totalSupply();
         if (totalShareSupply == 0) return;
 
-        uint256 nav = navOracle.totalAssets();
+        uint256 nav = vault.totalAssets();
         uint256 price = vault.sharePrice();
 
         // totalShares * price / PRECISION should ≈ NAV
@@ -209,7 +206,6 @@ contract VaultInvariantTest is Test {
 contract VaultHandler is Test {
     USDCSavingsVault public vault;
     MockUSDC public usdc;
-    NavOracle public navOracle;
     RoleManager public roleManager;
     VaultShare public shares;
     address public operator;
@@ -226,13 +222,11 @@ contract VaultHandler is Test {
     constructor(
         USDCSavingsVault _vault,
         MockUSDC _usdc,
-        NavOracle _navOracle,
         RoleManager _roleManager,
         address _operator
     ) {
         vault = _vault;
         usdc = _usdc;
-        navOracle = _navOracle;
         roleManager = _roleManager;
         shares = _vault.shares();
         operator = _operator;
@@ -259,10 +253,6 @@ contract VaultHandler is Test {
 
         uint256 balance = usdc.balanceOf(actor);
         if (balance < amount) return;
-
-        // Update NAV before deposit (simulate external assets)
-        uint256 currentNav = navOracle.totalAssets();
-        navOracle.reportTotalAssets(currentNav + amount);
 
         vm.prank(actor);
         try vault.deposit(amount) {
@@ -306,11 +296,11 @@ contract VaultHandler is Test {
         // newNavRatio: 80 = -20%, 100 = 0%, 120 = +20%
         newNavRatio = bound(newNavRatio, 50, 200);
 
-        uint256 currentNav = navOracle.totalAssets();
+        uint256 currentNav = vault.totalAssets();
         if (currentNav == 0) return;
 
         uint256 newNav = (currentNav * newNavRatio) / 100;
-        navOracle.reportTotalAssets(newNav);
+        vault.reportYieldAndCollectFees(int256(newNav) - int256(vault.totalAssets()));
     }
 
     /**

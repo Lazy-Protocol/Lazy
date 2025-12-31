@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
 import {VaultShare} from "../src/VaultShare.sol";
-import {StrategyOracle} from "../src/StrategyOracle.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -17,7 +16,6 @@ import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.so
 contract WhitehatAttackPoC is Test {
     USDCSavingsVault public vault;
     VaultShare public shares;
-    StrategyOracle public strategyOracle;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -36,11 +34,9 @@ contract WhitehatAttackPoC is Test {
     function setUp() public {
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
-        strategyOracle = new StrategyOracle(address(roleManager));
 
         vault = new USDCSavingsVault(
             address(usdc),
-            address(strategyOracle),
             address(roleManager),
             multisig,
             treasury,
@@ -51,10 +47,9 @@ contract WhitehatAttackPoC is Test {
         );
         shares = vault.shares();
         roleManager.setOperator(operator, true);
-        strategyOracle.setVault(address(vault));
 
         // Disable yield bounds for testing (allows arbitrary yield values)
-        strategyOracle.setMaxYieldChangePercent(0);
+        vault.setMaxYieldChangePercent(0);
 
         // Keep all funds in vault for testing
         vault.setWithdrawalBuffer(type(uint256).max);
@@ -150,7 +145,7 @@ contract WhitehatAttackPoC is Test {
         vault.deposit(1_000_000e6);
 
         // Report massive yield to inflate price
-        strategyOracle.reportYield(999_000_000e6);
+        vault.reportYieldAndCollectFees(999_000_000e6);
 
         uint256 price = vault.sharePrice();
         console2.log("Share price after yield:", price);
@@ -240,7 +235,7 @@ contract WhitehatAttackPoC is Test {
         uint256 attackerSharesBefore = vault.deposit(100_000e6);
 
         // Yield is reported
-        strategyOracle.reportYield(40_000e6); // 20% yield
+        vault.reportYieldAndCollectFees(40_000e6); // 20% yield
 
         // Attacker tries to withdraw immediately
         vm.startPrank(attacker);
@@ -365,7 +360,7 @@ contract WhitehatAttackPoC is Test {
         vm.stopPrank();
 
         // Yield reported
-        strategyOracle.reportYield(20_000e6);
+        vault.reportYieldAndCollectFees(20_000e6);
 
         // Attacker cancels within window
         vm.prank(attacker);
@@ -419,7 +414,7 @@ contract WhitehatAttackPoC is Test {
         vault.deposit(100_000e6);
 
         // Report massive loss
-        strategyOracle.reportYield(-99_999e6); // Nearly total loss
+        vault.reportYieldAndCollectFees(-99_999e6); // Nearly total loss
 
         // NAV is now ~1 USDC
         uint256 nav = vault.totalAssets();

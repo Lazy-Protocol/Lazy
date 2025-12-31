@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 /**
  * @title IVault
  * @notice Interface for the USDC Savings Vault
- * @dev Uses INavOracle for NAV data and IRoleManager for access control
+ * @dev Uses internal yield tracking and IRoleManager for access control
  */
 interface IVault {
     // ============ Structs ============
@@ -100,10 +100,21 @@ interface IVault {
     /// @notice Emitted when a queued cooldown change is cancelled
     event CooldownChangeCancelled(uint256 cancelledCooldown);
 
+    // Yield tracking events
+    /// @notice Emitted when yield is reported
+    /// @param yieldDelta Change in yield (positive or negative)
+    /// @param newAccumulatedYield Updated cumulative yield
+    /// @param timestamp Block timestamp of the report
+    event YieldReported(int256 yieldDelta, int256 newAccumulatedYield, uint256 timestamp);
+    /// @notice Emitted when max yield change percentage is updated
+    /// @param oldValue Previous max percentage
+    /// @param newValue New max percentage
+    event MaxYieldChangeUpdated(uint256 oldValue, uint256 newValue);
+
     // ============ View Functions ============
 
     /**
-     * @notice Calculate current share price using NavOracle.totalAssets()
+     * @notice Calculate current share price
      * @return price Share price in USDC (18 decimal precision)
      */
     function sharePrice() external view returns (uint256);
@@ -113,6 +124,24 @@ interface IVault {
      * @return Total share supply
      */
     function totalShares() external view returns (uint256);
+
+    /**
+     * @notice Get accumulated yield from strategies
+     * @return Net yield in USDC (6 decimals), can be negative
+     */
+    function accumulatedYield() external view returns (int256);
+
+    /**
+     * @notice Get timestamp of last yield report
+     * @return Unix timestamp
+     */
+    function lastYieldReportTime() external view returns (uint256);
+
+    /**
+     * @notice Get maximum yield change percentage
+     * @return Max percentage (18 decimals)
+     */
+    function maxYieldChangePercent() external view returns (uint256);
 
     /**
      * @notice Get pending withdrawal shares count
@@ -262,4 +291,16 @@ interface IVault {
      * @param requestId Request ID to cancel
      */
     function cancelWithdrawal(uint256 requestId) external;
+
+    /**
+     * @notice Report yield and collect fees atomically
+     * @param yieldDelta Change in yield (positive for gains, negative for losses)
+     */
+    function reportYieldAndCollectFees(int256 yieldDelta) external;
+
+    /**
+     * @notice Set maximum yield change percentage (safety bounds)
+     * @param _maxPercent Maximum yield change as percentage of NAV (18 decimals)
+     */
+    function setMaxYieldChangePercent(uint256 _maxPercent) external;
 }
