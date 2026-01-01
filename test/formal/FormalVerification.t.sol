@@ -201,7 +201,9 @@ contract FormalVerification is Test {
             vm.prank(user);
             vault.requestWithdrawal(userShares);
 
-            // Donator tries to grief by donating shares
+            // V-2 FIX: Donation attacks are now blocked
+            // Donator cannot transfer shares to vault (reverts with CannotTransferToVault)
+            // This test verifies escrow invariant holds without donation interference
             if (donation > 0) {
                 usdc.mint(donator, amount);
                 vm.prank(donator);
@@ -209,8 +211,13 @@ contract FormalVerification is Test {
                 vm.prank(donator);
                 try vault.deposit(amount) returns (uint256 donatorShares) {
                     if (donation <= donatorShares) {
+                        // V-2 FIX: This transfer is now blocked
                         vm.prank(donator);
-                        vault.transfer(address(vault), donation);
+                        try vault.transfer(address(vault), donation) {
+                            // Should not reach here - transfer to vault is blocked
+                        } catch {
+                            // Expected: CannotTransferToVault revert
+                        }
                     }
                 } catch {}
             }
