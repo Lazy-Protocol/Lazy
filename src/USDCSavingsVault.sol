@@ -252,6 +252,8 @@ contract USDCSavingsVault is IVault, ERC20, ReentrancyGuard {
     // Yield reporting errors
     error YieldChangeTooLarge();
     error ReportTooSoon();
+    // Transfer protection errors
+    error CannotTransferToVault(); // V-2: Prevent accidental share loss
 
     // ============ Modifiers ============
 
@@ -956,16 +958,21 @@ contract USDCSavingsVault is IVault, ERC20, ReentrancyGuard {
      * @notice Recover orphaned shares sent directly to vault (H-2)
      * @dev If someone accidentally transfers shares to the vault (not via requestWithdrawal),
      *      those shares become stuck. This function burns them to prevent dilution.
+     *      V-3 Fix: Defensive check prevents revert on corrupted state.
      * @return recovered Amount of orphaned shares burned
      */
     function recoverOrphanedShares() external onlyOwner returns (uint256 recovered) {
         uint256 vaultShareBalance = balanceOf(address(this));
+
+        // V-3: Defensive check - if invariant is violated, return 0 instead of reverting
+        if (vaultShareBalance <= pendingWithdrawalShares) {
+            return 0;
+        }
+
         recovered = vaultShareBalance - pendingWithdrawalShares;
 
-        if (recovered > 0) {
-            _burn(address(this), recovered);
-            emit OrphanedSharesRecovered(recovered);
-        }
+        _burn(address(this), recovered);
+        emit OrphanedSharesRecovered(recovered);
     }
 
     /**
@@ -996,6 +1003,28 @@ contract USDCSavingsVault is IVault, ERC20, ReentrancyGuard {
         if (purged > 0) {
             emit WithdrawalsPurged(purged);
         }
+    }
+
+    // ============ ERC20 Overrides ============
+
+    /**
+     * @notice Override transfer to prevent accidental share loss (V-2 fix)
+     * @dev Users cannot transfer shares directly to the vault address.
+     *      Use requestWithdrawal() instead to properly escrow shares.
+     */
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        if (to == address(this)) revert CannotTransferToVault();
+        return super.transfer(to, amount);
+    }
+
+    /**
+     * @notice Override transferFrom to prevent accidental share loss (V-2 fix)
+     * @dev Users cannot transfer shares directly to the vault address.
+     *      Use requestWithdrawal() instead to properly escrow shares.
+     */
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        if (to == address(this)) revert CannotTransferToVault();
+        return super.transferFrom(from, to, amount);
     }
 
     // ============ Internal Functions ============
