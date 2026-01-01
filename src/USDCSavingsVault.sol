@@ -2,9 +2,9 @@
 pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IRoleManager} from "./interfaces/IRoleManager.sol";
-import {VaultShare} from "./VaultShare.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -118,7 +118,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * OpenZeppelin components are used ONLY where they provide pure mechanical
  * safety guarantees and do not encode governance semantics:
  *   - ReentrancyGuard: Prevents cross-function reentrancy (mechanical safety)
- *   - ERC20 (VaultShare): Standard token mechanics (no governance assumptions)
+ *   - ERC20: Standard token mechanics (vault IS the share token)
  *
  * This separation ensures the Vault focuses solely on asset custody and
  * accounting, while governance logic remains modular and upgradeable.
@@ -130,7 +130,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * all shares, regardless of state, rise and fall together.
  * =============================================================================
  */
-contract USDCSavingsVault is IVault, ReentrancyGuard {
+contract USDCSavingsVault is IVault, ERC20, ReentrancyGuard {
     // ============ Constants ============
 
     uint256 public constant PRECISION = 1e18;
@@ -156,7 +156,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     // ============ Immutables ============
 
     IERC20 public immutable usdc;
-    VaultShare public immutable shares;
     IRoleManager public immutable roleManager;
 
     // ============ State ============
@@ -194,7 +193,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
     /// @notice Cursor pointing to next unprocessed request (FIFO ordering)
     uint256 public withdrawalQueueHead;
     /// @notice Total shares currently held in escrow for pending withdrawals
-    /// @dev Must always equal shares.balanceOf(address(this)) minus any orphaned shares
+    /// @dev Must always equal balanceOf(address(this)) minus any orphaned shares
     uint256 public pendingWithdrawalShares;
     /// @notice Count of pending withdrawal requests per user (prevents queue spam)
     /// @dev Enforces MAX_PENDING_PER_USER limit per address
@@ -308,7 +307,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         uint256 _cooldownPeriod,
         string memory _shareName,
         string memory _shareSymbol
-    ) {
+    ) ERC20(_shareName, _shareSymbol) {
         if (_usdc == address(0)) revert ZeroAddress();
         if (_roleManager == address(0)) revert ZeroAddress();
         if (_multisig == address(0)) revert ZeroAddress();
@@ -320,7 +319,6 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
 
         usdc = IERC20(_usdc);
         roleManager = IRoleManager(_roleManager);
-        shares = new VaultShare(address(this), _shareName, _shareSymbol);
 
         multisig = _multisig;
         treasury = _treasury;
@@ -352,7 +350,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @dev Invariant I.3: Price applies to ALL shares equally (user, escrowed, treasury)
      */
     function sharePrice() public view returns (uint256) {
-        uint256 totalShareSupply = shares.totalSupply();
+        uint256 totalShareSupply = totalSupply();
         if (totalShareSupply == 0) {
             return INITIAL_SHARE_PRICE; // 1 USDC = 1 share initially
         }
@@ -366,7 +364,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @dev Invariant I.3: Escrowed shares are still part of totalSupply
      */
     function totalShares() external view returns (uint256) {
-        return shares.totalSupply();
+        return totalSupply();
     }
 
     /**
@@ -430,7 +428,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @return Escrowed share balance
      */
     function escrowedShares() public view returns (uint256) {
-        return shares.balanceOf(address(this));
+        return balanceOf(address(this));
     }
 
     // ============ User Functions ============
@@ -453,7 +451,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
 
         // Check per-user cap (M-2: based on current holdings value, not cumulative deposits)
         if (perUserCap > 0) {
-            uint256 currentHoldingsValue = sharesToUsdc(shares.balanceOf(msg.sender));
+            uint256 currentHoldingsValue = sharesToUsdc(balanceOf(msg.sender));
             if (currentHoldingsValue + usdcAmount > perUserCap) {
                 revert ExceedsUserCap();
             }
@@ -478,7 +476,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         totalDeposited += usdcAmount;
 
         // Mint shares to user
-        shares.mint(msg.sender, sharesMinted);
+        _mint(msg.sender, sharesMinted);
 
         // Transfer USDC from user
         bool success = usdc.transferFrom(msg.sender, address(this), usdcAmount);
@@ -505,14 +503,14 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         returns (uint256 requestId)
     {
         if (shareAmount == 0) revert ZeroAmount();
-        if (shares.balanceOf(msg.sender) < shareAmount) revert InsufficientShares();
+        if (balanceOf(msg.sender) < shareAmount) revert InsufficientShares();
 
         // M-1: Check per-user pending request limit
         if (userPendingRequests[msg.sender] >= MAX_PENDING_PER_USER) revert TooManyPendingRequests();
 
         // INVARIANT I.2: Escrow shares into vault
         // Shares are transferred FROM user TO vault, preventing double-spend
-        shares.transferFrom(msg.sender, address(this), shareAmount);
+        _transfer(msg.sender, address(this), shareAmount);
 
         requestId = withdrawalQueue.length;
 
@@ -526,7 +524,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         userPendingRequests[msg.sender]++;
 
         // INVARIANT I.2: Verify escrow balance matches pending shares
-        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        if (balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalRequested(msg.sender, shareAmount, requestId);
     }
@@ -554,7 +552,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         uint256 queueLen = withdrawalQueue.length;
 
         // Snapshot for invariant check
-        uint256 sharesBefore = shares.totalSupply();
+        uint256 sharesBefore = totalSupply();
 
         while (processed < count && head < queueLen) {
             WithdrawalRequest storage request = withdrawalQueue[head];
@@ -583,7 +581,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
             }
 
             // INVARIANT I.1: Burn escrowed shares from vault
-            shares.burn(address(this), sharesToBurn);
+            _burn(address(this), sharesToBurn);
 
             // Update state
             pendingWithdrawalShares -= sharesToBurn;
@@ -613,7 +611,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // INVARIANT I.1: Conservation of value
         // If shares were burned, totalShares decreased proportionally to USDC paid
         if (processed > 0) {
-            uint256 sharesAfter = shares.totalSupply();
+            uint256 sharesAfter = totalSupply();
             // Verify: shares decreased when USDC exited
             if (sharesAfter >= sharesBefore && usdcPaid > 0) revert SharesNotBurned();
         }
@@ -621,7 +619,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         // INVARIANT I.2: Escrow balance covers pending shares
         // Note: Balance may exceed pending if shares were donated directly to vault
         // (orphaned shares can be recovered via recoverOrphanedShares)
-        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        if (balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
     }
 
     // ============ Multisig Functions ============
@@ -833,7 +831,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         if (usdcOut > availableLiquidity()) revert InsufficientLiquidity();
 
         // Burn escrowed shares from vault
-        shares.burn(address(this), sharesToBurn);
+        _burn(address(this), sharesToBurn);
 
         // Update state
         pendingWithdrawalShares -= sharesToBurn;
@@ -848,7 +846,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         if (!success) revert TransferFailed();
 
         // INVARIANT I.2: Escrow balance covers pending shares
-        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        if (balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalForced(request.requester, sharesToBurn, usdcOut, requestId);
     }
@@ -881,11 +879,10 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
         request.shares = 0;
 
         // Return escrowed shares to requester
-        bool success = shares.transfer(requester, sharesToReturn);
-        if (!success) revert TransferFailed();
+        _transfer(address(this), requester, sharesToReturn);
 
         // INVARIANT I.2: Escrow balance covers pending shares
-        if (shares.balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
+        if (balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
 
         emit WithdrawalCancelled(requester, sharesToReturn, requestId);
     }
@@ -937,7 +934,7 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
                 // Convert fee to shares at current price (post-yield)
                 uint256 feeShares = usdcToShares(fee);
                 if (feeShares > 0) {
-                    shares.mint(treasury, feeShares);
+                    _mint(treasury, feeShares);
                     emit FeeCollected(feeShares, treasury);
                 }
             }
@@ -962,11 +959,11 @@ contract USDCSavingsVault is IVault, ReentrancyGuard {
      * @return recovered Amount of orphaned shares burned
      */
     function recoverOrphanedShares() external onlyOwner returns (uint256 recovered) {
-        uint256 vaultShareBalance = shares.balanceOf(address(this));
+        uint256 vaultShareBalance = balanceOf(address(this));
         recovered = vaultShareBalance - pendingWithdrawalShares;
 
         if (recovered > 0) {
-            shares.burn(address(this), recovered);
+            _burn(address(this), recovered);
             emit OrphanedSharesRecovered(recovered);
         }
     }

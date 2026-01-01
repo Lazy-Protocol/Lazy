@@ -66,9 +66,9 @@ Shares submitted for withdrawal SHALL be transferred to the Vault and SHALL NOT 
 
 ```
 ∀ request ∈ WithdrawalQueue where request.shares > 0:
-  shares.balanceOf(vault) ≥ Σ(pendingWithdrawalShares)
+  vault.balanceOf(vault) ≥ Σ(pendingWithdrawalShares)
 
-  shares ARE NOT:
+  escrowed shares ARE NOT:
     - transferable by requester (they don't hold them)
     - usable for another withdrawal (already escrowed)
     - claimable without fulfillment/cancellation
@@ -84,17 +84,17 @@ Shares submitted for withdrawal SHALL be transferred to the Vault and SHALL NOT 
 **Runtime Assertion:**
 ```solidity
 // After every withdrawal operation
-assert(shares.balanceOf(address(this)) >= pendingWithdrawalShares);
+assert(balanceOf(address(this)) >= pendingWithdrawalShares);
 
 // Strict equality after fulfillment/cancellation
-assert(shares.balanceOf(address(this)) == pendingWithdrawalShares);
+assert(balanceOf(address(this)) == pendingWithdrawalShares);
 ```
 
 **Fuzz Test:**
 ```solidity
 function invariant_escrowBalanceMatchesPending() public {
     assertEq(
-        vaultShare.balanceOf(address(vault)),
+        vault.balanceOf(address(vault)),
         vault.pendingWithdrawalShares()
     );
 }
@@ -176,7 +176,7 @@ fee_amount ≤ yieldDelta × feeRate
 feeRate ≤ MAX_FEE_RATE
 
 fee_payment:
-  ONLY via shares.mint(treasury, feeShares)
+  ONLY via _mint(treasury, feeShares)
   NEVER via usdc.transfer(treasury, amount)
 ```
 
@@ -192,7 +192,7 @@ function reportYieldAndCollectFees(int256 yieldDelta) external onlyOwner {
     if (yieldDelta > 0) {
         uint256 fee = (uint256(yieldDelta) * feeRate) / PRECISION;
         // Fee paid via minting, NOT transfer
-        shares.mint(treasury, feeShares);
+        _mint(treasury, feeShares);
     }
 }
 ```

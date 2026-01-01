@@ -19,14 +19,14 @@ The USDC Savings Vault allows users to deposit USDC and receive shares represent
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        USDCSavingsVault                          │
-│      (Internal yield tracking, ReentrancyGuard + IERC20)         │
-└─────────────────────────┬────────────────────┬───────────────────┘
-                          │                    │
-                          ▼                    ▼
-                  ┌───────────────┐    ┌───────────────┐
-                  │  VaultShare   │    │  RoleManager  │
-                  │  (OZ ERC20)   │    │  (Governance) │
-                  └───────────────┘    └───────────────┘
+│            (ERC20 shares + yield tracking + withdrawals)         │
+└─────────────────────────────────────┬────────────────────────────┘
+                                      │
+                                      ▼
+                              ┌───────────────┐
+                              │  RoleManager  │
+                              │  (Governance) │
+                              └───────────────┘
 ```
 
 ### OpenZeppelin Usage
@@ -35,7 +35,7 @@ OpenZeppelin is used only for **mechanical safety guarantees**:
 
 | Contract | OZ Module | Purpose |
 |----------|-----------|---------|
-| VaultShare | ERC20 | Battle-tested token mechanics |
+| USDCSavingsVault | ERC20 | Share token mechanics (vault IS the token) |
 | USDCSavingsVault | ReentrancyGuard | Cross-function reentrancy protection |
 | USDCSavingsVault | IERC20 | Standard interface for USDC |
 

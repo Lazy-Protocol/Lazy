@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
-import {VaultShare} from "../../src/VaultShare.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -30,7 +29,6 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  */
 contract VaultInvariantTest is Test {
     USDCSavingsVault public vault;
-    VaultShare public shares;
     RoleManager public roleManager;
     MockUSDC public usdc;
     VaultHandler public handler;
@@ -65,7 +63,6 @@ contract VaultInvariantTest is Test {
 
         vault.setMaxYieldChangePercent(0);
 
-        shares = vault.shares();
         roleManager.setOperator(operator, true);
 
         // Set large buffer so funds stay in vault for testing
@@ -79,7 +76,6 @@ contract VaultInvariantTest is Test {
 
         // Exclude system addresses from fuzzing
         excludeSender(address(vault));
-        excludeSender(address(shares));
         excludeSender(address(roleManager));
         excludeSender(address(usdc));
         excludeSender(address(handler));
@@ -91,7 +87,7 @@ contract VaultInvariantTest is Test {
      */
     function invariant_escrowBalance() public view {
         assertEq(
-            shares.balanceOf(address(vault)),
+            vault.balanceOf(address(vault)),
             vault.pendingWithdrawalShares(),
             "I.2 VIOLATED: Escrow balance mismatch"
         );
@@ -102,7 +98,7 @@ contract VaultInvariantTest is Test {
      * Total shares * share price should approximate total assets (within rounding)
      */
     function invariant_shareValueConservation() public view {
-        uint256 totalShareSupply = shares.totalSupply();
+        uint256 totalShareSupply = vault.totalSupply();
         if (totalShareSupply == 0) return;
 
         uint256 nav = vault.totalAssets();
@@ -128,7 +124,7 @@ contract VaultInvariantTest is Test {
      */
     function invariant_uniformSharePrice() public view {
         // Skip this check if no shares exist (empty vault)
-        if (shares.totalSupply() == 0) return;
+        if (vault.totalSupply() == 0) return;
 
         // Converting 1000 shares (18 decimals) to USDC and back should give ~1000 shares
         uint256 testShares = 1000e18;
@@ -174,7 +170,7 @@ contract VaultInvariantTest is Test {
     function invariant_pendingSharesValid() public view {
         assertLe(
             vault.pendingWithdrawalShares(),
-            shares.balanceOf(address(vault)),
+            vault.balanceOf(address(vault)),
             "Pending shares exceed escrowed"
         );
     }
@@ -184,9 +180,9 @@ contract VaultInvariantTest is Test {
      * (implicitly tested by ERC20 but good to verify)
      */
     function invariant_totalSupplyConsistent() public view {
-        uint256 totalSupply = shares.totalSupply();
-        uint256 vaultBalance = shares.balanceOf(address(vault));
-        uint256 treasuryBalance = shares.balanceOf(treasury);
+        uint256 totalSupply = vault.totalSupply();
+        uint256 vaultBalance = vault.balanceOf(address(vault));
+        uint256 treasuryBalance = vault.balanceOf(treasury);
 
         // Vault + Treasury + all handler actors should sum to totalSupply
         // This is a weaker check since we can't enumerate all holders
@@ -207,7 +203,6 @@ contract VaultHandler is Test {
     USDCSavingsVault public vault;
     MockUSDC public usdc;
     RoleManager public roleManager;
-    VaultShare public shares;
     address public operator;
 
     // Track actors for fuzzing
@@ -228,7 +223,6 @@ contract VaultHandler is Test {
         vault = _vault;
         usdc = _usdc;
         roleManager = _roleManager;
-        shares = _vault.shares();
         operator = _operator;
 
         // Create initial actors
@@ -265,7 +259,7 @@ contract VaultHandler is Test {
      */
     function requestWithdrawal(uint256 actorSeed, uint256 shareAmount) external {
         address actor = actors[actorSeed % actors.length];
-        uint256 balance = shares.balanceOf(actor);
+        uint256 balance = vault.balanceOf(actor);
 
         if (balance == 0) return;
         shareAmount = bound(shareAmount, 1, balance);
@@ -312,13 +306,13 @@ contract VaultHandler is Test {
 
         if (from == to) return;
 
-        uint256 balance = shares.balanceOf(from);
+        uint256 balance = vault.balanceOf(from);
         if (balance == 0) return;
 
         amount = bound(amount, 1, balance);
 
         vm.prank(from);
-        try shares.transfer(to, amount) {} catch {}
+        try vault.transfer(to, amount) {} catch {}
     }
 
     /**

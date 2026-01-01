@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
-import {VaultShare} from "../../src/VaultShare.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -14,7 +13,6 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  */
 contract HalmosChecks is Test {
     USDCSavingsVault public vault;
-    VaultShare public shares;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -42,7 +40,6 @@ contract HalmosChecks is Test {
             "USDC Savings Vault Share",
             "svUSDC"
         );
-        shares = vault.shares();
         roleManager.setOperator(operator, true);
         vault.setMaxYieldChangePercent(0);
         vault.setWithdrawalBuffer(type(uint256).max);
@@ -62,14 +59,14 @@ contract HalmosChecks is Test {
         vm.startPrank(user);
         usdc.approve(address(vault), amount);
 
-        uint256 sharesBefore = shares.totalSupply();
+        uint256 sharesBefore = vault.totalSupply();
         uint256 minted = vault.deposit(amount);
-        uint256 sharesAfter = shares.totalSupply();
+        uint256 sharesAfter = vault.totalSupply();
 
         // PROVE: Shares increased by exactly minted amount
         assert(sharesAfter == sharesBefore + minted);
         // PROVE: User received shares
-        assert(shares.balanceOf(user) == minted);
+        assert(vault.balanceOf(user) == minted);
         vm.stopPrank();
     }
 
@@ -109,7 +106,7 @@ contract HalmosChecks is Test {
         vault.requestWithdrawal(userShares);
 
         // PROVE: Escrow balance always >= pending shares
-        uint256 escrowBalance = shares.balanceOf(address(vault));
+        uint256 escrowBalance = vault.balanceOf(address(vault));
         uint256 pendingShares = vault.pendingWithdrawalShares();
         assert(escrowBalance >= pendingShares);
     }

@@ -47,10 +47,10 @@ const sharesMinted = event.args.shares;
 
 ### Understanding Your Shares
 
-After depositing, you'll receive vault shares. To check your share balance:
+After depositing, you'll receive vault shares. The vault contract IS the ERC20 share token, so to check your share balance:
 
 ```solidity
-const shareBalance = await vaultShare.balanceOf(yourAddress);
+const shareBalance = await vault.balanceOf(yourAddress);
 ```
 
 To calculate the current USDC value of your shares:

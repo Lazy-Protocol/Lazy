@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
-import {VaultShare} from "../../src/VaultShare.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -20,7 +19,6 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  */
 contract FormalVerification is Test {
     USDCSavingsVault public vault;
-    VaultShare public shares;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -48,7 +46,6 @@ contract FormalVerification is Test {
             "USDC Savings Vault Share",
             "svUSDC"
         );
-        shares = vault.shares();
         roleManager.setOperator(operator, true);
         vault.setMaxYieldChangePercent(0); // Disable for formal verification
         vault.setWithdrawalBuffer(type(uint256).max);
@@ -69,15 +66,15 @@ contract FormalVerification is Test {
         vm.startPrank(user);
         usdc.approve(address(vault), amount);
 
-        uint256 sharesBefore = shares.totalSupply();
+        uint256 sharesBefore = vault.totalSupply();
 
         try vault.deposit(amount) returns (uint256 minted) {
-            uint256 sharesAfter = shares.totalSupply();
+            uint256 sharesAfter = vault.totalSupply();
 
             // PROVE: Shares increased by exactly minted amount
             assert(sharesAfter == sharesBefore + minted);
             // PROVE: User received shares
-            assert(shares.balanceOf(user) == minted);
+            assert(vault.balanceOf(user) == minted);
         } catch {
             // Deposit can fail (ZeroShares, caps, etc.) - that's ok
         }
@@ -108,9 +105,9 @@ contract FormalVerification is Test {
         vault.requestWithdrawal(withdrawShares);
 
         // PROVE: User shares decreased (escrowed)
-        assert(shares.balanceOf(user) == userShares - withdrawShares);
+        assert(vault.balanceOf(user) == userShares - withdrawShares);
         // PROVE: Vault holds escrowed shares
-        assert(shares.balanceOf(address(vault)) >= withdrawShares);
+        assert(vault.balanceOf(address(vault)) >= withdrawShares);
 
         vm.stopPrank();
 
@@ -118,13 +115,13 @@ contract FormalVerification is Test {
         vm.warp(block.timestamp + 1 days + 1);
         vm.prank(operator);
 
-        uint256 totalSharesBefore = shares.totalSupply();
+        uint256 totalSharesBefore = vault.totalSupply();
         uint256 userUsdcBefore = usdc.balanceOf(user);
         (uint256 processed, uint256 paid) = vault.fulfillWithdrawals(1);
 
         if (processed > 0) {
             // PROVE: Shares were burned
-            assert(shares.totalSupply() < totalSharesBefore);
+            assert(vault.totalSupply() < totalSharesBefore);
             // PROVE: USDC was paid
             assert(paid > 0);
             // PROVE: User received the USDC
@@ -213,13 +210,13 @@ contract FormalVerification is Test {
                 try vault.deposit(amount) returns (uint256 donatorShares) {
                     if (donation <= donatorShares) {
                         vm.prank(donator);
-                        shares.transfer(address(vault), donation);
+                        vault.transfer(address(vault), donation);
                     }
                 } catch {}
             }
 
             // PROVE: Escrow balance always >= pending shares
-            uint256 escrowBalance = shares.balanceOf(address(vault));
+            uint256 escrowBalance = vault.balanceOf(address(vault));
             uint256 pendingShares = vault.pendingWithdrawalShares();
             assert(escrowBalance >= pendingShares);
 
@@ -276,13 +273,13 @@ contract FormalVerification is Test {
         vm.prank(user);
         vault.deposit(amount);
 
-        uint256 treasuryBefore = shares.balanceOf(treasury);
+        uint256 treasuryBefore = vault.balanceOf(treasury);
 
         // Report yield - fees are collected atomically
         vm.warp(block.timestamp + 1 days);
         vault.reportYieldAndCollectFees(yield);
 
-        uint256 treasuryAfter = shares.balanceOf(treasury);
+        uint256 treasuryAfter = vault.balanceOf(treasury);
 
         if (yield <= 0) {
             // PROVE: No fees on loss

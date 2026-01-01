@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The USDC Savings Vault is a streamlined DeFi protocol consisting of three contracts that work together to provide secure, yield-bearing USDC deposits.
+The USDC Savings Vault is a streamlined DeFi protocol consisting of two contracts that work together to provide secure, yield-bearing USDC deposits.
 
 ```
                                     ┌──────────────┐
@@ -14,6 +14,7 @@ The USDC Savings Vault is a streamlined DeFi protocol consisting of three contra
                                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                        USDCSavingsVault                          │
+│                         (inherits ERC20)                         │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │                      Core Functions                        │  │
@@ -25,32 +26,34 @@ The USDC Savings Vault is a streamlined DeFi protocol consisting of three contra
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │                    State Management                        │  │
+│  │  • ERC20 balances - share ownership (vault IS the token)  │  │
 │  │  • withdrawalQueue[] - pending withdrawal requests         │  │
 │  │  • pendingWithdrawalShares - total escrowed shares        │  │
 │  │  • accumulatedYield - net yield from strategies           │  │
 │  │  • totalDeposited / totalWithdrawn - flow tracking        │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
-└─────────────────────────┬────────────────────┬───────────────────┘
-                          │                    │
-                          ▼                    ▼
-                  ┌───────────────┐    ┌───────────────┐
-                  │  VaultShare   │    │  RoleManager  │
-                  │   (ERC-20)    │    │               │
-                  │               │    │ isOperator()  │
-                  │ mint/burn     │    │ paused()      │
-                  │ (vault only)  │    │ owner()       │
-                  └───────────────┘    └───────────────┘
+└─────────────────────────────────────┬────────────────────────────┘
+                                      │
+                                      ▼
+                              ┌───────────────┐
+                              │  RoleManager  │
+                              │               │
+                              │ isOperator()  │
+                              │ paused()      │
+                              │ owner()       │
+                              └───────────────┘
 ```
 
 ## Contract Responsibilities
 
 ### USDCSavingsVault
 
-The main contract handling all user-facing operations, yield tracking, and core logic.
+The main contract handling all user-facing operations, yield tracking, share token, and core logic. The vault inherits from OpenZeppelin's ERC20, so the vault contract IS the share token.
 
 **Responsibilities:**
-- Accept USDC deposits and mint proportional shares
+- Accept USDC deposits and mint proportional shares (to self)
+- Provide standard ERC-20 functionality for shares (transfer, approve, etc.)
 - Manage async withdrawal queue with share escrow
 - Track yield internally via `accumulatedYield` state
 - Enforce deposit caps (per-user and global)
@@ -58,27 +61,14 @@ The main contract handling all user-facing operations, yield tracking, and core 
 - Collect protocol fees via share dilution (on positive yield only)
 
 **Key Design Decisions:**
+- Vault IS the ERC20 share token (inherits OpenZeppelin ERC20)
 - Yield tracking is internal (no external oracle) for simplicity and gas efficiency
 - NAV = totalDeposited - totalWithdrawn + accumulatedYield
-- Shares are escrowed (transferred to vault) on withdrawal request, not just locked
+- Shares are escrowed (transferred to vault address) on withdrawal request
 - Fees are minted as new shares to treasury, never transferred as USDC
 - Withdrawal queue uses FIFO with graceful degradation on low liquidity
 - Yield reports have safety bounds (max % change) and cooldown (1 day minimum)
-
-### VaultShare
-
-An ERC-20 token representing vault ownership, built on OpenZeppelin's ERC20.
-
-**Responsibilities:**
-- Standard ERC-20 functionality via OpenZeppelin (transfer, approve, etc.)
-- Vault-only minting and burning
-- Special transferFrom bypass for vault escrow operations
-
-**Key Design Decisions:**
-- Inherits from OpenZeppelin ERC20 for battle-tested token mechanics
-- Only the vault can mint/burn shares
-- Vault can transferFrom without approval (required for escrow mechanism)
-- 18 decimal precision matching USDC calculations
+- 18 decimal precision for shares
 
 ### RoleManager
 
@@ -99,38 +89,32 @@ Centralized access control and pause management.
 ### Deposit Flow
 
 ```
-User                    Vault                   VaultShare
-  │                       │                         │
-  │── approve(USDC) ────►│                         │
-  │                       │                         │
-  │── deposit(amount) ──►│                         │
-  │                       │── totalAssets()        │
-  │                       │   (internal calc)      │
-  │                       │                         │
-  │                       │── mint(shares) ───────►│
-  │                       │◄─────────────── ok ────│
-  │                       │                         │
-  │                       │── transferFrom(USDC)   │ (from user)
-  │                       │── transfer(USDC)       │ (to multisig)
-  │◄── shares ───────────│                         │
+User                    Vault (ERC20)
+  │                       │
+  │── approve(USDC) ────►│
+  │                       │
+  │── deposit(amount) ──►│
+  │                       │── totalAssets() (internal calc)
+  │                       │── _mint(user, shares)
+  │                       │── transferFrom(USDC) from user
+  │                       │── transfer(USDC) to multisig
+  │◄── shares ───────────│
 ```
 
 ### Withdrawal Flow
 
 ```
-User                    Vault                   VaultShare          Operator
-  │                       │                         │                   │
-  │── requestWithdrawal ►│                         │                   │
-  │                       │── transferFrom ───────►│                   │
-  │                       │   (user→vault escrow)   │                   │
-  │◄── requestId ────────│                         │                   │
-  │                       │                         │                   │
-  │        ... cooldown period passes ...          │                   │
-  │                       │                         │                   │
-  │                       │◄── fulfillWithdrawals ─────────────────────│
-  │                       │── burn(shares) ───────►│                   │
-  │                       │◄─────────────── ok ────│                   │
-  │◄── USDC ─────────────│                         │                   │
+User                    Vault (ERC20)                    Operator
+  │                       │                                  │
+  │── requestWithdrawal ►│                                  │
+  │                       │── _transfer(user→vault escrow)  │
+  │◄── requestId ────────│                                  │
+  │                       │                                  │
+  │        ... cooldown period passes ...                   │
+  │                       │                                  │
+  │                       │◄── fulfillWithdrawals ──────────│
+  │                       │── _burn(vault, shares)          │
+  │◄── USDC ─────────────│                                  │
 ```
 
 ## Storage Layout
@@ -190,7 +174,7 @@ The protocol deliberately uses OpenZeppelin only for **mechanical safety guarant
 
 | Component | OZ Module | Rationale |
 |-----------|-----------|-----------|
-| VaultShare | ERC20 | Battle-tested token mechanics |
+| USDCSavingsVault | ERC20 | Vault IS the share token (battle-tested mechanics) |
 | USDCSavingsVault | ReentrancyGuard | Cross-function reentrancy protection |
 | USDCSavingsVault | IERC20 | Standard interface for USDC interaction |
 
@@ -204,6 +188,7 @@ This separation ensures the Vault focuses on asset custody while governance rema
 
 ## Gas Optimization
 
+- Vault IS the ERC20 token (internal calls instead of external contract calls)
 - Withdrawal queue uses `head` pointer instead of array shifting
 - Processed requests set `shares = 0` rather than deletion
 - Batch fulfillment in single transaction

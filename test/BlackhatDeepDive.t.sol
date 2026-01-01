@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
-import {VaultShare} from "../src/VaultShare.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
@@ -13,7 +12,6 @@ import {MockUSDC} from "./mocks/MockUSDC.sol";
  */
 contract BlackhatDeepDive is Test {
     USDCSavingsVault public vault;
-    VaultShare public shares;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -42,7 +40,6 @@ contract BlackhatDeepDive is Test {
             "USDC Savings Vault Share",
             "svUSDC"
         );
-        shares = vault.shares();
         roleManager.setOperator(operator, true);
         vault.setMaxYieldChangePercent(0);
         vault.setWithdrawalBuffer(type(uint256).max);
@@ -102,7 +99,6 @@ contract BlackhatDeepDive is Test {
             address(usdc), address(roleManager),
             multisig, treasury, FEE_RATE, COOLDOWN, "USDC Savings Vault Share", "svUSDC"
         );
-        shares = vault.shares();
         roleManager.setOperator(operator, true);
         vault.setMaxYieldChangePercent(0);
         vault.setWithdrawalBuffer(type(uint256).max);
@@ -199,7 +195,7 @@ contract BlackhatDeepDive is Test {
             console2.log("Lost value in USDC:", lostValue);
 
             // Where did this value go?
-            uint256 victimValue = vault.sharesToUsdc(shares.balanceOf(victim));
+            uint256 victimValue = vault.sharesToUsdc(vault.balanceOf(victim));
             console2.log("");
             console2.log("Original victim value:", victimValue);
             console2.log("(They benefited from yield before new deposit)");

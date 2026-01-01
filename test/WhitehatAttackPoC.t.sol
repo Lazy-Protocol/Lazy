@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
-import {VaultShare} from "../src/VaultShare.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -15,7 +14,6 @@ import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.so
  */
 contract WhitehatAttackPoC is Test {
     USDCSavingsVault public vault;
-    VaultShare public shares;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -45,7 +43,6 @@ contract WhitehatAttackPoC is Test {
             "USDC Savings Vault Share",
             "svUSDC"
         );
-        shares = vault.shares();
         roleManager.setOperator(operator, true);
 
         // Disable yield bounds for testing (allows arbitrary yield values)
@@ -79,7 +76,7 @@ contract WhitehatAttackPoC is Test {
         // Step 1: Attacker deposits minimal amount (would normally get dust shares)
         vm.startPrank(attacker);
         vault.deposit(1e6); // 1 USDC = 1e18 shares (fair)
-        uint256 attackerSharesBefore = shares.balanceOf(attacker);
+        uint256 attackerSharesBefore = vault.balanceOf(attacker);
         assertEq(attackerSharesBefore, 1e18); // Got 1 share for 1 USDC
 
         // Step 2: Attacker donates large amount directly to vault
@@ -122,7 +119,7 @@ contract WhitehatAttackPoC is Test {
         vault.deposit(100_000e6);
 
         // Check: Attacker's shares value
-        uint256 attackerShareValue = vault.sharesToUsdc(shares.balanceOf(attacker));
+        uint256 attackerShareValue = vault.sharesToUsdc(vault.balanceOf(attacker));
 
         // Attacker only has value equal to their deposit, not the donation
         assertEq(attackerShareValue, 100_000e6, "Attacker cannot recover donated funds");
@@ -179,7 +176,7 @@ contract WhitehatAttackPoC is Test {
         // Attacker deposits
         vm.startPrank(attacker);
         vault.deposit(100_000e6);
-        uint256 attackerShares = shares.balanceOf(attacker);
+        uint256 attackerShares = vault.balanceOf(attacker);
 
         // Request withdrawal - shares are escrowed
         vault.requestWithdrawal(attackerShares);
@@ -190,8 +187,8 @@ contract WhitehatAttackPoC is Test {
         vm.stopPrank();
 
         // Verify shares are in escrow, not with attacker
-        assertEq(shares.balanceOf(attacker), 0, "Attacker should have 0 shares");
-        assertEq(shares.balanceOf(address(vault)), attackerShares, "Vault should hold escrowed shares");
+        assertEq(vault.balanceOf(attacker), 0, "Attacker should have 0 shares");
+        assertEq(vault.balanceOf(address(vault)), attackerShares, "Vault should hold escrowed shares");
 
         console2.log("ATTACK RESULT: Double spend BLOCKED by escrow");
     }
@@ -206,11 +203,11 @@ contract WhitehatAttackPoC is Test {
         vault.requestWithdrawal(50_000e18);
 
         // Attacker only has 50k shares now (50k escrowed)
-        assertEq(shares.balanceOf(attacker), 50_000e18);
+        assertEq(vault.balanceOf(attacker), 50_000e18);
 
         // Try to transfer more than available
         vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, attacker, 50_000e18, 100_000e18));
-        shares.transfer(victim, 100_000e18);
+        vault.transfer(victim, 100_000e18);
         vm.stopPrank();
 
         console2.log("ATTACK RESULT: Cannot transfer escrowed shares");
@@ -304,11 +301,11 @@ contract WhitehatAttackPoC is Test {
         // 1000% yield - fees are collected atomically with yield reporting
         vault.reportYieldAndCollectFees(10_000_000e6);
 
-        uint256 treasuryShares = shares.balanceOf(treasury);
+        uint256 treasuryShares = vault.balanceOf(treasury);
         assertTrue(treasuryShares > 0, "Treasury should receive fee shares");
 
         // Verify total supply is sane
-        uint256 totalSupply = shares.totalSupply();
+        uint256 totalSupply = vault.totalSupply();
         assertTrue(totalSupply > 0 && totalSupply < type(uint128).max, "Total supply should be reasonable");
 
         console2.log("ATTACK RESULT: Fee calculation handles extreme yield safely");
@@ -352,11 +349,11 @@ contract WhitehatAttackPoC is Test {
         // Attacker deposits
         vm.startPrank(attacker);
         vault.deposit(100_000e6);
-        uint256 sharesBefore = shares.balanceOf(attacker);
+        uint256 sharesBefore = vault.balanceOf(attacker);
 
         // Request withdrawal
         vault.requestWithdrawal(sharesBefore);
-        assertEq(shares.balanceOf(attacker), 0, "Shares escrowed");
+        assertEq(vault.balanceOf(attacker), 0, "Shares escrowed");
         vm.stopPrank();
 
         // Yield reported
@@ -366,7 +363,7 @@ contract WhitehatAttackPoC is Test {
         vm.prank(attacker);
         vault.cancelWithdrawal(0);
 
-        uint256 sharesAfter = shares.balanceOf(attacker);
+        uint256 sharesAfter = vault.balanceOf(attacker);
 
         // Attacker has same shares, now worth more
         // But this is NOT an exploit - they could have just held
@@ -426,7 +423,7 @@ contract WhitehatAttackPoC is Test {
 
         // Victim can still withdraw (at loss)
         vm.startPrank(victim);
-        vault.requestWithdrawal(shares.balanceOf(victim));
+        vault.requestWithdrawal(vault.balanceOf(victim));
         vm.stopPrank();
 
         vm.warp(block.timestamp + COOLDOWN + 1);

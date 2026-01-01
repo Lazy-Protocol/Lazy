@@ -3,14 +3,12 @@ pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
-import {VaultShare} from "../src/VaultShare.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {IVault} from "../src/interfaces/IVault.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract USDCSavingsVaultTest is Test {
     USDCSavingsVault public vault;
-    VaultShare public shares;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -48,7 +46,6 @@ contract USDCSavingsVaultTest is Test {
             "USDC Savings Vault Share",
             "svUSDC"
         );
-        shares = vault.shares();
 
         // Set up operator
         roleManager.setOperator(operator, true);
@@ -122,8 +119,8 @@ contract USDCSavingsVaultTest is Test {
     }
 
     function test_constructor_shareNameSymbol() public view {
-        assertEq(shares.name(), "USDC Savings Vault Share");
-        assertEq(shares.symbol(), "svUSDC");
+        assertEq(vault.name(), "USDC Savings Vault Share");
+        assertEq(vault.symbol(), "svUSDC");
     }
 
     // ============ Deposit Tests ============
@@ -137,7 +134,7 @@ contract USDCSavingsVaultTest is Test {
         // 100k USDC at 1:1 = 100k shares (in 18 decimals = 100_000e18)
         uint256 expectedShares = toShares(depositAmount);
         assertEq(sharesMinted, expectedShares);
-        assertEq(shares.balanceOf(alice), expectedShares);
+        assertEq(vault.balanceOf(alice), expectedShares);
         assertEq(vault.totalDeposited(), depositAmount);
     }
 
@@ -159,8 +156,8 @@ contract USDCSavingsVaultTest is Test {
         vm.prank(bob);
         vault.deposit(200_000e6);
 
-        assertEq(shares.balanceOf(alice), toShares(100_000e6));
-        assertEq(shares.balanceOf(bob), toShares(200_000e6));
+        assertEq(vault.balanceOf(alice), toShares(100_000e6));
+        assertEq(vault.balanceOf(bob), toShares(200_000e6));
         assertEq(vault.totalShares(), toShares(300_000e6));
     }
 
@@ -305,8 +302,8 @@ contract USDCSavingsVaultTest is Test {
         assertEq(vault.withdrawalQueueLength(), 1);
 
         // ESCROW: Alice's shares should be transferred to vault
-        assertEq(shares.balanceOf(alice), toShares(50_000e6)); // 100k - 50k escrowed
-        assertEq(shares.balanceOf(address(vault)), withdrawShares); // Escrowed
+        assertEq(vault.balanceOf(alice), toShares(50_000e6)); // 100k - 50k escrowed
+        assertEq(vault.balanceOf(address(vault)), withdrawShares); // Escrowed
 
         IVault.WithdrawalRequest memory request = vault.getWithdrawalRequest(0);
         assertEq(request.requester, alice);
@@ -369,7 +366,7 @@ contract USDCSavingsVaultTest is Test {
         assertEq(processed, 1);
         assertEq(usdcPaid, 50_000e6);
         assertEq(usdc.balanceOf(alice), aliceUsdcBefore + 50_000e6);
-        assertEq(shares.balanceOf(alice), toShares(50_000e6));
+        assertEq(vault.balanceOf(alice), toShares(50_000e6));
     }
 
     function test_fulfillWithdrawals_fifoOrder() public {
@@ -394,9 +391,9 @@ contract USDCSavingsVaultTest is Test {
         vault.fulfillWithdrawals(1);
 
         // Alice should be processed first (FIFO)
-        assertEq(shares.balanceOf(alice), toShares(50_000e6));
-        assertEq(shares.balanceOf(bob), toShares(50_000e6));
-        assertEq(shares.balanceOf(address(vault)), withdrawShares); // Only Bob's escrow remains
+        assertEq(vault.balanceOf(alice), toShares(50_000e6));
+        assertEq(vault.balanceOf(bob), toShares(50_000e6));
+        assertEq(vault.balanceOf(address(vault)), withdrawShares); // Only Bob's escrow remains
     }
 
     function test_fulfillWithdrawals_respectsCooldown() public {
@@ -474,7 +471,7 @@ contract USDCSavingsVaultTest is Test {
         vault.reportYieldAndCollectFees(20_000e6);
 
         // Treasury should have received fee shares immediately
-        assertTrue(shares.balanceOf(treasury) > 0, "Treasury should receive fees on yield report");
+        assertTrue(vault.balanceOf(treasury) > 0, "Treasury should receive fees on yield report");
     }
 
     function test_feeCollection_noFeeOnDeposit() public {
@@ -489,7 +486,7 @@ contract USDCSavingsVaultTest is Test {
         vault.reportYieldAndCollectFees(0);
 
         // Treasury should NOT receive fees (no yield, only deposits)
-        assertEq(shares.balanceOf(treasury), 0);
+        assertEq(vault.balanceOf(treasury), 0);
     }
 
     function test_feeCollection_noFeeOnLoss() public {
@@ -502,7 +499,7 @@ contract USDCSavingsVaultTest is Test {
         vault.reportYieldAndCollectFees(-10_000e6);
 
         // No fees on loss
-        assertEq(shares.balanceOf(treasury), 0);
+        assertEq(vault.balanceOf(treasury), 0);
     }
 
     function test_reportYieldAndCollectFees_atomic() public {
@@ -516,7 +513,7 @@ contract USDCSavingsVaultTest is Test {
         assertEq(vault.accumulatedYield(), 20_000e6);
 
         // Fees should be collected immediately (20% of 20_000e6 = 4000e6 worth of shares)
-        assertTrue(shares.balanceOf(treasury) > 0);
+        assertTrue(vault.balanceOf(treasury) > 0);
     }
 
     function test_reportYieldAndCollectFees_noFeeOnLoss() public {
@@ -530,7 +527,7 @@ contract USDCSavingsVaultTest is Test {
         assertEq(vault.accumulatedYield(), -10_000e6);
 
         // No fees minted
-        assertEq(shares.balanceOf(treasury), 0);
+        assertEq(vault.balanceOf(treasury), 0);
     }
 
     function test_reportYieldAndCollectFees_onlyOwner() public {
@@ -647,12 +644,12 @@ contract USDCSavingsVaultTest is Test {
         vault.requestWithdrawal(withdrawShares);
 
         assertEq(vault.pendingWithdrawals(), withdrawShares);
-        assertEq(shares.balanceOf(alice), toShares(50_000e6));
+        assertEq(vault.balanceOf(alice), toShares(50_000e6));
 
         vault.cancelWithdrawal(0);
 
         assertEq(vault.pendingWithdrawals(), 0);
-        assertEq(shares.balanceOf(alice), toShares(100_000e6)); // All shares returned
+        assertEq(vault.balanceOf(alice), toShares(100_000e6)); // All shares returned
     }
 
     // ============ Zero Shares Fix Test (M-1) ============
@@ -696,15 +693,15 @@ contract USDCSavingsVaultTest is Test {
         vault.requestWithdrawal(halfShares);
 
         // Alice only has 50k left (50k escrowed in vault)
-        assertEq(shares.balanceOf(alice), halfShares);
-        assertEq(shares.balanceOf(address(vault)), halfShares);
+        assertEq(vault.balanceOf(alice), halfShares);
+        assertEq(vault.balanceOf(address(vault)), halfShares);
 
         // Alice can only transfer her remaining 50k
         vm.prank(alice);
-        shares.transfer(bob, halfShares);
+        vault.transfer(bob, halfShares);
 
-        assertEq(shares.balanceOf(alice), 0);
-        assertEq(shares.balanceOf(bob), halfShares);
+        assertEq(vault.balanceOf(alice), 0);
+        assertEq(vault.balanceOf(bob), halfShares);
 
         vm.warp(block.timestamp + COOLDOWN + 1);
 
@@ -717,9 +714,9 @@ contract USDCSavingsVaultTest is Test {
         // Alice receives USDC for her escrowed shares
         assertEq(usdc.balanceOf(alice), aliceUsdcBefore + 50_000e6);
         // Bob still has his transferred shares
-        assertEq(shares.balanceOf(bob), halfShares);
+        assertEq(vault.balanceOf(bob), halfShares);
         // Escrow is now empty
-        assertEq(shares.balanceOf(address(vault)), 0);
+        assertEq(vault.balanceOf(address(vault)), 0);
     }
 
     // ============ Pause Tests ============
