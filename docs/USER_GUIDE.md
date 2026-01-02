@@ -4,6 +4,49 @@
 
 The USDC Savings Vault allows you to earn yield on your USDC holdings. When you deposit USDC, you receive vault shares that represent your proportional ownership. As the vault generates yield, your shares become worth more USDC.
 
+## How Your USDC is Used
+
+When you deposit USDC, here's where it goes:
+
+```
+Your USDC Deposit
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                           VAULT                                  │
+│  Keeps a buffer (withdrawalBuffer) for immediate withdrawals    │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Excess funds
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         MULTISIG                                 │
+│  Strategy execution wallet controlled by protocol operators     │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Deployed to
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    YIELD STRATEGIES                              │
+│  • Basis Trading (delta-neutral futures arbitrage)              │
+│  • Funding Rate Farming (perpetual futures payments)            │
+│  • Pendle PT (fixed-yield principal tokens)                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Trust Model
+
+**What's Trustless (enforced by smart contract):**
+- Your share balance and ownership percentage
+- Fair NAV calculation for all users
+- Withdrawal queue ordering (first-come, first-served)
+- Fee caps and collection rules
+
+**What Requires Trust:**
+- **Multisig operators** must return funds when needed for withdrawals
+- **Protocol owner** must report accurate yield
+- **Operators** must process withdrawals regularly
+
+> ⚠️ **Important**: This is a semi-custodial vault. Your USDC is deployed to yield strategies via a multisig wallet. If the multisig operators do not return funds, withdrawals exceeding the vault's buffer cannot be fulfilled. Only deposit what you're comfortable trusting to the protocol operators.
+
 ## Getting Started
 
 ### Prerequisites
