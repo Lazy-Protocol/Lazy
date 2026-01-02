@@ -275,6 +275,89 @@ User                    Vault (ERC20)                    Operator
 | Queue starvation | Graceful degradation (I.5) |
 | Reentrancy | OpenZeppelin ReentrancyGuard + CEI pattern |
 
+## Roadmap: Fully Autonomous Protocol
+
+### Current State (V1): Semi-Custodial
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         V1: HUMAN-OPERATED                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   User ──► Vault ──► Multisig (humans) ──► Strategies                       │
+│                           │                                                  │
+│                           └── Trust required here                            │
+│                                                                              │
+│   Limitations:                                                               │
+│   • Multisig operators must manually return funds                           │
+│   • Yield reporting requires human intervention                             │
+│   • Withdrawal fulfillment depends on operator availability                 │
+│   • Strategy execution is off-chain and opaque                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Future State (V2): Autonomous Agent Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      V2: AGENT-OPERATED (TRUSTLESS)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                      SECURE ENCLAVE                                   │  │
+│   │   ┌─────────────────────────────────────────────────────────────┐    │  │
+│   │   │  Agent Keys (TEE-protected, not accessible to operators)    │    │  │
+│   │   └─────────────────────────────────────────────────────────────┘    │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                     AUTONOMOUS AGENTS                                 │  │
+│   │                                                                       │  │
+│   │   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │  │
+│   │   │ Strategy Agent  │  │ Withdrawal Agent│  │  Yield Agent    │      │  │
+│   │   │                 │  │                 │  │                 │      │  │
+│   │   │ • Deploy to     │  │ • Monitor queue │  │ • Calculate PnL │      │  │
+│   │   │   on-chain      │  │ • Auto-fulfill  │  │ • Report yield  │      │  │
+│   │   │   protocols     │  │ • Rebalance     │  │ • Collect fees  │      │  │
+│   │   │ • Rebalance     │  │   liquidity     │  │                 │      │  │
+│   │   │ • Risk manage   │  │                 │  │                 │      │  │
+│   │   └─────────────────┘  └─────────────────┘  └─────────────────┘      │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                        ON-CHAIN ONLY                                  │  │
+│   │                                                                       │  │
+│   │   Vault ◄──► Aave / Compound / Pendle / GMX / Hyperliquid            │  │
+│   │         (no off-chain positions, fully auditable 24/7)               │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### V2 Benefits
+
+| Aspect | V1 (Current) | V2 (Future) |
+|--------|--------------|-------------|
+| **Custody** | Semi-custodial (multisig) | Non-custodial (agents + on-chain) |
+| **Trust** | Trust multisig operators | Trust code + secure enclave |
+| **Withdrawal** | Manual fulfillment | Automatic 24/7 |
+| **Yield Reporting** | Manual, 1x daily | Automatic, real-time |
+| **Auditability** | Off-chain positions opaque | 100% on-chain, verifiable |
+| **Uptime** | Depends on operators | 24/7 autonomous |
+| **Decentralization** | Centralized operators | Maximally decentralized |
+
+### Migration Path
+
+1. **V1 (Now)**: Human-operated multisig, proven security model
+2. **V1.5**: Add on-chain strategy modules (Aave, Pendle direct integration)
+3. **V2**: Deploy autonomous agents with TEE key management
+4. **V2.1**: Remove human multisig entirely, full agent control
+
+> The current V1 architecture is intentionally simple to establish security and trust. The modular design (separate RoleManager, external multisig) facilitates the future transition to fully autonomous operation.
+
 ## Upgrade Path
 
 The architecture supports future upgrades:
