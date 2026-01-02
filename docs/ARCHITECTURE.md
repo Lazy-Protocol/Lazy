@@ -84,6 +84,119 @@ Centralized access control and pause management.
 - Three granular pause states for flexibility
 - Ownership transfer with 2-step acceptance pattern
 
+## USDC Flow & Yield Strategies
+
+### Capital Flow Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CAPITAL FLOW                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────┐      deposit()      ┌─────────────────────────────────────┐  │
+│   │   User   │ ──────────────────► │           Vault                     │  │
+│   └──────────┘                     │   usdc.balanceOf(vault)             │  │
+│        ▲                           │   ─────────────────────             │  │
+│        │                           │   Keeps: withdrawalBuffer           │  │
+│        │ USDC                      │   (liquidity for withdrawals)       │  │
+│        │                           └──────────────┬──────────────────────┘  │
+│        │                                          │                         │
+│        │                                          │ Excess above buffer     │
+│        │                                          │ via _forwardToMultisig()│
+│        │                                          ▼                         │
+│        │                           ┌─────────────────────────────────────┐  │
+│        │                           │          Multisig                   │  │
+│        │                           │   (Strategy Execution Wallet)       │  │
+│        │                           └──────────────┬──────────────────────┘  │
+│        │                                          │                         │
+│        │                                          │ Deploys to strategies   │
+│        │                                          ▼                         │
+│        │                           ┌─────────────────────────────────────┐  │
+│        │                           │       Yield Strategies              │  │
+│        │                           ├─────────────────────────────────────┤  │
+│        │                           │  • Basis Trading                    │  │
+│        │                           │  • Funding Rate Farming             │  │
+│        │                           │  • Pendle Principal Tokens (PT)     │  │
+│        │                           └─────────────────────────────────────┘  │
+│        │                                          │                         │
+│        │           receiveFundsFromMultisig()     │ Yield accrues           │
+│        └──────────────────────────────────────────┘                         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Yield Strategy Details
+
+| Strategy | Description | Liquidity Profile |
+|----------|-------------|-------------------|
+| **Basis Trading** | Delta-neutral positions exploiting spot-futures price differences | Variable - requires unwinding positions |
+| **Funding Rate Farming** | Collecting funding payments from perpetual futures positions | Variable - positions can be closed, may have timing considerations |
+| **Pendle PT** | Purchasing Principal Tokens for fixed yield at maturity | Fixed maturity - early exit may reduce yield |
+
+### How Yield is Reported
+
+1. **Off-chain calculation**: Owner calculates net yield from all strategies
+2. **On-chain report**: Owner calls `reportYieldAndCollectFees(yieldDelta)`
+3. **NAV updates**: `accumulatedYield += yieldDelta` affects all share prices
+4. **Fees collected**: If positive yield, treasury receives fee shares
+
+```
+Strategy Returns          Owner Reports             NAV Updates
+      │                        │                         │
+      ▼                        ▼                         ▼
+ Basis: +2.5%    ───►   reportYield(+50k)   ───►   sharePrice ↑
+ Funding: +1.2%         (aggregated)               (all holders benefit)
+ Pendle: +3.1%
+```
+
+### Trust Model for Capital Custody
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           TRUST BOUNDARIES                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   TRUSTLESS (enforced by smart contract):                                   │
+│   ├─ Share accounting (cannot be manipulated)                               │
+│   ├─ NAV calculation formula                                                │
+│   ├─ Withdrawal queue FIFO ordering                                         │
+│   ├─ Fee rate caps (max 50%)                                                │
+│   └─ Escrow mechanics (no double-spend)                                     │
+│                                                                              │
+│   TRUSTED (relies on off-chain actors):                                     │
+│   ├─ Multisig: Must return funds for withdrawal fulfillment                 │
+│   ├─ Owner: Must report accurate yield                                      │
+│   └─ Operator: Must call fulfillWithdrawals regularly                       │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│   ⚠️  CRITICAL: If multisig does not return funds, withdrawals exceeding    │
+│       the vault's USDC buffer cannot be fulfilled. Users trust the          │
+│       multisig operators to honor withdrawal requests.                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Withdrawal Liquidity
+
+```
+Scenario: Vault has 100k buffer, 900k deployed to strategies
+
+┌─────────────────────────────────────────────────────────┐
+│  Pending Withdrawals: 50k USDC                          │
+│  ───────────────────────────────────────────────────────│
+│  ✓ Fulfilled immediately from buffer                   │
+│    Buffer: 100k → 50k                                   │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  Pending Withdrawals: 200k USDC                         │
+│  ───────────────────────────────────────────────────────│
+│  1. First 100k fulfilled from buffer                    │
+│  2. fulfillWithdrawals() stops (insufficient liquidity) │
+│  3. Multisig must call receiveFundsFromMultisig(100k+)  │
+│  4. Operator calls fulfillWithdrawals() again           │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Data Flow
 
 ### Deposit Flow
@@ -144,11 +257,13 @@ User                    Vault (ERC20)                    Operator
 
 ### Trust Assumptions
 
-| Entity | Trust Level | Justification |
-|--------|-------------|---------------|
-| Owner | High | Can pause, cancel withdrawals, report yield, update parameters |
-| Operator | Medium | Can fulfill withdrawals, pause (not unpause) |
-| Multisig | Medium | Holds strategy funds; cannot affect share accounting |
+| Entity | Trust Level | What They Control | Risk if Malicious |
+|--------|-------------|-------------------|-------------------|
+| Owner | High | Yield reports, config changes, emergency functions | Can misreport yield (bounded by 1%/day default), delay withdrawals via cooldown changes |
+| Operator | Medium | Withdrawal fulfillment, pause (not unpause) | Can delay fulfillment, cannot steal funds |
+| Multisig | **Critical** | USDC deployed to yield strategies | **Can refuse to return funds, blocking withdrawals beyond buffer** |
+
+**Important**: This is a semi-custodial protocol. Users trust the multisig to return funds when needed for withdrawals. The smart contract cannot force the multisig to return funds.
 
 ### Attack Vectors & Mitigations
 
