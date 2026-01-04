@@ -1,4 +1,4 @@
-// USDCSavingsVault ABI - only the functions we need for the frontend
+// LazyUSDVault ABI - only the functions we need for the frontend
 export const vaultAbi = [
   // Read functions
   {

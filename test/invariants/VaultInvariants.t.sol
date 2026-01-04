@@ -2,13 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../../src/LazyUSDVault.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
 /**
  * @title VaultInvariantTest
- * @notice Foundry invariant fuzz tests for USDCSavingsVault
+ * @notice Foundry invariant fuzz tests for LazyUSDVault
  *
  * Tests the following formal invariants:
  *
@@ -28,7 +28,7 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  *       FIFO order, graceful termination, no reverts on low liquidity
  */
 contract VaultInvariantTest is Test {
-    USDCSavingsVault public vault;
+    LazyUSDVault public vault;
     RoleManager public roleManager;
     MockUSDC public usdc;
     VaultHandler public handler;
@@ -50,7 +50,7 @@ contract VaultInvariantTest is Test {
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
 
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             multisig,
@@ -200,7 +200,7 @@ contract VaultInvariantTest is Test {
  * Provides bounded actions that simulate real user/operator behavior
  */
 contract VaultHandler is Test {
-    USDCSavingsVault public vault;
+    LazyUSDVault public vault;
     MockUSDC public usdc;
     RoleManager public roleManager;
     address public operator;
@@ -215,7 +215,7 @@ contract VaultHandler is Test {
     uint256 public ghost_totalFeesMinted;
 
     constructor(
-        USDCSavingsVault _vault,
+        LazyUSDVault _vault,
         MockUSDC _usdc,
         RoleManager _roleManager,
         address _operator

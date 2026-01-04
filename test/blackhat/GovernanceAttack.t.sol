@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../../src/LazyUSDVault.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -12,7 +12,7 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  * @dev Tests the trust assumption in STATEMENT D.2
  */
 contract GovernanceAttack is Test {
-    USDCSavingsVault vault;
+    LazyUSDVault vault;
     RoleManager roleManager;
     MockUSDC usdc;
 
@@ -25,7 +25,7 @@ contract GovernanceAttack is Test {
     function setUp() public {
         usdc = new MockUSDC();
         roleManager = new RoleManager(maliciousOwner);
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             makeAddr("multisig"),
@@ -137,7 +137,7 @@ contract GovernanceAttack is Test {
         vm.warp(block.timestamp + 1 days + 1);
 
         int256 excessiveYield = int256(nav * 10 / 100); // 10%
-        vm.expectRevert(USDCSavingsVault.YieldChangeTooLarge.selector);
+        vm.expectRevert(LazyUSDVault.YieldChangeTooLarge.selector);
         vault.reportYieldAndCollectFees(excessiveYield);
 
         console2.log("REVERTED: YieldChangeTooLarge");
