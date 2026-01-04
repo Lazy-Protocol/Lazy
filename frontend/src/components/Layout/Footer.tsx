@@ -14,7 +14,7 @@ export function Footer() {
                 <text x="60" y="34" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontSize="32" fontWeight="700" fill="#FAFBFC" letterSpacing="-0.03em">lazy</text>
               </svg>
             </div>
-            <p>Yield protocol for people who have better things to do.</p>
+            <p>The home for patient capital.</p>
           </div>
 
           <div className="footer-column">
