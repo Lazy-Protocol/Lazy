@@ -17,8 +17,30 @@ export function Header() {
         </Link>
 
         <div className="nav-links">
-          <a href="#vaults" className="nav-link">Vaults</a>
-          <a href="#how-it-works" className="nav-link">How it works</a>
+          <Link
+            to="/#vaults"
+            className="nav-link"
+            onClick={(e) => {
+              if (location.pathname === '/') {
+                e.preventDefault();
+                document.getElementById('vaults')?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+          >
+            Vaults
+          </Link>
+          <Link
+            to="/#how-it-works"
+            className="nav-link"
+            onClick={(e) => {
+              if (location.pathname === '/') {
+                e.preventDefault();
+                document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+          >
+            How it works
+          </Link>
           <Link to="/docs" className={`nav-link ${location.pathname === '/docs' ? 'active' : ''}`}>
             Docs
           </Link>
