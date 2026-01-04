@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../../src/LazyUSDVault.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -12,7 +12,7 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  * @dev Target: escrowedShares < pendingWithdrawalShares = PROFIT
  */
 contract EscrowInvariantBreak is Test {
-    USDCSavingsVault vault;
+    LazyUSDVault vault;
     RoleManager roleManager;
     MockUSDC usdc;
 
@@ -23,7 +23,7 @@ contract EscrowInvariantBreak is Test {
     function setUp() public {
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             makeAddr("multisig"),
@@ -56,7 +56,7 @@ contract EscrowInvariantBreak is Test {
         console2.log("");
         console2.log("Attempting transfer to vault...");
 
-        vm.expectRevert(USDCSavingsVault.CannotTransferToVault.selector);
+        vm.expectRevert(LazyUSDVault.CannotTransferToVault.selector);
         vault.transfer(address(vault), shares);
 
         console2.log("BLOCKED: CannotTransferToVault");
@@ -84,7 +84,7 @@ contract EscrowInvariantBreak is Test {
         // Try to request again with same shares
         console2.log("");
         console2.log("Attempting second withdrawal request...");
-        vm.expectRevert(USDCSavingsVault.InsufficientShares.selector);
+        vm.expectRevert(LazyUSDVault.InsufficientShares.selector);
         vault.requestWithdrawal(1);
 
         console2.log("BLOCKED: InsufficientShares");
@@ -168,7 +168,7 @@ contract EscrowInvariantBreak is Test {
         // Try 11th request
         console2.log("");
         console2.log("Attempting 11th request...");
-        vm.expectRevert(USDCSavingsVault.TooManyPendingRequests.selector);
+        vm.expectRevert(LazyUSDVault.TooManyPendingRequests.selector);
         vault.requestWithdrawal(sharePerRequest);
 
         console2.log("BLOCKED: TooManyPendingRequests");

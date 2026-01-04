@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../../src/LazyUSDVault.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -12,7 +12,7 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  * @dev Run with: halmos --contract HalmosChecks
  */
 contract HalmosChecks is Test {
-    USDCSavingsVault public vault;
+    LazyUSDVault public vault;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -30,7 +30,7 @@ contract HalmosChecks is Test {
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
 
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             multisig,

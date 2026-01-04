@@ -2,13 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../src/LazyUSDVault.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {IVault} from "../src/interfaces/IVault.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
-contract USDCSavingsVaultTest is Test {
-    USDCSavingsVault public vault;
+contract LazyUSDVaultTest is Test {
+    LazyUSDVault public vault;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -36,7 +36,7 @@ contract USDCSavingsVaultTest is Test {
         roleManager = new RoleManager(owner);
 
         // Deploy Vault (yield tracking is now internal)
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             multisig,
@@ -95,27 +95,27 @@ contract USDCSavingsVaultTest is Test {
     }
 
     function test_constructor_reverts_zeroAddress() public {
-        vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(0), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
+        vm.expectRevert(LazyUSDVault.ZeroAddress.selector);
+        new LazyUSDVault(address(0), address(roleManager), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
 
-        vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(usdc), address(0), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
+        vm.expectRevert(LazyUSDVault.ZeroAddress.selector);
+        new LazyUSDVault(address(usdc), address(0), multisig, treasury, FEE_RATE, COOLDOWN, "Test", "TST");
 
-        vm.expectRevert(USDCSavingsVault.ZeroAddress.selector);
-        new USDCSavingsVault(address(usdc), address(roleManager), address(0), treasury, FEE_RATE, COOLDOWN, "Test", "TST");
+        vm.expectRevert(LazyUSDVault.ZeroAddress.selector);
+        new LazyUSDVault(address(usdc), address(roleManager), address(0), treasury, FEE_RATE, COOLDOWN, "Test", "TST");
     }
 
     function test_constructor_reverts_invalidFeeRate() public {
-        vm.expectRevert(USDCSavingsVault.InvalidFeeRate.selector);
-        new USDCSavingsVault(address(usdc), address(roleManager), multisig, treasury, 0.6e18, COOLDOWN, "Test", "TST");
+        vm.expectRevert(LazyUSDVault.InvalidFeeRate.selector);
+        new LazyUSDVault(address(usdc), address(roleManager), multisig, treasury, 0.6e18, COOLDOWN, "Test", "TST");
     }
 
     function test_constructor_reverts_invalidCooldown() public {
-        vm.expectRevert(USDCSavingsVault.InvalidCooldown.selector);
-        new USDCSavingsVault(address(usdc), address(roleManager), multisig, treasury, FEE_RATE, 0, "Test", "TST");
+        vm.expectRevert(LazyUSDVault.InvalidCooldown.selector);
+        new LazyUSDVault(address(usdc), address(roleManager), multisig, treasury, FEE_RATE, 0, "Test", "TST");
 
-        vm.expectRevert(USDCSavingsVault.InvalidCooldown.selector);
-        new USDCSavingsVault(address(usdc), address(roleManager), multisig, treasury, FEE_RATE, 31 days, "Test", "TST");
+        vm.expectRevert(LazyUSDVault.InvalidCooldown.selector);
+        new LazyUSDVault(address(usdc), address(roleManager), multisig, treasury, FEE_RATE, 31 days, "Test", "TST");
     }
 
     function test_constructor_shareNameSymbol() public view {
@@ -185,7 +185,7 @@ contract USDCSavingsVaultTest is Test {
 
     function test_deposit_reverts_zeroAmount() public {
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.ZeroAmount.selector);
+        vm.expectRevert(LazyUSDVault.ZeroAmount.selector);
         vault.deposit(0);
     }
 
@@ -193,7 +193,7 @@ contract USDCSavingsVaultTest is Test {
         roleManager.pause();
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.Paused.selector);
+        vm.expectRevert(LazyUSDVault.Paused.selector);
         vault.deposit(100_000e6);
     }
 
@@ -202,7 +202,7 @@ contract USDCSavingsVaultTest is Test {
         roleManager.pauseDeposits();
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.DepositsPaused.selector);
+        vm.expectRevert(LazyUSDVault.DepositsPaused.selector);
         vault.deposit(100_000e6);
     }
 
@@ -210,7 +210,7 @@ contract USDCSavingsVaultTest is Test {
         vault.setPerUserCap(50_000e6);
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.ExceedsUserCap.selector);
+        vm.expectRevert(LazyUSDVault.ExceedsUserCap.selector);
         vault.deposit(100_000e6);
     }
 
@@ -329,7 +329,7 @@ contract USDCSavingsVaultTest is Test {
         vault.deposit(100_000e6);
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.ZeroAmount.selector);
+        vm.expectRevert(LazyUSDVault.ZeroAmount.selector);
         vault.requestWithdrawal(0);
     }
 
@@ -338,7 +338,7 @@ contract USDCSavingsVaultTest is Test {
         vault.deposit(100_000e6);
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.InsufficientShares.selector);
+        vm.expectRevert(LazyUSDVault.InsufficientShares.selector);
         vault.requestWithdrawal(toShares(200_000e6));
     }
 
@@ -611,7 +611,7 @@ contract USDCSavingsVaultTest is Test {
         vm.warp(block.timestamp + COOLDOWN + 1);
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.OnlyOperator.selector);
+        vm.expectRevert(LazyUSDVault.OnlyOperator.selector);
         vault.fulfillWithdrawals(10);
     }
 
@@ -730,11 +730,11 @@ contract USDCSavingsVaultTest is Test {
         roleManager.pause();
 
         vm.prank(bob);
-        vm.expectRevert(USDCSavingsVault.Paused.selector);
+        vm.expectRevert(LazyUSDVault.Paused.selector);
         vault.deposit(100_000e6);
 
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.Paused.selector);
+        vm.expectRevert(LazyUSDVault.Paused.selector);
         vault.requestWithdrawal(toShares(50_000e6));
     }
 
@@ -827,7 +827,7 @@ contract USDCSavingsVaultTest is Test {
 
     function test_yieldReporting_onlyOwnerCanReport() public {
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.OnlyOwner.selector);
+        vm.expectRevert(LazyUSDVault.OnlyOwner.selector);
         vault.reportYieldAndCollectFees(1_000_000e6);
     }
 
@@ -847,7 +847,7 @@ contract USDCSavingsVaultTest is Test {
 
     function test_receiveFundsFromMultisig_onlyMultisig() public {
         vm.prank(alice);
-        vm.expectRevert(USDCSavingsVault.OnlyMultisig.selector);
+        vm.expectRevert(LazyUSDVault.OnlyMultisig.selector);
         vault.receiveFundsFromMultisig(50_000e6);
     }
 }

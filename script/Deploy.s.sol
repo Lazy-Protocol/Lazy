@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../src/LazyUSDVault.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 
 /**
  * @title DeployScript
- * @notice Deployment script for the USDC Savings Vault system
+ * @notice Deployment script for the LazyUSD Vault system
  *
  * Deploys:
  * 1. RoleManager - Access control and pause management
- * 2. USDCSavingsVault - Main vault contract (with internal yield tracking)
+ * 2. LazyUSDVault - Main vault contract (with internal yield tracking)
  *
  * Usage:
  * forge script script/Deploy.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast --verify
@@ -26,7 +26,7 @@ import {RoleManager} from "../src/RoleManager.sol";
 contract DeployScript {
     struct DeployedContracts {
         RoleManager roleManager;
-        USDCSavingsVault vault;
+        LazyUSDVault vault;
     }
 
     function run() external returns (DeployedContracts memory deployed) {
@@ -43,16 +43,16 @@ contract DeployScript {
         // 1. Deploy RoleManager
         deployed.roleManager = new RoleManager(owner);
 
-        // 2. Deploy Vault (yield tracking is now internal)
-        deployed.vault = new USDCSavingsVault(
+        // 2. Deploy LazyUSD Vault
+        deployed.vault = new LazyUSDVault(
             usdc,
             address(deployed.roleManager),
             multisig,
             treasury,
             feeRate,
             cooldownPeriod,
-            "USDC Savings Vault Share",
-            "svUSDC"
+            "LazyUSD",
+            "lazyUSD"
         );
 
         vm.stopBroadcast();

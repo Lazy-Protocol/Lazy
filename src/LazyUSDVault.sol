@@ -8,7 +8,7 @@ import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
- * @title USDCSavingsVault
+ * @title LazyUSDVault
  * @notice A USDC-denominated savings vault with share-based NAV model
  * @dev Uses internal yield tracking and IRoleManager for access control
  *
@@ -130,7 +130,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * all shares, regardless of state, rise and fall together.
  * =============================================================================
  */
-contract USDCSavingsVault is IVault, ERC20, ReentrancyGuard {
+contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     // ============ Constants ============
 
     uint256 public constant PRECISION = 1e18;

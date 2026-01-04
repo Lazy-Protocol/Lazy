@@ -10,7 +10,7 @@ export function Docs() {
         <h2 className="text-xl font-semibold text-drift-white mb-4">Overview</h2>
         <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
           <p className="text-drift-white/70 mb-4">
-            The USDC Savings Vault allows you to earn yield on your USDC holdings. When you
+            The LazyUSD Vault allows you to earn yield on your USDC holdings. When you
             deposit USDC, you receive vault shares that represent your proportional ownership.
             As the vault generates yield, your shares become worth more USDC.
           </p>

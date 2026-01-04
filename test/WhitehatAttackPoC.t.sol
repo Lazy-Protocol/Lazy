@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../src/LazyUSDVault.sol";
 import {RoleManager} from "../src/RoleManager.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -13,7 +13,7 @@ import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.so
  * @dev All tests should PASS, proving the attacks are unsuccessful
  */
 contract WhitehatAttackPoC is Test {
-    USDCSavingsVault public vault;
+    LazyUSDVault public vault;
     RoleManager public roleManager;
     MockUSDC public usdc;
 
@@ -33,7 +33,7 @@ contract WhitehatAttackPoC is Test {
         usdc = new MockUSDC();
         roleManager = new RoleManager(owner);
 
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             multisig,
@@ -182,7 +182,7 @@ contract WhitehatAttackPoC is Test {
         vault.requestWithdrawal(attackerShares);
 
         // Attacker tries to request again with same shares
-        vm.expectRevert(USDCSavingsVault.InsufficientShares.selector);
+        vm.expectRevert(LazyUSDVault.InsufficientShares.selector);
         vault.requestWithdrawal(attackerShares);
         vm.stopPrank();
 
@@ -330,7 +330,7 @@ contract WhitehatAttackPoC is Test {
         }
 
         // 11th request should fail
-        vm.expectRevert(USDCSavingsVault.TooManyPendingRequests.selector);
+        vm.expectRevert(LazyUSDVault.TooManyPendingRequests.selector);
         vault.requestWithdrawal(1e18);
         vm.stopPrank();
 
@@ -392,7 +392,7 @@ contract WhitehatAttackPoC is Test {
 
         // Verify attacker cannot request withdrawal of victim's shares
         vm.prank(attacker);
-        vm.expectRevert(USDCSavingsVault.InsufficientShares.selector);
+        vm.expectRevert(LazyUSDVault.InsufficientShares.selector);
         vault.requestWithdrawal(100_000e18); // Attacker has no shares
 
         console2.log("ATTACK RESULT: Cannot abuse vault's transfer privilege");
@@ -446,10 +446,10 @@ contract WhitehatAttackPoC is Test {
  * @notice Mock attacker contract for reentrancy testing
  */
 contract ReentrancyAttacker {
-    USDCSavingsVault public vault;
+    LazyUSDVault public vault;
     MockUSDC public usdc;
 
-    constructor(USDCSavingsVault _vault, MockUSDC _usdc) {
+    constructor(LazyUSDVault _vault, MockUSDC _usdc) {
         vault = _vault;
         usdc = _usdc;
         usdc.approve(address(_vault), type(uint256).max);

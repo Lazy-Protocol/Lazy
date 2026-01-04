@@ -73,7 +73,7 @@ export function Home() {
               <div className="vault-icon vault-icon-usdc">$</div>
               <div>
                 <h3 className="vault-title">lazyUSD</h3>
-                <p className="vault-subtitle">USDC Savings Vault</p>
+                <p className="vault-subtitle">Lazy USDC Vault</p>
               </div>
             </div>
 

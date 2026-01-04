@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {USDCSavingsVault} from "../../src/USDCSavingsVault.sol";
+import {LazyUSDVault} from "../../src/LazyUSDVault.sol";
 import {RoleManager} from "../../src/RoleManager.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
@@ -11,7 +11,7 @@ import {MockUSDC} from "../mocks/MockUSDC.sol";
  * @notice Attempts classic ERC4626 first-depositor inflation attack
  */
 contract BlackhatInflationAttack is Test {
-    USDCSavingsVault vault;
+    LazyUSDVault vault;
     RoleManager roleManager;
     MockUSDC usdc;
 
@@ -21,7 +21,7 @@ contract BlackhatInflationAttack is Test {
     function setUp() public {
         usdc = new MockUSDC();
         roleManager = new RoleManager(address(this));
-        vault = new USDCSavingsVault(
+        vault = new LazyUSDVault(
             address(usdc),
             address(roleManager),
             makeAddr("multisig"),
