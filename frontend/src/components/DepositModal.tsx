@@ -1,39 +1,36 @@
 import { useState, useEffect } from 'react';
-import { X, Loader2, Check, AlertCircle } from 'lucide-react';
+import { X, Info } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import {
   useUserData,
+  useVaultStats,
   useApprove,
   useDeposit,
   formatUsdc,
   parseUsdc,
 } from '@/hooks/useVault';
+import { formatUnits } from 'viem';
 import toast from 'react-hot-toast';
 
 interface DepositModalProps {
   onClose: () => void;
 }
 
-type Step = 'input' | 'approve' | 'deposit' | 'success';
-
 export function DepositModal({ onClose }: DepositModalProps) {
-  const [amount, setAmount] = useState('');
-  const [step, setStep] = useState<Step>('input');
+  const [amount, setAmount] = useState('1000');
+  const [isProcessing, setIsProcessing] = useState(false);
   const { address } = useAccount();
   const { usdcBalance, usdcAllowance, refetch } = useUserData(address);
+  const { sharePrice } = useVaultStats();
 
   const {
     approve,
-    isPending: isApproving,
-    isConfirming: isApproveConfirming,
     isSuccess: isApproveSuccess,
     error: approveError,
   } = useApprove();
 
   const {
     deposit,
-    isPending: isDepositing,
-    isConfirming: isDepositConfirming,
     isSuccess: isDepositSuccess,
     error: depositError,
   } = useDeposit();
@@ -43,46 +40,49 @@ export function DepositModal({ onClose }: DepositModalProps) {
   const hasInsufficientBalance = usdcBalance !== undefined && parsedAmount > usdcBalance;
   const isValidAmount = parsedAmount > 0n && !hasInsufficientBalance;
 
+  // Calculate shares to receive
+  const sharesToReceive = sharePrice && parsedAmount > 0n
+    ? (parsedAmount * BigInt(1e18)) / sharePrice
+    : 0n;
+
+  const exchangeRate = sharePrice
+    ? Number(formatUnits(sharePrice, 18)).toFixed(4)
+    : '1.0000';
+
   // Handle approve success
   useEffect(() => {
-    if (isApproveSuccess && step === 'approve') {
+    if (isApproveSuccess && isProcessing) {
       toast.success('USDC approved!');
       refetch();
-      setStep('deposit');
-      // Auto-trigger deposit after approval
       deposit(parsedAmount);
     }
-  }, [isApproveSuccess, step]);
+  }, [isApproveSuccess]);
 
   // Handle deposit success
   useEffect(() => {
-    if (isDepositSuccess && step === 'deposit') {
+    if (isDepositSuccess && isProcessing) {
       toast.success('Deposit successful!');
       refetch();
-      setStep('success');
+      setIsProcessing(false);
+      onClose();
     }
-  }, [isDepositSuccess, step]);
+  }, [isDepositSuccess]);
 
   // Handle errors
   useEffect(() => {
-    if (approveError) {
-      toast.error('Approval failed');
-      setStep('input');
-    }
-    if (depositError) {
-      toast.error('Deposit failed');
-      setStep('input');
+    if (approveError || depositError) {
+      toast.error('Transaction failed');
+      setIsProcessing(false);
     }
   }, [approveError, depositError]);
 
   const handleSubmit = () => {
     if (!isValidAmount) return;
+    setIsProcessing(true);
 
     if (needsApproval) {
-      setStep('approve');
       approve(parsedAmount);
     } else {
-      setStep('deposit');
       deposit(parsedAmount);
     }
   };
@@ -94,161 +94,71 @@ export function DepositModal({ onClose }: DepositModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className="relative bg-lazy-navy-light border border-lazy-navy-light rounded-2xl w-full max-w-md mx-4 p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-drift-white">Deposit USDC</h2>
-          <button
-            onClick={onClose}
-            className="text-drift-white/50 hover:text-drift-white transition-colors"
-          >
-            <X className="w-5 h-5" />
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <h3 className="modal-title">Deposit USDC</h3>
+          <button className="modal-close" onClick={onClose}>
+            <X size={20} />
           </button>
         </div>
 
-        {step === 'success' ? (
-          <div className="text-center py-8">
-            <div className="w-16 h-16 bg-success/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-success" />
-            </div>
-            <h3 className="text-lg font-semibold text-drift-white mb-2">
-              Deposit Successful!
-            </h3>
-            <p className="text-drift-white/70 mb-6">
-              You have deposited {amount} USDC into the vault.
-            </p>
-            <button
-              onClick={onClose}
-              className="w-full bg-yield-gold hover:bg-yield-gold-light text-lazy-navy font-semibold py-3 rounded-xl transition-colors"
-            >
-              Done
+        <div className="input-group">
+          <label className="input-label">Amount</label>
+          <div className="input-wrapper">
+            <input
+              type="text"
+              className="input"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+              disabled={isProcessing}
+            />
+            <button className="input-max" onClick={handleMaxClick} disabled={isProcessing}>
+              MAX
             </button>
           </div>
-        ) : (
-          <>
-            {/* Amount Input */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm text-drift-white/70">Amount</label>
-                <span className="text-sm text-drift-white/50">
-                  Balance: {usdcBalance ? formatUsdc(usdcBalance) : '—'} USDC
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                  placeholder="0.00"
-                  disabled={step !== 'input'}
-                  className="w-full bg-lazy-navy border border-lazy-navy-light rounded-xl px-4 py-3 text-drift-white text-lg placeholder:text-drift-white/30 focus:outline-none focus:border-yield-gold disabled:opacity-50"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <button
-                    onClick={handleMaxClick}
-                    disabled={step !== 'input'}
-                    className="text-xs text-yield-gold hover:text-yield-gold-light disabled:opacity-50"
-                  >
-                    MAX
-                  </button>
-                  <span className="text-drift-white/50 text-sm">USDC</span>
-                </div>
-              </div>
-              {hasInsufficientBalance && (
-                <p className="text-error text-sm mt-2 flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  Insufficient balance
-                </p>
-              )}
-            </div>
+          <div className="input-helper">
+            <span>Balance: {usdcBalance ? formatUsdc(usdcBalance) : '0.00'} USDC</span>
+            <span>≈ ${amount || '0.00'}</span>
+          </div>
+        </div>
 
-            {/* Transaction Steps */}
-            {step !== 'input' && (
-              <div className="mb-6 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      step === 'approve'
-                        ? 'bg-yield-gold text-lazy-navy'
-                        : 'bg-success text-white'
-                    }`}
-                  >
-                    {step === 'approve' ? (
-                      isApproving || isApproveConfirming ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        '1'
-                      )
-                    ) : (
-                      <Check className="w-4 h-4" />
-                    )}
-                  </div>
-                  <span
-                    className={
-                      step === 'approve' ? 'text-drift-white' : 'text-drift-white/50'
-                    }
-                  >
-                    Approve USDC
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      step === 'deposit'
-                        ? 'bg-yield-gold text-lazy-navy'
-                        : 'bg-lazy-navy text-drift-white/50'
-                    }`}
-                  >
-                    {step === 'deposit' && (isDepositing || isDepositConfirming) ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      '2'
-                    )}
-                  </div>
-                  <span
-                    className={
-                      step === 'deposit' ? 'text-drift-white' : 'text-drift-white/50'
-                    }
-                  >
-                    Deposit to Vault
-                  </span>
-                </div>
-              </div>
-            )}
+        <div className="conversion-box">
+          <div className="conversion-row">
+            <span className="conversion-label">You'll receive</span>
+            <span className="conversion-value">
+              ~{sharesToReceive ? Number(formatUnits(sharesToReceive, 18)).toFixed(2) : '0.00'} lazyUSD
+            </span>
+          </div>
+          <div className="conversion-row">
+            <span className="conversion-label">Exchange rate</span>
+            <span className="conversion-value">1 lazyUSD = {exchangeRate} USDC</span>
+          </div>
+          <div className="conversion-row">
+            <span className="conversion-label">Current APY</span>
+            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>5.2%</span>
+          </div>
+        </div>
 
-            {/* Submit Button */}
-            <button
-              onClick={handleSubmit}
-              disabled={!isValidAmount || step !== 'input'}
-              className="w-full bg-yield-gold hover:bg-yield-gold-light disabled:bg-yield-gold/50 disabled:cursor-not-allowed text-lazy-navy font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
-            >
-              {step === 'input' ? (
-                needsApproval ? (
-                  'Approve & Deposit'
-                ) : (
-                  'Deposit'
-                )
-              ) : (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processing...
-                </>
-              )}
-            </button>
+        <div className="modal-info">
+          <Info size={20} />
+          <p>Your lazyUSD will grow in value as yield accrues. No action needed—it's automatic.</p>
+        </div>
 
-            {/* Info */}
-            <p className="text-center text-drift-white/50 text-xs mt-4">
-              You will receive lazyUSD shares representing your deposit.
-            </p>
-          </>
+        <button
+          className="btn btn-primary"
+          style={{ width: '100%' }}
+          onClick={handleSubmit}
+          disabled={!isValidAmount || isProcessing}
+        >
+          {isProcessing ? 'Processing...' : needsApproval ? 'Approve & Deposit' : 'Confirm Deposit'}
+        </button>
+
+        {hasInsufficientBalance && (
+          <p style={{ color: 'var(--risk-red)', fontSize: '0.875rem', textAlign: 'center', marginTop: '12px' }}>
+            Insufficient USDC balance
+          </p>
         )}
       </div>
     </div>
