@@ -1,8 +1,10 @@
 # LazyUSD Vault
 
-A secure, yield-bearing USDC vault with share-based NAV accounting and async withdrawals.
+**The home for patient capital.** A secure, yield-bearing USDC vault with share-based NAV accounting.
 
 ## Overview
+
+Patient capital, rewarded. Deposit USDC, receive lazyUSD tokens that grow in value over time, and collect when you're ready. No staking. No claiming. Just yield.
 
 The LazyUSD Vault allows users to deposit USDC and receive shares representing their proportional ownership. Yield from external strategies is reported by the owner, and all shareholders benefit proportionally.
 

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The LazyUSD Vault allows you to earn yield on your USDC holdings. When you deposit USDC, you receive vault shares that represent your proportional ownership. As the vault generates yield, your shares become worth more USDC.
+**Patient capital, rewarded.** The LazyUSD Vault lets you earn yield on your USDC—no staking, no claiming, just wait and collect. When you deposit USDC, you receive lazyUSD tokens representing your proportional ownership. As the vault generates yield, your lazyUSD becomes worth more USDC.
 
 ## How Your USDC is Used
 
