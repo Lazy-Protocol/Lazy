@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 /**
  * @title IVault
- * @notice Interface for the USDC Savings Vault
+ * @notice Interface for the LazyUSD Vault
  * @dev Uses internal yield tracking and IRoleManager for access control
  */
 interface IVault {

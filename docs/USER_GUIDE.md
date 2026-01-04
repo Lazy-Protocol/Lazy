@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The USDC Savings Vault allows you to earn yield on your USDC holdings. When you deposit USDC, you receive vault shares that represent your proportional ownership. As the vault generates yield, your shares become worth more USDC.
+The LazyUSD Vault allows you to earn yield on your USDC holdings. When you deposit USDC, you receive vault shares that represent your proportional ownership. As the vault generates yield, your shares become worth more USDC.
 
 ## How Your USDC is Used
 
@@ -61,7 +61,7 @@ Your USDC Deposit
 
 | Contract | Address |
 |----------|---------|
-| USDCSavingsVault | `0x...` |
+| LazyUSDVault | `0x...` |
 | USDC | `0x...` |
 
 ## Depositing

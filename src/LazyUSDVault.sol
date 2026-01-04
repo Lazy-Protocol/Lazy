@@ -297,8 +297,8 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
      * @param _treasury Treasury address for fees
      * @param _feeRate Initial fee rate (18 decimals)
      * @param _cooldownPeriod Initial cooldown period
-     * @param _shareName Name for the vault share token (e.g., "USDC Savings Vault Share")
-     * @param _shareSymbol Symbol for the vault share token (e.g., "svUSDC")
+     * @param _shareName Name for the vault share token (e.g., "LazyUSD")
+     * @param _shareSymbol Symbol for the vault share token (e.g., "lazyUSD")
      */
     constructor(
         address _usdc,

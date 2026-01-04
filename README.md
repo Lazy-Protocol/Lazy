@@ -1,10 +1,10 @@
-# USDC Savings Vault
+# LazyUSD Vault
 
 A secure, yield-bearing USDC vault with share-based NAV accounting and async withdrawals.
 
 ## Overview
 
-The USDC Savings Vault allows users to deposit USDC and receive shares representing their proportional ownership. Yield from external strategies is reported by the owner, and all shareholders benefit proportionally.
+The LazyUSD Vault allows users to deposit USDC and receive shares representing their proportional ownership. Yield from external strategies is reported by the owner, and all shareholders benefit proportionally.
 
 ### Key Features
 
@@ -18,7 +18,7 @@ The USDC Savings Vault allows users to deposit USDC and receive shares represent
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        USDCSavingsVault                          │
+│                        LazyUSDVault                          │
 │            (ERC20 shares + yield tracking + withdrawals)         │
 └─────────────────────────────────────┬────────────────────────────┘
                                       │
@@ -35,9 +35,9 @@ OpenZeppelin is used only for **mechanical safety guarantees**:
 
 | Contract | OZ Module | Purpose |
 |----------|-----------|---------|
-| USDCSavingsVault | ERC20 | Share token mechanics (vault IS the token) |
-| USDCSavingsVault | ReentrancyGuard | Cross-function reentrancy protection |
-| USDCSavingsVault | IERC20 | Standard interface for USDC |
+| LazyUSDVault | ERC20 | Share token mechanics (vault IS the token) |
+| LazyUSDVault | ReentrancyGuard | Cross-function reentrancy protection |
+| LazyUSDVault | IERC20 | Standard interface for USDC |
 
 **Not using OpenZeppelin Ownable/Pausable** - Governance is delegated to an external RoleManager to support multi-role access, three-state pause, and upgradeable governance without redeploying the vault.
 

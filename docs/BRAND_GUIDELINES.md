@@ -222,7 +222,7 @@ That's it. That's the whole thing.
 ```
 ┌─────────────────────────────────┐
 │  lazyUSD                        │
-│  USDC Savings Vault             │
+│  LazyUSD Vault             │
 │                                 │
 │  APY: 5.2%        TVL: $4.2M    │
 │                                 │

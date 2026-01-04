@@ -1,6 +1,6 @@
 # Formal Invariants Specification
 
-This document defines the formal invariants that the USDC Savings Vault MUST maintain at all times. These invariants are enforced through code structure, runtime assertions, and fuzz testing.
+This document defines the formal invariants that the LazyUSD Vault MUST maintain at all times. These invariants are enforced through code structure, runtime assertions, and fuzz testing.
 
 ## Invariant Summary
 

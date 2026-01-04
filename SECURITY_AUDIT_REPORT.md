@@ -1,16 +1,16 @@
-# USDC Savings Vault - Whitehat Security Audit Report
+# LazyUSD Vault - Whitehat Security Audit Report
 
 **Auditor:** Whitehat DeFi Security Researcher
 **Date:** 2025-12-22
 **Updated:** 2025-12-26
-**Target:** USDC Savings Vault (USDCSavingsVault.sol + supporting contracts)
+**Target:** LazyUSD Vault (LazyUSDVault.sol + supporting contracts)
 **Objective:** Identify vulnerabilities allowing unauthorized fund extraction
 
 ---
 
 ## Executive Summary
 
-After comprehensive security analysis of the USDC Savings Vault protocol, **one medium-severity DoS vulnerability was identified and fixed**. No critical or high-severity vulnerabilities that would allow an attacker to extract funds without authorization were found.
+After comprehensive security analysis of the LazyUSD Vault protocol, **one medium-severity DoS vulnerability was identified and fixed**. No critical or high-severity vulnerabilities that would allow an attacker to extract funds without authorization were found.
 
 The protocol demonstrates robust security architecture with multiple layers of protection. Several centralization risks and minor issues were identified that users should be aware of.
 
@@ -35,7 +35,7 @@ The protocol demonstrates robust security architecture with multiple layers of p
 - Share price is NOT based on `usdc.balanceOf(address(this))`
 
 ```solidity
-// USDCSavingsVault.sol:321-328
+// LazyUSDVault.sol:321-328
 function totalAssets() public view returns (uint256) {
     int256 yield = strategyOracle.accumulatedYield();
     int256 nav = int256(totalDeposited) - int256(totalWithdrawn) + yield;
@@ -72,7 +72,7 @@ function totalAssets() public view returns (uint256) {
 **Analysis:** Reviewed the fee share minting formula:
 
 ```solidity
-// USDCSavingsVault.sol:1024
+// LazyUSDVault.sol:1024
 uint256 feeShares = (fee * totalShareSupply) / (currentNav - fee);
 ```
 
@@ -367,7 +367,7 @@ function testFeeManipulation() public {
 
 ## Conclusion
 
-The USDC Savings Vault demonstrates **strong security fundamentals**:
+The LazyUSD Vault demonstrates **strong security fundamentals**:
 
 - NAV calculation immune to donation attacks
 - Share escrow prevents double-spend

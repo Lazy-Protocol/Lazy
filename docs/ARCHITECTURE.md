@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The USDC Savings Vault is a streamlined DeFi protocol consisting of two contracts that work together to provide secure, yield-bearing USDC deposits.
+The LazyUSD Vault is a streamlined DeFi protocol consisting of two contracts that work together to provide secure, yield-bearing USDC deposits.
 
 ```
                                     ┌──────────────┐
@@ -13,7 +13,7 @@ The USDC Savings Vault is a streamlined DeFi protocol consisting of two contract
                                            │
                                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                        USDCSavingsVault                          │
+│                        LazyUSDVault                          │
 │                         (inherits ERC20)                         │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
@@ -47,7 +47,7 @@ The USDC Savings Vault is a streamlined DeFi protocol consisting of two contract
 
 ## Contract Responsibilities
 
-### USDCSavingsVault
+### LazyUSDVault
 
 The main contract handling all user-facing operations, yield tracking, share token, and core logic. The vault inherits from OpenZeppelin's ERC20, so the vault contract IS the share token.
 
@@ -232,7 +232,7 @@ User                    Vault (ERC20)                    Operator
 
 ## Storage Layout
 
-### USDCSavingsVault
+### LazyUSDVault
 
 | Variable | Type | Description |
 |----------|------|-------------|
@@ -372,9 +372,9 @@ The protocol deliberately uses OpenZeppelin only for **mechanical safety guarant
 
 | Component | OZ Module | Rationale |
 |-----------|-----------|-----------|
-| USDCSavingsVault | ERC20 | Vault IS the share token (battle-tested mechanics) |
-| USDCSavingsVault | ReentrancyGuard | Cross-function reentrancy protection |
-| USDCSavingsVault | IERC20 | Standard interface for USDC interaction |
+| LazyUSDVault | ERC20 | Vault IS the share token (battle-tested mechanics) |
+| LazyUSDVault | ReentrancyGuard | Cross-function reentrancy protection |
+| LazyUSDVault | IERC20 | Standard interface for USDC interaction |
 
 **Not using OpenZeppelin Ownable/Pausable** - Authority is delegated to external RoleManager to:
 - Support multi-role governance (Owner, Operator)
