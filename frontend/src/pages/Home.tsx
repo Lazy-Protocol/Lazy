@@ -117,8 +117,8 @@ export function Home() {
             </div>
           </div>
 
-          {/* lazyETH Vault */}
-          <div className="vault-card">
+          {/* lazyETH Vault (Coming Soon) */}
+          <div className="vault-card" style={{ opacity: 0.6 }}>
             <div className="vault-header">
               <div className="vault-icon vault-icon-eth">Ξ</div>
               <div>
@@ -130,23 +130,26 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value positive">4.1%</div>
+                <div className="vault-stat-value">—</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">$6.8M</div>
+                <div className="vault-stat-value">—</div>
               </div>
             </div>
 
             <div className="vault-user-section">
-              <div className="vault-user-label">Your balance</div>
-              <div className="vault-user-balance">0.00 lazyETH</div>
-              <div className="vault-user-subtext">No deposits yet</div>
+              <div className="vault-user-label">Status</div>
+              <div className="vault-user-balance" style={{ fontFamily: 'var(--font-primary)', fontSize: '1rem' }}>
+                Coming soon
+              </div>
+              <div className="vault-user-subtext">Launching Q2 2025</div>
             </div>
 
             <div className="vault-actions">
-              <button className="btn btn-primary btn-sm" disabled>Deposit</button>
-              <button className="btn btn-secondary btn-sm" disabled>Withdraw</button>
+              <button className="btn btn-secondary btn-sm" style={{ gridColumn: 'span 2' }} disabled>
+                Notify me
+              </button>
             </div>
           </div>
 
