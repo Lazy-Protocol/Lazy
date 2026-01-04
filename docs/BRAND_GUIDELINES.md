@@ -8,12 +8,12 @@
 **Token Convention:** lazy[ASSET] — lazyUSD, lazyETH, lazyHYPE, etc.
 
 ### Brand Essence
-Lazy is a yield protocol that lets users be passive while the protocol works actively on their behalf. The name is a promise: you don't have to do anything. We handle the complexity.
+Lazy is the home for patient capital. We reward users who are willing to wait—deposit, let time work, and collect when ready. The name is a promise: being lazy is the strategy. Patience pays.
 
 ### Core Tension
-> **"You be lazy. We'll be active."**
+> **"Patient capital, rewarded."**
 
-This tension is the brand's heartbeat. Every piece of communication should reinforce that user passivity is enabled by protocol diligence.
+This tension is the brand's heartbeat. Every piece of communication should reinforce that patience—not active management—is how users earn yield.
 
 ---
 
@@ -21,20 +21,20 @@ This tension is the brand's heartbeat. Every piece of communication should reinf
 
 ### Level 1: Tagline (3-5 words)
 Primary options:
-- **"Yield on autopilot"**
-- **"Be lazy. Earn more."**
-- **"You rest. We work."**
+- **"Patient capital, rewarded."** (primary)
+- **"Patience pays."**
+- **"Be lazy."**
 
 ### Level 2: Value Proposition (1 sentence)
-> **"Deposit your assets, do nothing, and watch your balance grow—automatically."**
+> **"No staking. No claiming. Just yield."**
 
 ### Level 3: Elevator Pitch (30 seconds)
-> "Lazy is a yield protocol for people who don't want to think about DeFi. You deposit USDC, ETH, or other assets. We put them to work in secure, verified strategies. Your balance grows automatically—no staking, no claiming, no manual harvesting. You can be lazy because we're not."
+> "Lazy is the home for patient capital. You deposit USDC or other assets. Your lazy tokens grow in value over time. When you're ready, you collect your capital plus everything it earned. No staking. No claiming. No active management. Patience is the strategy."
 
 ### Level 4: Full Positioning (2 paragraphs)
-> Lazy Protocol is yield infrastructure for the passive investor. While other protocols demand constant attention—claiming rewards, rotating strategies, monitoring positions—Lazy handles everything automatically. Deposit your assets, receive lazy tokens that grow in value, and withdraw whenever you want.
+> Lazy Protocol rewards patience. While other protocols demand constant attention—claiming rewards, rotating strategies, monitoring positions—Lazy asks you to do one thing: wait. Deposit your assets, receive lazy tokens that grow in value, and collect when you're ready.
 >
-> Behind the simplicity is serious engineering. Lazy vaults are secured by formal mathematical proofs, not just audits. Five invariants guarantee that your assets are handled fairly: first-in-first-out withdrawals, profit-only fees, and equal treatment for all depositors. You can be lazy because we've already done the hard work.
+> Behind the simplicity is serious engineering. Lazy vaults are secured by formal mathematical proofs, not just audits. Five invariants guarantee that your assets are handled fairly: first-in-first-out withdrawals, profit-only fees, and equal treatment for all depositors. Your capital is ready to work. Are you ready to wait?
 
 ---
 
@@ -59,12 +59,13 @@ Primary options:
 ### Vocabulary
 
 **Words to use:**
-- Automatic, autopilot, effortless
-- Earn, grow, accrue
+- Patient, patience, wait
+- Earn, grow, accrue, collect
 - Deposit, withdraw (not "stake" or "unstake")
 - Simple, straightforward, easy
 - Verified, proven, guaranteed
 - Fair, equal, transparent
+- Capital, ready, rewarded
 
 **Words to avoid:**
 - Revolutionary, disruptive, innovative
@@ -91,10 +92,10 @@ Primary options:
 
 **What they want:** Easy yield without DeFi complexity
 **What they fear:** Losing money, getting rugged, making mistakes
-**Key message:** "It's as simple as a savings account, but better."
+**Key message:** "Patient capital, rewarded."
 
 **Sample copy:**
-> "Remember when saving money was simple? Deposit, earn interest, withdraw. Lazy brings that back to DeFi. No staking schedules. No reward claiming. No strategy rotating. Just yield that shows up automatically."
+> "Deposit, wait, collect. That's the whole strategy. Your lazyUSD grows in value over time—no staking, no claiming, no active management. Patience is how you earn."
 
 ### DeFi Natives (Secondary)
 
@@ -103,7 +104,7 @@ Primary options:
 **Key message:** "Formally verified. Five invariants. Zero bullshit."
 
 **Sample copy:**
-> "You've been rugged. You've claimed rewards at 3am. You've lost yield to a strategy you forgot to rotate. Lazy is yield infrastructure for DeFi veterans who are tired. Deposit and walk away—the vault is verified, the queue is FIFO, and the fees only hit profits."
+> "You've been rugged. You've claimed rewards at 3am. You've lost yield to a strategy you forgot to rotate. Lazy is for DeFi veterans who are tired. Deposit, wait, collect. The vault is verified, the queue is FIFO, and the fees only hit profits. Patience pays."
 
 ### Institutional / Treasury (Tertiary)
 
@@ -201,21 +202,36 @@ lazyUSD, lazyETH, lazyHYPE
 ```
 Be lazy.
 
-Deposit your crypto. Earn yield automatically.
-No staking. No claiming. No thinking.
+Patient capital, rewarded.
+No staking. No claiming. Just yield.
 
-[Get Started] [View Vaults]
+[View Vaults] [How it works]
 ```
 
-### Homepage Subhead
+### Homepage Subhead (Vaults Section)
 ```
-Lazy is a yield protocol for people who have better things to do.
+Vaults
+Patient capital starts here.
+```
 
-Deposit USDC, ETH, or other assets into Lazy vaults.
-Receive lazy tokens that grow in value over time.
-Withdraw whenever you want.
+### How It Works Steps
+```
+1. Deposit
+   Commit your capital. Receive lazyUSD representing your share.
 
-That's it. That's the whole thing.
+2. Wait
+   Your lazyUSD grows in value over time. Patience is the strategy.
+
+3. Collect
+   When you're ready, claim your capital—plus everything it earned.
+```
+
+### CTA Section
+```
+Patience pays.
+Your capital is ready to work. Are you ready to wait?
+
+[Start Earning]
 ```
 
 ### Vault Card (UI)
@@ -315,12 +331,17 @@ We built Lazy because DeFi is exhausting.
 Claiming rewards. Rotating strategies. Watching gas prices.
 Waking up at 3am because something moved.
 
-We wanted yield that just... worked.
+We wanted yield that rewards patience, not attention.
 
 So we built it. Formal verification. Automatic accounting.
 Withdrawals that never get stuck. Fees only on profits.
 
-The hard stuff is done. Now you can be lazy.
+Patient capital, rewarded. That's Lazy.
+```
+
+### Footer Tagline
+```
+The home for patient capital.
 ```
 
 ---
@@ -357,11 +378,12 @@ The hard stuff is done. Now you can be lazy.
 This messaging framework should be treated as a living document. As Lazy Protocol evolves—new vaults, new features, new audiences—the messaging should evolve with it.
 
 Core principles that should remain stable:
-1. **"You be lazy, we'll be active"** — The central tension
+1. **"Patient capital, rewarded"** — The central promise
 2. **Simplicity first, security underneath** — Messaging hierarchy
 3. **Honest about trade-offs** — No overpromising
 4. **Human voice** — Never corporate, never degen
+5. **Patience as strategy** — Waiting is the feature, not a bug
 
 ---
 
-*Last updated: December 2024*
+*Last updated: January 2025*
