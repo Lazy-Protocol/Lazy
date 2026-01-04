@@ -24,8 +24,8 @@ export function Home() {
         <div className="container">
           <h1 className="hero-title">Be lazy.</h1>
           <p className="hero-subtitle">
-            Deposit your crypto. Earn yield automatically.<br />
-            No staking. No claiming. No thinking.
+            Patient capital, rewarded.<br />
+            No staking. No claiming. Just yield.
           </p>
           <div className="hero-cta-group">
             <a href="#vaults" className="btn btn-primary">View Vaults</a>
@@ -48,7 +48,7 @@ export function Home() {
             </div>
             <div className="stat-item">
               <div className="stat-value">2,847</div>
-              <div className="stat-label">Active Depositors</div>
+              <div className="stat-label">Patient Holders</div>
             </div>
             <div className="stat-item">
               <div className="stat-value">$847K</div>
@@ -63,7 +63,7 @@ export function Home() {
         <div className="container">
           <div className="section-header">
             <h2 className="section-title">Vaults</h2>
-            <p className="section-subtitle">Pick an asset. Deposit. That's it.</p>
+            <p className="section-subtitle">Patient capital starts here.</p>
           </div>
 
           <div className="vaults-grid">
@@ -202,23 +202,23 @@ export function Home() {
             <div className="step-number">1</div>
             <h3 className="step-title">Deposit</h3>
             <p className="step-description">
-              Connect your wallet and deposit any supported asset. You'll receive lazy tokens representing your share.
+              Commit your capital. Receive lazyUSD representing your share.
             </p>
           </div>
 
           <div className="step-card">
             <div className="step-number">2</div>
-            <h3 className="step-title">Earn</h3>
+            <h3 className="step-title">Wait</h3>
             <p className="step-description">
-              Your lazy tokens automatically grow in value as yield accrues. No claiming, no staking, no manual actions.
+              Your lazyUSD grows in value over time. Patience is the strategy.
             </p>
           </div>
 
           <div className="step-card">
             <div className="step-number">3</div>
-            <h3 className="step-title">Withdraw</h3>
+            <h3 className="step-title">Collect</h3>
             <p className="step-description">
-              Request a withdrawal anytime. After a short cooldown, your assets are returned—plus all earned yield.
+              When you're ready, claim your capital—plus everything it earned.
             </p>
           </div>
           </div>
@@ -257,9 +257,9 @@ export function Home() {
       {/* CTA Section */}
       <section className="section" style={{ textAlign: 'center' }}>
         <div className="container-narrow">
-          <h2 className="section-title">Ready to be lazy?</h2>
+          <h2 className="section-title">Patience pays.</h2>
           <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
-            Your yield is waiting. You don't have to.
+            Your capital is ready to work. Are you ready to wait?
           </p>
           <a href="#vaults" className="btn btn-gold">Start Earning</a>
         </div>
