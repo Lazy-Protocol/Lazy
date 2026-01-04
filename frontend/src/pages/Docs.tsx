@@ -1,171 +1,274 @@
-import { ExternalLink, Shield, Zap, Clock, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Shield, Clock, FileText, ExternalLink, AlertTriangle } from 'lucide-react';
 
 export function Docs() {
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <h1 className="text-3xl font-bold text-drift-white mb-8">Documentation</h1>
-
-      {/* Overview */}
-      <section className="mb-12">
-        <h2 className="text-xl font-semibold text-drift-white mb-4">Overview</h2>
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
-          <p className="text-drift-white/70 mb-4">
-            The LazyUSD Vault allows you to earn yield on your USDC holdings. When you
-            deposit USDC, you receive vault shares that represent your proportional ownership.
-            As the vault generates yield, your shares become worth more USDC.
-          </p>
-          <p className="text-drift-white/70">
-            The vault deploys capital to yield-generating strategies including basis trading,
-            funding rate farming, and Pendle PT positions.
+    <>
+      {/* Hero Section */}
+      <section className="hero" style={{ paddingTop: '140px', paddingBottom: '60px' }}>
+        <div className="container">
+          <h1 className="hero-title">Documentation</h1>
+          <p className="hero-subtitle">
+            Everything you need to know about Lazy vaults.<br />
+            Patient capital, explained.
           </p>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="mb-12">
-        <h2 className="text-xl font-semibold text-drift-white mb-4">How It Works</h2>
-        <div className="space-y-4">
-          <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 bg-yield-gold/10 rounded-lg flex items-center justify-center">
-                <Zap className="w-4 h-4 text-yield-gold" />
-              </div>
-              <h3 className="text-lg font-medium text-drift-white">Depositing</h3>
-            </div>
-            <p className="text-drift-white/70">
-              When you deposit USDC, you receive vault shares proportional to the current
-              share price. The vault keeps a buffer for immediate withdrawals and deploys
-              excess funds to yield strategies via the multisig.
-            </p>
+      {/* Overview */}
+      <section className="section" id="overview">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">How Lazy Works</h2>
+            <p className="section-subtitle">Three steps. Zero maintenance.</p>
           </div>
 
-          <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 bg-yield-gold/10 rounded-lg flex items-center justify-center">
-                <Clock className="w-4 h-4 text-yield-gold" />
-              </div>
-              <h3 className="text-lg font-medium text-drift-white">Withdrawing</h3>
+          <div className="steps-grid">
+            <div className="step-card">
+              <div className="step-number">1</div>
+              <h3 className="step-title">Deposit</h3>
+              <p className="step-description">
+                Deposit USDC and receive lazyUSD tokens representing your share of the vault.
+                Your tokens are minted at the current share price.
+              </p>
             </div>
-            <p className="text-drift-white/70 mb-4">
-              Withdrawals are a 2-step process:
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-drift-white/70">
-              <li>Request withdrawal - your shares are escrowed in the vault</li>
-              <li>After the cooldown period (~7 days), an operator fulfills your request</li>
-            </ol>
-            <p className="text-drift-white/50 text-sm mt-4">
-              Your escrowed shares continue to earn yield until fulfilled.
-            </p>
+
+            <div className="step-card">
+              <div className="step-number">2</div>
+              <h3 className="step-title">Wait</h3>
+              <p className="step-description">
+                Your lazyUSD grows in value over time as the vault earns yield.
+                No staking, no claiming, no action required. Patience is the strategy.
+              </p>
+            </div>
+
+            <div className="step-card">
+              <div className="step-number">3</div>
+              <h3 className="step-title">Collect</h3>
+              <p className="step-description">
+                Request a withdrawal when you're ready. After a short cooldown,
+                collect your USDC—plus everything it earned.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Withdrawal Process */}
+      <section className="section" style={{ background: 'white' }}>
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Withdrawal Process</h2>
+            <p className="section-subtitle">How to collect your capital.</p>
           </div>
 
-          <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 bg-yield-gold/10 rounded-lg flex items-center justify-center">
-                <Shield className="w-4 h-4 text-yield-gold" />
+          <div className="docs-cards">
+            <div className="docs-card">
+              <div className="docs-card-icon">
+                <Clock size={24} />
               </div>
-              <h3 className="text-lg font-medium text-drift-white">Share Price</h3>
+              <h3>Two-Step Withdrawals</h3>
+              <p>
+                Withdrawals happen in two steps for security. First, you request a withdrawal
+                and your lazyUSD is escrowed. After the cooldown period passes, your withdrawal
+                is fulfilled and you receive USDC.
+              </p>
             </div>
-            <p className="text-drift-white/70">
-              The share price is calculated as: <code className="bg-lazy-navy px-2 py-1 rounded text-yield-gold">totalAssets / totalShares</code>.
-              When yield is earned, the share price increases. All shareholders benefit
-              proportionally to their ownership.
-            </p>
+
+            <div className="docs-card">
+              <div className="docs-card-icon">
+                <Shield size={24} />
+              </div>
+              <h3>Your Shares Keep Earning</h3>
+              <p>
+                While waiting for fulfillment, your escrowed shares continue participating
+                in vault gains (and losses). You receive the NAV at fulfillment time,
+                not request time.
+              </p>
+            </div>
+
+            <div className="docs-card">
+              <div className="docs-card-icon">
+                <FileText size={24} />
+              </div>
+              <h3>FIFO Queue</h3>
+              <p>
+                Withdrawals are processed in the order they're received.
+                This ensures fair treatment for all depositors—first come, first served.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Trust Model */}
-      <section className="mb-12">
-        <h2 className="text-xl font-semibold text-drift-white mb-4">Trust Model</h2>
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-6 mb-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+      <section className="section">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Trust Model</h2>
+            <p className="section-subtitle">What's on-chain vs. what requires trust.</p>
+          </div>
+
+          <div className="trust-warning">
+            <AlertTriangle size={20} />
             <div>
-              <p className="text-yellow-500 font-medium mb-2">Semi-Custodial Vault</p>
-              <p className="text-drift-white/70 text-sm">
+              <strong>Semi-Custodial Vault</strong>
+              <p>
                 Your USDC is deployed to yield strategies via a multisig wallet. If the
                 multisig operators do not return funds, withdrawals exceeding the vault's
-                buffer cannot be fulfilled.
+                buffer cannot be fulfilled. Only deposit what you're comfortable trusting
+                to the protocol.
               </p>
             </div>
           </div>
-        </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-lazy-navy-light/50 rounded-xl p-5 border border-lazy-navy-light">
-            <h4 className="text-success font-medium mb-3">Trustless (On-chain)</h4>
-            <ul className="space-y-2 text-drift-white/70 text-sm">
-              <li>• Your share balance and ownership %</li>
-              <li>• Fair NAV calculation for all users</li>
-              <li>• Withdrawal queue ordering (FIFO)</li>
-              <li>• Fee caps and collection rules</li>
-            </ul>
-          </div>
-          <div className="bg-lazy-navy-light/50 rounded-xl p-5 border border-lazy-navy-light">
-            <h4 className="text-warning font-medium mb-3">Requires Trust</h4>
-            <ul className="space-y-2 text-drift-white/70 text-sm">
-              <li>• Multisig returns funds for withdrawals</li>
-              <li>• Owner reports accurate yield</li>
-              <li>• Operators process withdrawals regularly</li>
-            </ul>
+          <div className="trust-grid">
+            <div className="trust-card trust-card-safe">
+              <h4>Trustless (On-chain)</h4>
+              <ul>
+                <li>Your share balance and ownership percentage</li>
+                <li>Fair NAV calculation for all users</li>
+                <li>Withdrawal queue ordering (FIFO)</li>
+                <li>Fee caps and collection rules</li>
+                <li>Escrow mechanics (no double-spend)</li>
+              </ul>
+            </div>
+
+            <div className="trust-card trust-card-trust">
+              <h4>Requires Trust</h4>
+              <ul>
+                <li>Multisig returns funds for withdrawals</li>
+                <li>Owner reports accurate yield</li>
+                <li>Operators process withdrawals regularly</li>
+              </ul>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Security */}
-      <section className="mb-12">
-        <h2 className="text-xl font-semibold text-drift-white mb-4">Security</h2>
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
-          <h3 className="text-lg font-medium text-drift-white mb-4">5 Verified Invariants</h3>
-          <ul className="space-y-3">
-            <li className="flex items-start gap-3">
-              <span className="text-yield-gold font-mono text-sm">I.1</span>
-              <span className="text-drift-white/70">Conservation of Value — USDC only exits when shares are burned at current NAV</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="text-yield-gold font-mono text-sm">I.2</span>
-              <span className="text-drift-white/70">Share Escrow Safety — Escrowed shares always equal pending withdrawal shares</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="text-yield-gold font-mono text-sm">I.3</span>
-              <span className="text-drift-white/70">Universal NAV Application — Share price applies uniformly to all share classes</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="text-yield-gold font-mono text-sm">I.4</span>
-              <span className="text-drift-white/70">Fee Isolation — Fees only on profit, only via share minting</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="text-yield-gold font-mono text-sm">I.5</span>
-              <span className="text-drift-white/70">Withdrawal Queue Liveness — FIFO order, graceful termination</span>
-            </li>
-          </ul>
+      <section className="security-section">
+        <div className="container">
+          <div className="security-content">
+            <div className="security-text">
+              <h3>5 Verified Invariants</h3>
+              <p>
+                Lazy vaults are secured by formal mathematical proofs—not just audits.
+                These invariants guarantee your assets are handled fairly, always.
+              </p>
+            </div>
+            <div className="security-badges">
+              <div className="security-badge">
+                <Shield size={20} />
+                Halmos Proven
+              </div>
+              <div className="security-badge">
+                <Clock size={20} />
+                Fuzz Tested
+              </div>
+              <div className="security-badge">
+                <FileText size={20} />
+                Audited
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Links */}
-      <section>
-        <h2 className="text-xl font-semibold text-drift-white mb-4">Resources</h2>
-        <div className="grid md:grid-cols-2 gap-4">
-          <a
-            href="https://github.com/lazy-protocol"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-lazy-navy-light/50 rounded-xl p-5 border border-lazy-navy-light hover:border-yield-gold/30 transition-colors flex items-center justify-between"
-          >
-            <span className="text-drift-white font-medium">GitHub Repository</span>
-            <ExternalLink className="w-4 h-4 text-drift-white/50" />
-          </a>
-          <a
-            href="https://etherscan.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-lazy-navy-light/50 rounded-xl p-5 border border-lazy-navy-light hover:border-yield-gold/30 transition-colors flex items-center justify-between"
-          >
-            <span className="text-drift-white font-medium">Contract on Etherscan</span>
-            <ExternalLink className="w-4 h-4 text-drift-white/50" />
-          </a>
+      {/* Invariants List */}
+      <section className="section" style={{ background: 'white' }}>
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Security Invariants</h2>
+            <p className="section-subtitle">Mathematical guarantees, not promises.</p>
+          </div>
+
+          <div className="invariants-list">
+            <div className="invariant-item">
+              <span className="invariant-id">I.1</span>
+              <div>
+                <strong>Conservation of Value</strong>
+                <p>USDC only exits when shares are burned at current NAV. No exceptions.</p>
+              </div>
+            </div>
+
+            <div className="invariant-item">
+              <span className="invariant-id">I.2</span>
+              <div>
+                <strong>Share Escrow Safety</strong>
+                <p>Escrowed shares are locked and cannot be double-spent or transferred.</p>
+              </div>
+            </div>
+
+            <div className="invariant-item">
+              <span className="invariant-id">I.3</span>
+              <div>
+                <strong>Universal NAV Application</strong>
+                <p>Share price applies uniformly to all shares—no special treatment.</p>
+              </div>
+            </div>
+
+            <div className="invariant-item">
+              <span className="invariant-id">I.4</span>
+              <div>
+                <strong>Fee Isolation</strong>
+                <p>Fees only on positive yield, only via share minting. Never from principal.</p>
+              </div>
+            </div>
+
+            <div className="invariant-item">
+              <span className="invariant-id">I.5</span>
+              <div>
+                <strong>Withdrawal Queue Liveness</strong>
+                <p>FIFO ordering with graceful degradation. Queue never reverts.</p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
-    </div>
+
+      {/* Resources */}
+      <section className="section">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Resources</h2>
+            <p className="section-subtitle">Explore the code.</p>
+          </div>
+
+          <div className="resources-grid">
+            <a
+              href="https://github.com/lazy-protocol"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="resource-link"
+            >
+              <span>GitHub Repository</span>
+              <ExternalLink size={18} />
+            </a>
+
+            <a
+              href="https://etherscan.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="resource-link"
+            >
+              <span>Contract on Etherscan</span>
+              <ExternalLink size={18} />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="section" style={{ textAlign: 'center' }}>
+        <div className="container-narrow">
+          <h2 className="section-title">Ready to start?</h2>
+          <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
+            Patient capital, rewarded.
+          </p>
+          <Link to="/#vaults" className="btn btn-gold">View Vaults</Link>
+        </div>
+      </section>
+    </>
   );
 }

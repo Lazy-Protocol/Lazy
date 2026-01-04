@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { useVaultStats, useUserData, formatUsdc, formatShares } from '@/hooks/useVault';
 import { DepositModal } from '@/components/DepositModal';
@@ -11,6 +12,19 @@ export function Home() {
   const { address, isConnected } = useAccount();
   const { totalAssets } = useVaultStats();
   const { shareBalance, usdcValue, totalDeposited } = useUserData(address);
+  const location = useLocation();
+
+  // Handle hash scroll on navigation
+  useEffect(() => {
+    if (location.hash) {
+      const element = document.getElementById(location.hash.slice(1));
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+    }
+  }, [location]);
 
   // Calculate user earnings
   const earnings = usdcValue && totalDeposited && usdcValue > totalDeposited
