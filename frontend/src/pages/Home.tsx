@@ -27,7 +27,7 @@ export function Home() {
             Deposit your crypto. Earn yield automatically.<br />
             No staking. No claiming. No thinking.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+          <div className="hero-cta-group">
             <a href="#vaults" className="btn btn-primary">View Vaults</a>
             <a href="#how-it-works" className="btn btn-secondary">How it works</a>
           </div>
@@ -36,34 +36,37 @@ export function Home() {
 
       {/* Stats Bar */}
       <section className="stats-bar">
-        <div className="stats-grid">
-          <div style={{ textAlign: 'center' }}>
-            <div className="stat-value">${totalAssets ? formatUsdc(totalAssets) : '—'}</div>
-            <div className="stat-label">Total Value Locked</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div className="stat-value">5.2%</div>
-            <div className="stat-label">Average APY</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div className="stat-value">2,847</div>
-            <div className="stat-label">Active Depositors</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div className="stat-value">$847K</div>
-            <div className="stat-label">Yield Distributed</div>
+        <div className="container">
+          <div className="stats-grid">
+            <div className="stat-item">
+              <div className="stat-value">${totalAssets ? formatUsdc(totalAssets) : '—'}</div>
+              <div className="stat-label">Total Value Locked</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value">5.2%</div>
+              <div className="stat-label">Average APY</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value">2,847</div>
+              <div className="stat-label">Active Depositors</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value">$847K</div>
+              <div className="stat-label">Yield Distributed</div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Vaults Section */}
       <section className="section" id="vaults">
-        <div className="section-header">
-          <h2 className="section-title">Vaults</h2>
-          <p className="section-subtitle">Pick an asset. Deposit. That's it.</p>
-        </div>
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Vaults</h2>
+            <p className="section-subtitle">Pick an asset. Deposit. That's it.</p>
+          </div>
 
-        <div className="vaults-grid">
+          <div className="vaults-grid">
           {/* lazyUSD Vault */}
           <div className="vault-card">
             <div className="vault-header">
@@ -182,17 +185,19 @@ export function Home() {
               </button>
             </div>
           </div>
+          </div>
         </div>
       </section>
 
       {/* How It Works */}
       <section className="section" id="how-it-works" style={{ background: 'white' }}>
-        <div className="section-header">
-          <h2 className="section-title">How it works</h2>
-          <p className="section-subtitle">Three steps. Zero maintenance.</p>
-        </div>
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">How it works</h2>
+            <p className="section-subtitle">Three steps. Zero maintenance.</p>
+          </div>
 
-        <div className="steps-grid">
+          <div className="steps-grid">
           <div className="step-card">
             <div className="step-number">1</div>
             <h3 className="step-title">Deposit</h3>
@@ -216,12 +221,14 @@ export function Home() {
               Request a withdrawal anytime. After a short cooldown, your assets are returned—plus all earned yield.
             </p>
           </div>
+          </div>
         </div>
       </section>
 
       {/* Security Section */}
       <section className="security-section">
-        <div className="security-content">
+        <div className="container">
+          <div className="security-content">
           <div className="security-text">
             <h3>Built by paranoid engineers.</h3>
             <p>
@@ -243,14 +250,15 @@ export function Home() {
               Audited
             </div>
           </div>
+          </div>
         </div>
       </section>
 
       {/* CTA Section */}
       <section className="section" style={{ textAlign: 'center' }}>
-        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 24px' }}>
+        <div className="container-narrow">
           <h2 className="section-title">Ready to be lazy?</h2>
-          <p className="section-subtitle" style={{ marginBottom: '32px' }}>
+          <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
             Your yield is waiting. You don't have to.
           </p>
           <a href="#vaults" className="btn btn-gold">Start Earning</a>
