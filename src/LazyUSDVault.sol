@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -360,7 +361,7 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
             return INITIAL_SHARE_PRICE; // 1 USDC = 1 share initially
         }
         uint256 nav = totalAssets();
-        return (nav * PRECISION) / totalShareSupply;
+        return Math.mulDiv(nav, PRECISION, totalShareSupply);
     }
 
     /**
@@ -414,7 +415,7 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
      * @dev Invariant I.1: This is the amount that would be paid out for burning shares
      */
     function sharesToUsdc(uint256 shareAmount) public view returns (uint256) {
-        return (shareAmount * sharePrice()) / PRECISION;
+        return Math.mulDiv(shareAmount, sharePrice(), PRECISION);
     }
 
     /**
@@ -425,7 +426,7 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     function usdcToShares(uint256 usdcAmount) public view returns (uint256) {
         uint256 price = sharePrice();
         if (price == 0) return 0;
-        return (usdcAmount * PRECISION) / price;
+        return Math.mulDiv(usdcAmount, PRECISION, price);
     }
 
     /**
@@ -901,7 +902,7 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
         // Collect fees directly from positive yield
         if (yieldDelta > 0 && feeRate > 0) {
             uint256 yield = uint256(yieldDelta);
-            uint256 fee = (yield * feeRate) / PRECISION;
+            uint256 fee = Math.mulDiv(yield, feeRate, PRECISION);
 
             if (fee > 0) {
                 // Convert fee to shares at current price (post-yield)
