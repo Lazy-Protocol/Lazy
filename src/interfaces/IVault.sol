@@ -50,17 +50,12 @@ interface IVault {
     /// @notice Emitted when excess USDC is forwarded to multisig
     /// @param amount Amount of USDC transferred
     event FundsForwardedToMultisig(uint256 amount);
-    /// @notice Emitted when multisig returns USDC for withdrawals
-    /// @param amount Amount of USDC received
-    event FundsReceivedFromMultisig(uint256 amount);
     /// @notice Emitted when multisig address is updated
     event MultisigUpdated(address indexed oldMultisig, address indexed newMultisig);
     /// @notice Emitted when treasury address is updated
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     /// @notice Emitted when fee rate is updated
     event FeeRateUpdated(uint256 oldRate, uint256 newRate);
-    /// @notice Emitted when per-user cap is updated
-    event PerUserCapUpdated(uint256 oldCap, uint256 newCap);
     /// @notice Emitted when global cap is updated
     event GlobalCapUpdated(uint256 oldCap, uint256 newCap);
     /// @notice Emitted when withdrawal buffer is updated
@@ -188,14 +183,6 @@ interface IVault {
      */
     function fulfillWithdrawals(uint256 count) external returns (uint256 processed, uint256 usdcPaid);
 
-    // ============ Multisig Functions ============
-
-    /**
-     * @notice Receive funds from multisig for withdrawal processing
-     * @param amount Amount of USDC being sent
-     */
-    function receiveFundsFromMultisig(uint256 amount) external;
-
     // ============ Owner Functions ============
 
     /**
@@ -245,12 +232,6 @@ interface IVault {
      * @notice Cancel a pending fee rate change
      */
     function cancelFeeRate() external;
-
-    /**
-     * @notice Update per-user deposit cap
-     * @param newCap New cap (0 = unlimited)
-     */
-    function setPerUserCap(uint256 newCap) external;
 
     /**
      * @notice Update global AUM cap

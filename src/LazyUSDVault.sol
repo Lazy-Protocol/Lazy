@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IRoleManager} from "./interfaces/IRoleManager.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -131,6 +132,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * =============================================================================
  */
 contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     // ============ Constants ============
 
     uint256 public constant PRECISION = 1e18;
@@ -166,7 +169,6 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
 
     // Configuration
     uint256 public feeRate; // Fee rate on profits (18 decimals, e.g., 0.2e18 = 20%)
-    uint256 public perUserCap; // Max deposit per user (0 = unlimited)
     uint256 public globalCap; // Max total AUM (0 = unlimited)
     uint256 public withdrawalBuffer; // USDC to retain for withdrawals
     uint256 public cooldownPeriod; // Minimum time before withdrawal fulfillment
@@ -223,14 +225,12 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
 
     error OnlyOwner();
     error OnlyOperator();
-    error OnlyMultisig();
     error ZeroAddress();
     error ZeroAmount();
     error ZeroShares();
     error Paused();
     error DepositsPaused();
     error WithdrawalsPaused();
-    error ExceedsUserCap();
     error ExceedsGlobalCap();
     error InsufficientShares();
     error InsufficientLiquidity();
@@ -238,7 +238,6 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     error InvalidCooldown();
     error InvalidRequestId();
     error RequestAlreadyProcessed();
-    error TransferFailed();
     error Unauthorized();
     error TooManyPendingRequests();
     error NotAContract();
@@ -273,11 +272,6 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
         if (msg.sender != roleManager.owner() && !roleManager.isOperator(msg.sender)) {
             revert Unauthorized();
         }
-        _;
-    }
-
-    modifier onlyMultisig() {
-        if (msg.sender != multisig) revert OnlyMultisig();
         _;
     }
 
@@ -460,14 +454,6 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     {
         if (usdcAmount == 0) revert ZeroAmount();
 
-        // Check per-user cap (M-2: based on current holdings value, not cumulative deposits)
-        if (perUserCap > 0) {
-            uint256 currentHoldingsValue = sharesToUsdc(balanceOf(msg.sender));
-            if (currentHoldingsValue + usdcAmount > perUserCap) {
-                revert ExceedsUserCap();
-            }
-        }
-
         // Check global cap
         uint256 currentAssets = totalAssets();
         if (globalCap > 0) {
@@ -489,9 +475,8 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
         // Mint shares to user
         _mint(msg.sender, sharesMinted);
 
-        // Transfer USDC from user
-        bool success = usdc.transferFrom(msg.sender, address(this), usdcAmount);
-        if (!success) revert TransferFailed();
+        // Transfer USDC from user (SafeERC20 handles non-standard tokens)
+        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
 
         // Forward excess to multisig (keep buffer)
         _forwardToMultisig();
@@ -602,10 +587,9 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
             // Track withdrawal for NAV calculation
             totalWithdrawn += usdcOut;
 
-            // Transfer USDC to requester
+            // Transfer USDC to requester (SafeERC20 handles non-standard tokens)
             // INVARIANT I.1: USDC only exits when shares are burned
-            bool success = usdc.transfer(request.requester, usdcOut);
-            if (!success) revert TransferFailed();
+            usdc.safeTransfer(request.requester, usdcOut);
 
             available -= usdcOut;
             usdcPaid += usdcOut;
@@ -631,23 +615,6 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
         // Note: Balance may exceed pending if shares were donated directly to vault
         // (orphaned shares can be recovered via recoverOrphanedShares)
         if (balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
-    }
-
-    // ============ Multisig Functions ============
-
-    /**
-     * @notice Receive funds back from multisig for withdrawal processing
-     * @param amount Amount of USDC being returned to vault
-     * @dev Called by multisig when vault needs liquidity to fulfill withdrawals.
-     *      Flow: Deposits forward excess USDC to multisig for strategy deployment.
-     *      When withdrawals need processing, multisig returns funds via this function.
-     *      Requires prior USDC approval from multisig to this vault.
-     */
-    function receiveFundsFromMultisig(uint256 amount) external nonReentrant onlyMultisig {
-        bool success = usdc.transferFrom(msg.sender, address(this), amount);
-        if (!success) revert TransferFailed();
-
-        emit FundsReceivedFromMultisig(amount);
     }
 
     // ============ Owner Functions ============
@@ -761,15 +728,6 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     }
 
     /**
-     * @notice Update per-user deposit cap
-     * @param newCap New cap (0 = unlimited)
-     */
-    function setPerUserCap(uint256 newCap) external onlyOwner {
-        emit PerUserCapUpdated(perUserCap, newCap);
-        perUserCap = newCap;
-    }
-
-    /**
      * @notice Update global AUM cap
      * @param newCap New cap (0 = unlimited)
      */
@@ -854,9 +812,8 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
         // Track withdrawal for NAV calculation
         totalWithdrawn += usdcOut;
 
-        // Transfer USDC
-        bool success = usdc.transfer(request.requester, usdcOut);
-        if (!success) revert TransferFailed();
+        // Transfer USDC (SafeERC20 handles non-standard tokens)
+        usdc.safeTransfer(request.requester, usdcOut);
 
         // INVARIANT I.2: Escrow balance covers pending shares
         if (balanceOf(address(this)) < pendingWithdrawalShares) revert EscrowBalanceMismatch();
@@ -1054,8 +1011,7 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
         uint256 balance = usdc.balanceOf(address(this));
         if (balance > withdrawalBuffer) {
             uint256 excess = balance - withdrawalBuffer;
-            bool success = usdc.transfer(multisig, excess);
-            if (!success) revert TransferFailed();
+            usdc.safeTransfer(multisig, excess);
             emit FundsForwardedToMultisig(excess);
         }
     }

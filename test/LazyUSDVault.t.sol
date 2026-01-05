@@ -206,14 +206,6 @@ contract LazyUSDVaultTest is Test {
         vault.deposit(100_000e6);
     }
 
-    function test_deposit_reverts_exceedsUserCap() public {
-        vault.setPerUserCap(50_000e6);
-
-        vm.prank(alice);
-        vm.expectRevert(LazyUSDVault.ExceedsUserCap.selector);
-        vault.deposit(100_000e6);
-    }
-
     // ============ Share Price & NAV Tests ============
 
     function test_sharePrice_initial() public view {
@@ -839,25 +831,5 @@ contract LazyUSDVaultTest is Test {
         vm.prank(operator);
         vault.reportYieldAndCollectFees(1_000e6);
         assertEq(vault.accumulatedYield(), 1_000e6);
-    }
-
-    // ============ Multisig Integration Tests ============
-
-    function test_receiveFundsFromMultisig() public {
-        vm.prank(alice);
-        vault.deposit(100_000e6);
-
-        uint256 vaultBalanceBefore = usdc.balanceOf(address(vault));
-
-        vm.prank(multisig);
-        vault.receiveFundsFromMultisig(50_000e6);
-
-        assertEq(usdc.balanceOf(address(vault)), vaultBalanceBefore + 50_000e6);
-    }
-
-    function test_receiveFundsFromMultisig_onlyMultisig() public {
-        vm.prank(alice);
-        vm.expectRevert(LazyUSDVault.OnlyMultisig.selector);
-        vault.receiveFundsFromMultisig(50_000e6);
     }
 }

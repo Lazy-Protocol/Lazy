@@ -429,8 +429,9 @@ contract WhitehatAttackPoC is Test {
         vm.warp(block.timestamp + COOLDOWN + 1);
 
         // Need to return funds from multisig since vault forwarded deposits
+        // Multisig can just transfer USDC directly to vault
         vm.prank(multisig);
-        vault.receiveFundsFromMultisig(1e6);
+        usdc.transfer(address(vault), 1e6);
 
         vm.prank(operator);
         vault.fulfillWithdrawals(1);
