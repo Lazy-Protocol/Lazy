@@ -803,6 +803,80 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   margin: 0;
 }
 
+/* Asset Flow Diagram */
+.flow-diagram {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--drift-white);
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-lg);
+}
+
+.flow-step-highlight {
+  background: rgba(196, 160, 82, 0.08);
+  border-color: rgba(196, 160, 82, 0.3);
+}
+
+.flow-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: var(--lazy-navy);
+  color: var(--drift-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.flow-step-highlight .flow-icon {
+  background: var(--yield-gold);
+}
+
+.flow-content h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--lazy-navy);
+  margin-bottom: var(--space-xs);
+}
+
+.flow-content p {
+  font-size: 0.9375rem;
+  color: var(--slate);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.flow-arrow {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-sm) 0;
+  color: var(--slate);
+}
+
+.flow-strategies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.flow-strategies span {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--lazy-navy);
+  background: var(--cloud);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+}
+
 /* Resources */
 .resources-grid {
   display: grid;

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Shield, Clock, FileText, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Shield, Clock, FileText, ExternalLink, AlertTriangle, ArrowDown, Wallet, Building2, TrendingUp } from 'lucide-react';
 
 export function Docs() {
   return (
@@ -54,8 +54,76 @@ export function Docs() {
         </div>
       </section>
 
-      {/* Withdrawal Process */}
+      {/* Asset Flow */}
       <section className="section" style={{ background: 'white' }}>
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Where Your USDC Goes</h2>
+            <p className="section-subtitle">Follow the money.</p>
+          </div>
+
+          <div className="flow-diagram">
+            <div className="flow-step">
+              <div className="flow-icon">
+                <Wallet size={28} />
+              </div>
+              <div className="flow-content">
+                <h4>Your Deposit</h4>
+                <p>USDC enters the vault</p>
+              </div>
+            </div>
+
+            <div className="flow-arrow">
+              <ArrowDown size={24} />
+            </div>
+
+            <div className="flow-step flow-step-highlight">
+              <div className="flow-icon">
+                <Shield size={28} />
+              </div>
+              <div className="flow-content">
+                <h4>Vault</h4>
+                <p>Keeps a buffer for immediate withdrawals. Excess funds are forwarded to the multisig.</p>
+              </div>
+            </div>
+
+            <div className="flow-arrow">
+              <ArrowDown size={24} />
+            </div>
+
+            <div className="flow-step">
+              <div className="flow-icon">
+                <Building2 size={28} />
+              </div>
+              <div className="flow-content">
+                <h4>Multisig</h4>
+                <p>Strategy execution wallet controlled by protocol operators. Deploys capital to yield strategies.</p>
+              </div>
+            </div>
+
+            <div className="flow-arrow">
+              <ArrowDown size={24} />
+            </div>
+
+            <div className="flow-step">
+              <div className="flow-icon">
+                <TrendingUp size={28} />
+              </div>
+              <div className="flow-content">
+                <h4>Yield Strategies</h4>
+                <div className="flow-strategies">
+                  <span>Basis Trading</span>
+                  <span>Funding Rate Farming</span>
+                  <span>Pendle PT</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Withdrawal Process */}
+      <section className="section">
         <div className="container">
           <div className="section-header">
             <h2 className="section-title">Withdrawal Process</h2>
