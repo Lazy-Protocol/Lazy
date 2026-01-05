@@ -68,6 +68,11 @@ export function useVaultStats() {
         abi: vaultAbi,
         functionName: 'pendingWithdrawalShares',
       },
+      {
+        address: CONTRACTS.vault,
+        abi: vaultAbi,
+        functionName: 'accumulatedYield',
+      },
     ],
   });
 
@@ -77,6 +82,7 @@ export function useVaultStats() {
     sharePrice: results.data?.[2].result as bigint | undefined,
     cooldownPeriod: results.data?.[3].result as bigint | undefined,
     pendingWithdrawalShares: results.data?.[4].result as bigint | undefined,
+    accumulatedYield: results.data?.[5].result as bigint | undefined,
     isLoading: results.isLoading,
     refetch: results.refetch,
   };

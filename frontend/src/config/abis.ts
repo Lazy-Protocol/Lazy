@@ -109,6 +109,13 @@ export const vaultAbi = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    name: 'accumulatedYield',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'int256' }],
+  },
   // Write functions
   {
     name: 'deposit',
