@@ -324,15 +324,16 @@ contract FormalVerification is Test {
     }
 
     /**
-     * @notice Prove: Only owner can report yield
+     * @notice Prove: Only owner or operator can report yield
      */
-    function test_check_only_owner_reports_yield(address caller, int256 yield) public {
+    function test_check_only_authorized_reports_yield(address caller, int256 yield) public {
         vm.assume(caller != owner);
+        vm.assume(caller != operator);
         vm.assume(yield > -1_000_000_000e6 && yield < 1_000_000_000e6);
 
         vm.warp(block.timestamp + 1 days);
 
-        // PROVE: Non-owner cannot report yield
+        // PROVE: Non-owner/non-operator cannot report yield
         vm.prank(caller);
         vm.expectRevert();
         vault.reportYieldAndCollectFees(yield);

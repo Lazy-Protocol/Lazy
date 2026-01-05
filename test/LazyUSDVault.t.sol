@@ -825,10 +825,20 @@ contract LazyUSDVaultTest is Test {
         assertEq(vault.accumulatedYield(), 500_000e6);
     }
 
-    function test_yieldReporting_onlyOwnerCanReport() public {
+    function test_yieldReporting_onlyOperatorOrOwnerCanReport() public {
+        // Random user cannot report
         vm.prank(alice);
-        vm.expectRevert(LazyUSDVault.OnlyOwner.selector);
+        vm.expectRevert(LazyUSDVault.Unauthorized.selector);
         vault.reportYieldAndCollectFees(1_000_000e6);
+
+        // Operator CAN report (new functionality)
+        vm.startPrank(owner);
+        vault.setMaxYieldChangePercent(0); // Disable bounds for test
+        vm.stopPrank();
+
+        vm.prank(operator);
+        vault.reportYieldAndCollectFees(1_000e6);
+        assertEq(vault.accumulatedYield(), 1_000e6);
     }
 
     // ============ Multisig Integration Tests ============

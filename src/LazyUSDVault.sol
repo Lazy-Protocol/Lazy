@@ -184,8 +184,8 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     uint256 public lastYieldReportTime;
     /// @notice Maximum allowed yield change as percentage of NAV (18 decimals)
     /// @dev Safety bound: prevents accidental misreporting (e.g., wrong decimals).
-    ///      Default 1% (0.01e18). Set to 0 to disable bounds checking.
-    uint256 public maxYieldChangePercent = 0.01e18;
+    ///      Default 0.5% (0.005e18). Set to 0 to disable bounds checking.
+    uint256 public maxYieldChangePercent = 0.005e18;
 
     // Withdrawal queue (append-only design - see STATEMENT D.4)
     /// @notice Array of all withdrawal requests (processed entries have shares=0)
@@ -264,6 +264,15 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
 
     modifier onlyOperator() {
         if (!roleManager.isOperator(msg.sender)) revert OnlyOperator();
+        _;
+    }
+
+    /// @notice Modifier for functions callable by either owner or operator
+    /// @dev Used for daily operations that need flexibility (yield reporting, buffer adjustments)
+    modifier onlyOperatorOrOwner() {
+        if (msg.sender != roleManager.owner() && !roleManager.isOperator(msg.sender)) {
+            revert Unauthorized();
+        }
         _;
     }
 
@@ -772,8 +781,9 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
     /**
      * @notice Update withdrawal buffer
      * @param newBuffer New buffer amount
+     * @dev Callable by owner or operator for operational flexibility
      */
-    function setWithdrawalBuffer(uint256 newBuffer) external onlyOwner {
+    function setWithdrawalBuffer(uint256 newBuffer) external onlyOperatorOrOwner {
         emit WithdrawalBufferUpdated(withdrawalBuffer, newBuffer);
         withdrawalBuffer = newBuffer;
     }
@@ -820,8 +830,9 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
      * @param requestId Request ID to process
      * @dev Invariant I.1: Still burns shares at current NAV
      * @dev WARNING: Skips FIFO order - use only in emergencies
+     * @dev Callable by owner or operator for operational flexibility
      */
-    function forceProcessWithdrawal(uint256 requestId) external nonReentrant onlyOwner {
+    function forceProcessWithdrawal(uint256 requestId) external nonReentrant onlyOperatorOrOwner {
         if (requestId >= withdrawalQueue.length) revert InvalidRequestId();
 
         WithdrawalRequest storage request = withdrawalQueue[requestId];
@@ -903,8 +914,11 @@ contract LazyUSDVault is IVault, ERC20, ReentrancyGuard {
      * Safety mechanisms:
      * - Enforces MIN_YIELD_REPORT_INTERVAL (1 day) between reports
      * - If maxYieldChangePercent is set, enforces bounds to prevent misreporting
+     *
+     * @dev Callable by owner or operator for daily operational flexibility.
+     *      Safety is maintained via maxYieldChangePercent bounds (default 0.5% of NAV).
      */
-    function reportYieldAndCollectFees(int256 yieldDelta) external onlyOwner {
+    function reportYieldAndCollectFees(int256 yieldDelta) external onlyOperatorOrOwner {
         // Enforce minimum interval between reports (prevents compounding bypass)
         if (lastYieldReportTime > 0 && block.timestamp < lastYieldReportTime + MIN_YIELD_REPORT_INTERVAL) {
             revert ReportTooSoon();
