@@ -1,0 +1,12 @@
+{
+  "name": "lazy-stats",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Scripts to fetch protocol stats",
+  "scripts": {
+    "fetch-stats": "node fetch-stats.js"
+  },
+  "dependencies": {
+    "viem": "^2.43.5"
+  }
+}

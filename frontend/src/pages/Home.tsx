@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { useVaultStats, useUserData, formatUsdc, formatShares } from '@/hooks/useVault';
+import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
 import { Shield, Clock, FileText } from 'lucide-react';
@@ -12,6 +13,7 @@ export function Home() {
   const { address, isConnected } = useAccount();
   const { totalAssets, accumulatedYield, isLoading } = useVaultStats();
   const { shareBalance, usdcValue, totalDeposited } = useUserData(address);
+  const { data: protocolStats } = useProtocolStats();
 
   // Format yield for display (only show positive yield as "distributed")
   const yieldDistributed = accumulatedYield !== undefined && accumulatedYield > 0n
@@ -66,7 +68,7 @@ export function Home() {
               <div className="stat-label">Base APR</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">—</div>
+              <div className="stat-value">{protocolStats?.depositorCount ?? '—'}</div>
               <div className="stat-label">Depositors</div>
             </div>
             <div className="stat-item">

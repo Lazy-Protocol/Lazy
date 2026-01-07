@@ -1,0 +1,41 @@
+name: Update Protocol Stats
+
+on:
+  schedule:
+    # Run every hour
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-stats:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd scripts
+          npm install
+
+      - name: Fetch protocol stats
+        env:
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          VAULT_ADDRESS: '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805'
+        run: |
+          cd scripts
+          node fetch-stats.js
+
+      - name: Commit and push stats
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add frontend/public/stats.json
+          git diff --staged --quiet || git commit -m "Update protocol stats [skip ci]"
+          git push

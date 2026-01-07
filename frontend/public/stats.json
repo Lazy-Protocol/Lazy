@@ -1,0 +1,20 @@
+{
+  "totalAssets": "0",
+  "totalSupply": "0",
+  "sharePrice": "1000000",
+  "accumulatedYield": "0",
+  "pendingWithdrawalShares": "0",
+  "totalDeposited": "0",
+  "formatted": {
+    "tvl": "0",
+    "totalSupply": "0",
+    "sharePrice": "1",
+    "accumulatedYield": "0",
+    "totalDeposited": "0"
+  },
+  "depositorCount": 0,
+  "depositCount": 0,
+  "updatedAt": "2026-01-07T19:45:17.767Z",
+  "vaultAddress": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
+  "chainId": 1
+}
