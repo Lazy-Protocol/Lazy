@@ -14,6 +14,7 @@ import { vaultAbi } from '@/config/abis';
 import { CONTRACTS } from '@/config/wagmi';
 import { formatUnits } from 'viem';
 import toast from 'react-hot-toast';
+import { ETHERSCAN_TX_URL } from '@/config/constants';
 
 interface WithdrawModalProps {
   onClose: () => void;
@@ -28,6 +29,7 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
 
   const {
     requestWithdrawal,
+    hash,
     isSuccess,
     error,
   } = useRequestWithdrawal();
@@ -56,7 +58,14 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
   // Handle success
   useEffect(() => {
     if (isSuccess && isProcessing) {
-      toast.success('Withdrawal requested!');
+      toast.success(
+        <span>
+          Withdrawal requested!{' '}
+          <a href={ETHERSCAN_TX_URL(hash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
+            View tx
+          </a>
+        </span>
+      );
       refetch();
       setIsProcessing(false);
       onClose();

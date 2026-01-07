@@ -11,6 +11,7 @@ import {
 } from '@/hooks/useVault';
 import { formatUnits } from 'viem';
 import toast from 'react-hot-toast';
+import { ETHERSCAN_TX_URL } from '@/config/constants';
 
 interface DepositModalProps {
   onClose: () => void;
@@ -25,12 +26,14 @@ export function DepositModal({ onClose }: DepositModalProps) {
 
   const {
     approve,
+    hash: approveHash,
     isSuccess: isApproveSuccess,
     error: approveError,
   } = useApprove();
 
   const {
     deposit,
+    hash: depositHash,
     isSuccess: isDepositSuccess,
     error: depositError,
   } = useDeposit();
@@ -52,7 +55,14 @@ export function DepositModal({ onClose }: DepositModalProps) {
   // Handle approve success
   useEffect(() => {
     if (isApproveSuccess && isProcessing) {
-      toast.success('USDC approved!');
+      toast.success(
+        <span>
+          USDC approved!{' '}
+          <a href={ETHERSCAN_TX_URL(approveHash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
+            View tx
+          </a>
+        </span>
+      );
       refetch();
       deposit(parsedAmount);
     }
@@ -61,7 +71,14 @@ export function DepositModal({ onClose }: DepositModalProps) {
   // Handle deposit success
   useEffect(() => {
     if (isDepositSuccess && isProcessing) {
-      toast.success('Deposit successful!');
+      toast.success(
+        <span>
+          Deposit successful!{' '}
+          <a href={ETHERSCAN_TX_URL(depositHash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
+            View tx
+          </a>
+        </span>
+      );
       refetch();
       setIsProcessing(false);
       onClose();

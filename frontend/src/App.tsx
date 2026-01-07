@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast';
 
 import { config } from '@/config/wagmi';
 import { Layout } from '@/components/Layout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Home } from '@/pages/Home';
 import { Portfolio } from '@/pages/Portfolio';
 import { Docs } from '@/pages/Docs';
@@ -27,13 +28,15 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={customTheme}>
           <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Home />} />
-                <Route path="portfolio" element={<Portfolio />} />
-                <Route path="docs" element={<Docs />} />
-              </Route>
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<Home />} />
+                  <Route path="portfolio" element={<Portfolio />} />
+                  <Route path="docs" element={<Docs />} />
+                </Route>
+              </Routes>
+            </ErrorBoundary>
           </BrowserRouter>
           <Toaster
             position="bottom-right"

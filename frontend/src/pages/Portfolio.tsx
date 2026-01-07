@@ -13,7 +13,7 @@ export function Portfolio() {
   const { address, isConnected } = useAccount();
   const { shareBalance, usdcBalance, usdcValue, totalDeposited, isLoading } = useUserData(address);
   const { sharePrice, totalAssets, cooldownPeriod } = useVaultStats();
-  const { queueLength, queueHead } = useUserWithdrawals(address);
+  const { queueDepth, userPendingCount } = useUserWithdrawals(address);
 
   // Calculate profit/loss
   const profitLoss = usdcValue && totalDeposited
@@ -102,15 +102,15 @@ export function Portfolio() {
             <div className="w-10 h-10 bg-yield-gold/10 rounded-xl flex items-center justify-center">
               <Clock className="w-5 h-5 text-yield-gold" />
             </div>
-            <span className="text-drift-white/70">Queue Status</span>
+            <span className="text-drift-white/70">Your Withdrawals</span>
           </div>
           <div className="text-2xl font-bold text-drift-white">
-            {queueLength !== undefined && queueHead !== undefined
-              ? `${Number(queueLength) - Number(queueHead)}`
-              : '—'}
+            {userPendingCount !== undefined ? String(userPendingCount) : '—'}
           </div>
           <div className="text-sm text-drift-white/50 mt-1">
-            Pending requests
+            {userPendingCount && userPendingCount > 0n
+              ? `pending (${queueDepth ?? '—'} total in queue)`
+              : 'No pending requests'}
           </div>
         </div>
       </div>

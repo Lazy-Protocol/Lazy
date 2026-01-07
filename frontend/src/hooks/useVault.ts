@@ -221,8 +221,8 @@ export function useRequestWithdrawal() {
   };
 }
 
-// Hook to get user's withdrawal requests
-export function useUserWithdrawals(_address: `0x${string}` | undefined) {
+// Hook to get user's withdrawal requests and queue info
+export function useUserWithdrawals(address: `0x${string}` | undefined) {
   const queueLength = useReadContract({
     address: CONTRACTS.vault,
     abi: vaultAbi,
@@ -235,11 +235,31 @@ export function useUserWithdrawals(_address: `0x${string}` | undefined) {
     functionName: 'withdrawalQueueHead',
   });
 
-  // We'd need to iterate through the queue to find user's requests
-  // For now, return queue info
+  const userPendingCount = useReadContract({
+    address: CONTRACTS.vault,
+    abi: vaultAbi,
+    functionName: 'userPendingRequests',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address,
+    },
+  });
+
+  // Calculate queue depth (pending requests ahead)
+  const queueDepth = queueLength.data !== undefined && queueHead.data !== undefined
+    ? Number(queueLength.data) - Number(queueHead.data)
+    : undefined;
+
   return {
     queueLength: queueLength.data as bigint | undefined,
     queueHead: queueHead.data as bigint | undefined,
-    isLoading: queueLength.isLoading || queueHead.isLoading,
+    queueDepth,
+    userPendingCount: userPendingCount.data as bigint | undefined,
+    isLoading: queueLength.isLoading || queueHead.isLoading || userPendingCount.isLoading,
+    refetch: () => {
+      queueLength.refetch();
+      queueHead.refetch();
+      userPendingCount.refetch();
+    },
   };
 }

@@ -110,6 +110,13 @@ export const vaultAbi = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
+    name: 'userPendingRequests',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
     name: 'accumulatedYield',
     type: 'function',
     stateMutability: 'view',
