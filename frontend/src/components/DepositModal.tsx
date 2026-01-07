@@ -11,7 +11,7 @@ import {
 } from '@/hooks/useVault';
 import { formatUnits } from 'viem';
 import toast from 'react-hot-toast';
-import { ETHERSCAN_TX_URL } from '@/config/constants';
+import { ETHERSCAN_TX_URL, BASE_APR } from '@/config/constants';
 
 interface DepositModalProps {
   onClose: () => void;
@@ -153,8 +153,8 @@ export function DepositModal({ onClose }: DepositModalProps) {
             <span className="conversion-value">1 lazyUSD = {exchangeRate} USDC</span>
           </div>
           <div className="conversion-row">
-            <span className="conversion-label">Current APY</span>
-            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>5.2%</span>
+            <span className="conversion-label">Base APR</span>
+            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{BASE_APR}%</span>
           </div>
         </div>
 
@@ -164,8 +164,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
         </div>
 
         <button
-          className="btn btn-primary"
-          style={{ width: '100%' }}
+          className="btn btn-primary w-full"
           onClick={handleSubmit}
           disabled={!isValidAmount || isProcessing}
         >
@@ -173,7 +172,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
         </button>
 
         {hasInsufficientBalance && (
-          <p style={{ color: 'var(--risk-red)', fontSize: '0.875rem', textAlign: 'center', marginTop: '12px' }}>
+          <p className="text-red-500 text-sm text-center mt-3">
             Insufficient USDC balance
           </p>
         )}

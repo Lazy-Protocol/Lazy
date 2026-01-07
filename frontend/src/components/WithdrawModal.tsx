@@ -155,8 +155,7 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
         </div>
 
         <button
-          className="btn btn-primary"
-          style={{ width: '100%' }}
+          className="btn btn-primary w-full"
           onClick={handleSubmit}
           disabled={!isValidAmount || isProcessing}
         >
@@ -164,12 +163,12 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
         </button>
 
         {hasInsufficientBalance && (
-          <p style={{ color: 'var(--risk-red)', fontSize: '0.875rem', textAlign: 'center', marginTop: '12px' }}>
+          <p className="text-red-500 text-sm text-center mt-3">
             Insufficient lazyUSD balance
           </p>
         )}
 
-        <p style={{ color: 'var(--slate)', fontSize: '0.75rem', textAlign: 'center', marginTop: '12px' }}>
+        <p className="text-slate-400 text-xs text-center mt-3">
           Shares in the withdrawal queue still earn yield until fulfilled.
         </p>
       </div>
