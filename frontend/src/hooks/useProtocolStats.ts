@@ -24,11 +24,14 @@ interface ProtocolStats {
   lastYieldReportTime: string;
 }
 
+const STATS_URL = 'https://raw.githubusercontent.com/sirmoremoney/AYP/main/frontend/public/stats.json';
+
 export function useProtocolStats() {
   return useQuery<ProtocolStats>({
     queryKey: ['protocol-stats'],
     queryFn: async () => {
-      const response = await fetch('/stats.json');
+      // Fetch from GitHub raw to get latest stats without redeploying
+      const response = await fetch(`${STATS_URL}?t=${Date.now()}`);
       if (!response.ok) {
         throw new Error('Failed to fetch stats');
       }
