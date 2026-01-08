@@ -164,7 +164,7 @@ export function Home() {
               <div className="vault-user-balance" style={{ fontFamily: 'var(--font-primary)', fontSize: '1rem' }}>
                 Coming soon
               </div>
-              <div className="vault-user-subtext">Launching Q2 2025</div>
+              <div className="vault-user-subtext">Launching Q2 2026</div>
             </div>
 
             <div className="vault-actions">
@@ -200,7 +200,7 @@ export function Home() {
               <div className="vault-user-balance" style={{ fontFamily: 'var(--font-primary)', fontSize: '1rem' }}>
                 Coming soon
               </div>
-              <div className="vault-user-subtext">Launching Q1 2025</div>
+              <div className="vault-user-subtext">Launching Q2 2026</div>
             </div>
 
             <div className="vault-actions">
