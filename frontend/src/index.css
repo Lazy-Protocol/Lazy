@@ -1766,3 +1766,308 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   .resources-grid { grid-template-columns: 1fr; }
   .invariant-item { flex-direction: column; gap: var(--space-sm); }
 }
+
+/* ========================================
+   Backing Page Components
+   ======================================== */
+
+/* Wallet Cards Grid */
+.wallets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-lg);
+}
+
+.wallet-card {
+  background: white;
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  transition: box-shadow 200ms ease, transform 200ms ease;
+  position: relative;
+}
+
+.wallet-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.wallet-card-badge {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  background: var(--lazy-navy);
+  color: var(--drift-white);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.wallet-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.wallet-card-header svg {
+  color: var(--yield-gold);
+}
+
+.wallet-card-header h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.wallet-card-desc {
+  color: var(--slate);
+  font-size: 0.9375rem;
+  margin-bottom: var(--space-lg);
+  line-height: 1.6;
+}
+
+.wallet-card-address {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  background: var(--lazy-navy);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.wallet-card-address code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--drift-white);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copy-btn {
+  background: transparent;
+  border: none;
+  color: var(--slate);
+  cursor: pointer;
+  padding: var(--space-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 150ms ease;
+}
+
+.copy-btn:hover {
+  color: var(--drift-white);
+}
+
+.wallet-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.wallet-card-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--slate);
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.wallet-card-links a:hover {
+  color: var(--yield-gold);
+}
+
+/* Capital Allocation */
+.allocation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.allocation-card {
+  background: white;
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  text-align: center;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.allocation-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.allocation-card-highlight {
+  border-color: var(--yield-gold);
+  background: linear-gradient(135deg, rgba(196, 160, 82, 0.08) 0%, rgba(196, 160, 82, 0.02) 100%);
+}
+
+.allocation-percent {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--yield-gold);
+  margin-bottom: var(--space-sm);
+  line-height: 1;
+}
+
+.allocation-card h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--space-xs);
+}
+
+.allocation-card p {
+  font-size: 0.875rem;
+  color: var(--slate);
+  line-height: 1.5;
+}
+
+.yield-layer-card {
+  background: var(--lazy-navy);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.yield-layer-card h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--drift-white);
+  margin-bottom: var(--space-sm);
+}
+
+.yield-layer-card p {
+  color: var(--slate);
+  margin-bottom: var(--space-lg);
+}
+
+.yield-assets {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.yield-assets span {
+  background: rgba(196, 160, 82, 0.2);
+  color: var(--yield-gold);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.allocation-note {
+  text-align: center;
+  color: var(--slate);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Yield Sources */
+.yield-sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.yield-source-card {
+  background: white;
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.yield-source-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.yield-source-card h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--space-sm);
+}
+
+.yield-source-card p {
+  color: var(--slate);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin-bottom: var(--space-md);
+}
+
+.yield-source-tag {
+  display: inline-block;
+  background: var(--lazy-navy);
+  color: var(--drift-white);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.yield-note {
+  text-align: center;
+  color: var(--slate);
+  font-size: 0.9375rem;
+}
+
+.yield-note a {
+  color: var(--yield-gold);
+  text-decoration: none;
+}
+
+.yield-note a:hover {
+  text-decoration: underline;
+}
+
+/* Verify CTA */
+.verify-cta {
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: var(--space-xl);
+}
+
+/* CTA Links */
+.cta-links {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin: var(--space-xl) 0 var(--space-lg);
+}
+
+.cta-tagline {
+  color: var(--slate);
+  font-size: 1rem;
+}
+
+/* Backing Page Responsive */
+@media (max-width: 768px) {
+  .allocation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wallets-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,5 +1,6 @@
-import { ExternalLink, Eye, Activity, Shield, TrendingUp, Users, Wallet } from 'lucide-react';
+import { ExternalLink, Copy, Check, Shield, Activity } from 'lucide-react';
 import { LiveBackingData } from '@/components/BackingData';
+import { useState } from 'react';
 
 // Treasury multisig - holds all positions
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
@@ -21,46 +22,58 @@ const EXPLORERS = {
   },
 };
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button onClick={handleCopy} className="copy-btn" title="Copy address">
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </button>
+  );
+}
+
 export function Backing() {
   return (
     <>
       {/* Hero */}
-      <section className="hero" style={{ paddingBottom: 'var(--space-2xl)' }}>
+      <section className="hero">
         <div className="container">
           <h1 className="hero-title">No black boxes.</h1>
           <p className="hero-subtitle">
-            Every position onchain. Every trade auditable.<br />
-            Trust, but verify.
+            Patient capital doesn't hide. Neither do we.<br />
+            Everything backing your lazyUSD — visible, verifiable, onchain.
           </p>
         </div>
       </section>
 
       {/* Wallets Section */}
-      <section className="section" style={{ paddingTop: 0 }}>
+      <section className="section">
         <div className="container">
-          <div className="wallet-cards">
+          <div className="section-header">
+            <h2 className="section-title">Where your capital lives.</h2>
+            <p className="section-subtitle">Two wallets. Full visibility. No mystery.</p>
+          </div>
+
+          <div className="wallets-grid">
             {/* Treasury Multisig */}
             <div className="wallet-card">
               <div className="wallet-card-badge">Primary</div>
-              <div className="wallet-card-icon">
-                <Users size={28} />
+              <div className="wallet-card-header">
+                <Shield size={24} />
+                <h3>Treasury Multisig</h3>
               </div>
-              <h3 className="wallet-card-title">Treasury Multisig</h3>
               <p className="wallet-card-desc">
-                Spot positions on HyperEVM & ETH mainnet. Margin and perp positions on Lighter.
+                Holds all protocol positions. Every asset verifiable onchain.
               </p>
               <div className="wallet-card-address">
-                <span>{MULTISIG_ADDRESS.slice(0, 6)}...{MULTISIG_ADDRESS.slice(-4)}</span>
-                <button
-                  className="wallet-copy-btn"
-                  onClick={() => navigator.clipboard.writeText(MULTISIG_ADDRESS)}
-                  title="Copy address"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
+                <code>{MULTISIG_ADDRESS}</code>
+                <CopyButton text={MULTISIG_ADDRESS} />
               </div>
               <div className="wallet-card-links">
                 <a href={EXPLORERS.multisig.etherscan} target="_blank" rel="noopener noreferrer">
@@ -72,31 +85,25 @@ export function Backing() {
                 <a href={EXPLORERS.multisig.lighter} target="_blank" rel="noopener noreferrer">
                   Lighter <ExternalLink size={12} />
                 </a>
+                <a href={EXPLORERS.multisig.pendle} target="_blank" rel="noopener noreferrer">
+                  Pendle <ExternalLink size={12} />
+                </a>
               </div>
             </div>
 
             {/* Operator Wallet */}
-            <div className="wallet-card wallet-card-alt">
-              <div className="wallet-card-badge wallet-card-badge-alt">Operator</div>
-              <div className="wallet-card-icon">
-                <Wallet size={28} />
+            <div className="wallet-card">
+              <div className="wallet-card-badge">Operator</div>
+              <div className="wallet-card-header">
+                <Activity size={24} />
+                <h3>Operator Wallet</h3>
               </div>
-              <h3 className="wallet-card-title">Operator Wallet</h3>
               <p className="wallet-card-desc">
-                Trades on platforms without multisig support. Holds funds briefly, then returns to multisig after completion.
+                Executes on venues without Safe support. Same transparency.
               </p>
               <div className="wallet-card-address">
-                <span>{OPERATOR_ADDRESS.slice(0, 6)}...{OPERATOR_ADDRESS.slice(-4)}</span>
-                <button
-                  className="wallet-copy-btn"
-                  onClick={() => navigator.clipboard.writeText(OPERATOR_ADDRESS)}
-                  title="Copy address"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
+                <code>{OPERATOR_ADDRESS}</code>
+                <CopyButton text={OPERATOR_ADDRESS} />
               </div>
               <div className="wallet-card-links">
                 <a href={EXPLORERS.operator.hypurrscan} target="_blank" rel="noopener noreferrer">
@@ -111,85 +118,52 @@ export function Backing() {
         </div>
       </section>
 
-      {/* Live Data Section */}
+      {/* Live Data */}
       <LiveBackingData />
 
-      {/* Strategy Breakdown */}
+      {/* Capital Allocation */}
       <section className="section" style={{ background: 'white' }}>
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Capital Allocation</h2>
-            <p className="section-subtitle">Delta-neutral basis trade with yield stacking</p>
+            <h2 className="section-title">How your capital works.</h2>
+            <p className="section-subtitle">You deposit. We allocate. The yield finds you.</p>
           </div>
 
-          <div className="backing-flow">
-            {/* USDC Deposit */}
-            <div className="backing-node backing-node-root">
-              <div className="backing-node-icon">$</div>
-              <div className="backing-node-content">
-                <h4>USDC Deposits</h4>
-                <p>100% of vault TVL</p>
-              </div>
+          <div className="allocation-grid">
+            <div className="allocation-card">
+              <div className="allocation-percent">30%</div>
+              <h4>Perp Collateral</h4>
+              <p>Short positions on Hyperliquid & Lighter for delta hedging</p>
             </div>
 
-            <div className="backing-branch">
-              <div className="backing-branch-line"></div>
+            <div className="allocation-card">
+              <div className="allocation-percent">70%</div>
+              <h4>Spot Holdings</h4>
+              <p>Long spot to neutralize delta exposure</p>
             </div>
 
-            {/* Split */}
-            <div className="backing-split">
-              {/* Perp Collateral - 30% */}
-              <div className="backing-node">
-                <div className="backing-node-percent">30%</div>
-                <div className="backing-node-content">
-                  <h4>Perp Collateral</h4>
-                  <p>Short perp for delta hedge</p>
-                  <div className="backing-node-venue">
-                    <Activity size={14} />
-                    Hyperliquid / Lighter
-                  </div>
-                </div>
-              </div>
-
-              {/* Spot Purchase - 70% */}
-              <div className="backing-node">
-                <div className="backing-node-percent">70%</div>
-                <div className="backing-node-content">
-                  <h4>Spot Purchase</h4>
-                  <p>ETH, HYPE, SOL</p>
-                  <div className="backing-node-venue">
-                    <TrendingUp size={14} />
-                    Hyperliquid
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="backing-branch backing-branch-right">
-              <div className="backing-branch-line"></div>
-            </div>
-
-            {/* Spot Deployment */}
-            <div className="backing-split backing-split-sub">
-              {/* Pendle PT - 70% of spot */}
-              <div className="backing-node backing-node-sm">
-                <div className="backing-node-percent-sm">49%</div>
-                <div className="backing-node-content">
-                  <h4>Pendle PT</h4>
-                  <p>Fixed yield, &lt;2mo maturity</p>
-                </div>
-              </div>
-
-              {/* Liquid Staking - 30% of spot */}
-              <div className="backing-node backing-node-sm">
-                <div className="backing-node-percent-sm">21%</div>
-                <div className="backing-node-content">
-                  <h4>Liquid Staking</h4>
-                  <p>stHYPE, weETH, mSOL</p>
-                </div>
-              </div>
+            <div className="allocation-card allocation-card-highlight">
+              <div className="allocation-percent">=</div>
+              <h4>Delta Neutral</h4>
+              <p>No directional market exposure</p>
             </div>
           </div>
+
+          <div className="yield-layer-card">
+            <h4>Then the spot earns.</h4>
+            <p>The 70% spot holdings are deployed into yield-bearing positions:</p>
+            <div className="yield-assets">
+              <span>stHYPE</span>
+              <span>stETH</span>
+              <span>jitoSOL</span>
+              <span>Pendle PT</span>
+            </div>
+          </div>
+
+          <p className="allocation-note">
+            Two yield streams: funding rates from perps + staking/PT yields from spot.<br />
+            The mix shifts based on rates. The transparency doesn't.
+          </p>
         </div>
       </section>
 
@@ -197,100 +171,100 @@ export function Backing() {
       <section className="section">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Yield Sources</h2>
-            <p className="section-subtitle">Multiple streams, one vault</p>
+            <h2 className="section-title">Where yield comes from.</h2>
+            <p className="section-subtitle">Two streams. One lazy token.</p>
           </div>
 
-          <div className="backing-yields">
-            <div className="backing-yield-card">
-              <div className="backing-yield-icon">
-                <Activity size={24} />
-              </div>
+          <div className="yield-sources-grid">
+            <div className="yield-source-card">
               <h4>Funding Rates</h4>
-              <p className="backing-yield-range">5-20%+ APR</p>
-              <p className="backing-yield-desc">From short perp positions. Variable based on market sentiment.</p>
+              <p>
+                Delta-neutral perp positions earn funding when shorts get paid.
+                Hyperliquid & Lighter.
+              </p>
+              <span className="yield-source-tag">From the 30%</span>
             </div>
-
-            <div className="backing-yield-card">
-              <div className="backing-yield-icon">
-                <Shield size={24} />
-              </div>
-              <h4>Pendle PT</h4>
-              <p className="backing-yield-range">5-15% APR</p>
-              <p className="backing-yield-desc">Fixed yield from discounted principal tokens.</p>
-            </div>
-
-            <div className="backing-yield-card">
-              <div className="backing-yield-icon">
-                <TrendingUp size={24} />
-              </div>
-              <h4>Liquid Staking</h4>
-              <p className="backing-yield-range">3-8% APR</p>
-              <p className="backing-yield-desc">Native staking rewards from LST protocols.</p>
+            <div className="yield-source-card">
+              <h4>Staking & PT Yields</h4>
+              <p>
+                Spot holdings earn staking rewards (stHYPE, stETH, jitoSOL)
+                or fixed PT yields via Pendle.
+              </p>
+              <span className="yield-source-tag">From the 70%</span>
             </div>
           </div>
+
+          <p className="yield-note">
+            Rates fluctuate. That's DeFi. Current vault APY is always shown on the{' '}
+            <a href="/">deposit page</a>.
+          </p>
         </div>
       </section>
 
-      {/* Transparency Features */}
+      {/* Trust but Verify */}
       <section className="section" style={{ background: 'white' }}>
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Fully Verifiable</h2>
-            <p className="section-subtitle">No CEX custody, no offchain games</p>
+            <h2 className="section-title">Trust, but verify.</h2>
           </div>
 
           <div className="steps-grid">
             <div className="step-card">
-              <div className="step-number">
-                <Eye size={24} />
-              </div>
-              <h3 className="step-title">Public Positions</h3>
-              <p className="step-description">
-                All positions held in publicly viewable wallets on Hyperliquid and Ethereum.
-              </p>
+              <div className="step-number">1</div>
+              <h3 className="step-title">Check the wallets</h3>
+              <p className="step-description">Every address is public. Click through to any explorer.</p>
             </div>
-
             <div className="step-card">
-              <div className="step-number">
-                <Activity size={24} />
-              </div>
-              <h3 className="step-title">Onchain Execution</h3>
-              <p className="step-description">
-                Every trade, every rebalance — recorded onchain and auditable by anyone.
-              </p>
+              <div className="step-number">2</div>
+              <h3 className="step-title">See the positions</h3>
+              <p className="step-description">Hyperliquid, Lighter, Pendle — all onchain, all visible.</p>
             </div>
-
             <div className="step-card">
-              <div className="step-number">
-                <Shield size={24} />
-              </div>
-              <h3 className="step-title">No Counterparty</h3>
-              <p className="step-description">
-                No CEX deposits, no custodians. Your backing is always verifiable.
-              </p>
+              <div className="step-number">3</div>
+              <h3 className="step-title">Verify the NAV</h3>
+              <p className="step-description">Net Asset Value computed onchain. No oracles. No trust assumptions.</p>
             </div>
           </div>
+
+          <p className="verify-cta">Don't trust us. Check the chain.</p>
         </div>
       </section>
 
       {/* CTA */}
       <section className="section" style={{ textAlign: 'center' }}>
         <div className="container-narrow">
-          <h2 className="section-title">Verify it yourself.</h2>
-          <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
-            Check the wallets. Audit the positions. Trust the math.
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-md)', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href={EXPLORERS.multisig.lighter} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+          <h2 className="section-title">See for yourself.</h2>
+          <div className="cta-links">
+            <a
+              href={EXPLORERS.multisig.lighter}
+              className="btn btn-primary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               View on Lighter <ExternalLink size={16} />
             </a>
-            <a href={EXPLORERS.operator.hypurrscan} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
+            <a
+              href={EXPLORERS.operator.hypurrscan}
+              className="btn btn-secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               View on Hypurrscan <ExternalLink size={16} />
             </a>
+            <a
+              href={EXPLORERS.multisig.etherscan}
+              className="btn btn-secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View on Etherscan <ExternalLink size={16} />
+            </a>
           </div>
+          <p className="cta-tagline">Patient capital deserves proof, not promises.</p>
         </div>
       </section>
     </>
   );
 }
+
+export default Backing;

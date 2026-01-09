@@ -10,7 +10,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Home } from '@/pages/Home';
 import { Portfolio } from '@/pages/Portfolio';
 import { Docs } from '@/pages/Docs';
-import { Backing } from '@/pages/Backing';
+import Backing from '@/pages/Backing';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
