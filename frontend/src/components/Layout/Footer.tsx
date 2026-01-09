@@ -20,10 +20,9 @@ export function Footer() {
           <div className="footer-column">
             <h4>Protocol</h4>
             <ul className="footer-links">
-              <li><a href="#vaults">Vaults</a></li>
+              <li><Link to="/">Vaults</Link></li>
               <li><Link to="/docs">Documentation</Link></li>
-              <li><a href="#">Security</a></li>
-              <li><a href="#">Governance</a></li>
+              <li><Link to="/backing">Backing</Link></li>
             </ul>
           </div>
 
@@ -32,16 +31,14 @@ export function Footer() {
             <ul className="footer-links">
               <li><a href="https://t.me/+KKGjFua0yv4zNmFi" target="_blank" rel="noopener noreferrer">Telegram</a></li>
               <li><a href="https://x.com/lazydotxyz" target="_blank" rel="noopener noreferrer">X (Twitter)</a></li>
-              <li><a href="#">Blog</a></li>
             </ul>
           </div>
 
           <div className="footer-column">
             <h4>Developers</h4>
             <ul className="footer-links">
-              <li><a href="#">Contracts</a></li>
-              <li><a href="#">API</a></li>
-              <li><a href="#">Bug Bounty</a></li>
+              <li><a href="https://etherscan.io/address/0xd53b68fb4eb907c3c1e348cd7d7bede34f763805" target="_blank" rel="noopener noreferrer">Contracts</a></li>
+              <li><a href="https://github.com/sirmoremoney/AYP" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             </ul>
           </div>
         </div>
@@ -66,12 +63,12 @@ export function Footer() {
 
         <div className="footer-bottom">
           <p>&copy; 2026 Lazy Protocol. All rights reserved.</p>
-          <div className="footer-security">
+          <Link to="/backing" className="footer-security">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
-            Formally verified. View security docs →
-          </div>
+            Fully transparent. View backing →
+          </Link>
         </div>
       </div>
     </footer>
