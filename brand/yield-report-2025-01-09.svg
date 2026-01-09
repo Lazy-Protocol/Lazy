@@ -1,0 +1,86 @@
+<svg width="1200" height="675" viewBox="0 0 1200 675" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background: Lazy Navy -->
+  <rect width="1200" height="675" fill="#1a2332"/>
+
+  <!-- Subtle grid pattern -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#242d3d" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="675" fill="url(#grid)" opacity="0.5"/>
+
+  <!-- Gold accent line -->
+  <rect x="100" y="200" width="48" height="3" rx="1.5" fill="#C4A052"/>
+
+  <!-- Label -->
+  <text
+    x="100"
+    y="260"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="24"
+    font-weight="400"
+    fill="#64748B"
+    letter-spacing="0.05em"
+  >
+    YIELD DISTRIBUTED
+  </text>
+
+  <!-- Amount - UPDATE THIS VALUE -->
+  <text
+    x="100"
+    y="360"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="96"
+    font-weight="700"
+    fill="#FAFBFC"
+    letter-spacing="-0.03em"
+  >
+    $23.12
+  </text>
+
+  <!-- Currency label -->
+  <text
+    x="100"
+    y="410"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="28"
+    font-weight="500"
+    fill="#64748B"
+  >
+    USDC
+  </text>
+
+  <!-- Tagline -->
+  <text
+    x="100"
+    y="520"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="24"
+    font-weight="400"
+    fill="#64748B"
+  >
+    Patient capital, rewarded.
+  </text>
+
+  <!-- Logo mark (bottom right) -->
+  <g transform="translate(1020, 555)">
+    <circle cx="24" cy="24" r="24" fill="rgba(255,255,255,0.08)"/>
+    <path d="M 14 12 L 14 36 L 34 36" stroke="#FAFBFC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="34" cy="36" r="2" fill="#C4A052"/>
+  </g>
+
+  <!-- lazy wordmark -->
+  <text
+    x="1080"
+    y="610"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="20"
+    font-weight="600"
+    fill="#64748B"
+    text-anchor="middle"
+  >
+    lazy
+  </text>
+</svg>
