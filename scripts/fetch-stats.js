@@ -151,35 +151,31 @@ async function fetchStats() {
       console.warn('Depositor count will be 0. Consider using an RPC that supports historical logs.');
     }
 
-    // Calculate APR
+    // Calculate APR using share price (PPS) - deposit-agnostic
     let apr = STATIC_APR;
     let aprSource = 'static';
 
-    // Only calculate dynamic APR if we have yield data and deposits
-    if (accumulatedYield > 0n && totalAssets > 0n && lastYieldReportTime > 0n) {
-      // Calculate principal (totalAssets minus accumulated yield)
-      const principal = totalAssets - BigInt(accumulatedYield);
+    // Share price is in 6 decimals, initial PPS = 1.0 (1000000 raw)
+    const INITIAL_PPS = 1000000n;
 
-      if (principal > 0n) {
-        // Calculate time elapsed since deployment (in seconds)
-        const now = Math.floor(Date.now() / 1000);
-        const elapsedSeconds = now - DEPLOYMENT_TIMESTAMP;
-        const elapsedDays = elapsedSeconds / 86400;
+    if (sharePrice > INITIAL_PPS && lastYieldReportTime > 0n) {
+      // Calculate time elapsed since deployment (in seconds)
+      const now = Math.floor(Date.now() / 1000);
+      const elapsedSeconds = now - DEPLOYMENT_TIMESTAMP;
+      const elapsedDays = elapsedSeconds / 86400;
 
-        // Only calculate if we have at least 1 day of data
-        if (elapsedDays >= 1) {
-          // APR = (yield / principal) * (365 / days) * 100
-          const yieldNum = Number(formatUnits(accumulatedYield, 6));
-          const principalNum = Number(formatUnits(principal, 6));
+      // Only calculate if we have at least 1 day of data
+      if (elapsedDays >= 1) {
+        // APR = ((currentPPS / initialPPS) - 1) * (365 / days) * 100
+        // This is deposit-agnostic - new deposits don't affect the calculation
+        const currentPPS = Number(formatUnits(sharePrice, 6));
+        const ppsGain = currentPPS - 1.0; // Initial PPS is 1.0
 
-          if (principalNum > 0) {
-            apr = (yieldNum / principalNum) * (365 / elapsedDays) * 100;
-            aprSource = 'calculated';
+        apr = ppsGain * (365 / elapsedDays) * 100;
+        aprSource = 'calculated';
 
-            // Cap APR at reasonable bounds (0-100%)
-            apr = Math.max(0, Math.min(100, apr));
-          }
-        }
+        // Cap APR at reasonable bounds (0-100%)
+        apr = Math.max(0, Math.min(100, apr));
       }
     }
 
