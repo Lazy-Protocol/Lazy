@@ -8,8 +8,8 @@ import { WithdrawModal } from '@/components/WithdrawModal';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
 
-// Vault launch date (January 8, 2025)
-const LAUNCH_DATE = new Date('2025-01-08T00:00:00Z');
+// Vault launch date (January 8, 2026)
+const LAUNCH_DATE = new Date('2026-01-08T00:00:00Z');
 
 function getDaysLive(): number {
   const now = new Date();
