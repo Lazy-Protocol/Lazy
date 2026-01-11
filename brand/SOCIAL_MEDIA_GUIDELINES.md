@@ -1,4 +1,4 @@
-# Lazy Protocol — Social Media Voice Guidelines
+# Lazy Protocol: Social Media Voice Guidelines
 
 ## Platform Strategy
 
@@ -128,7 +128,7 @@ Quiet month. Good month.
 ```
 Hot take: Most yield protocols are designed for the protocol, not the user.
 
-Claiming rewards, rotating strategies, watching gas—that's work you do for free.
+Claiming rewards, rotating strategies, watching gas. That's work you do for free.
 
 We built Lazy because yield should be passive. Actually passive.
 ```
@@ -233,7 +233,7 @@ wagmi 🚀🚀🚀
 
 ### Server Personality
 
-Discord is where the community lives. The tone is slightly warmer than Twitter—more conversational, more helpful, more patient.
+Discord is where the community lives. The tone is slightly warmer than Twitter: more conversational, more helpful, more patient.
 
 Think: **A helpful librarian who actually knows DeFi.**
 
@@ -263,7 +263,7 @@ Questions? Ask in #support.
 ```
 User: "My withdrawal has been pending for 3 days. This is ridiculous."
 
-Lazy Team: "I hear you—waiting is frustrating. Let me check on this.
+Lazy Team: "I hear you. Waiting is frustrating. Let me check on this.
 
 [checks]
 
@@ -302,7 +302,7 @@ Share your thoughts below.
 
 ### Discord Don'ts
 
-- Don't ignore questions (even if asked before—link to answers)
+- Don't ignore questions (even if asked before, link to answers)
 - Don't argue with trolls (one response max, then ignore)
 - Don't make promises you can't keep
 - Don't share alpha or speculation about unreleased features
@@ -371,7 +371,7 @@ We'd rather build a good product.
 | Day | Content Type |
 |-----|--------------|
 | Monday | Performance update (if notable) or educational content |
-| Tuesday | — (silence is fine) |
+| Tuesday | (silence is fine) |
 | Wednesday | Thought leadership or building update |
 | Thursday | Community highlight or RT |
 | Friday | Casual/lighter content |
@@ -401,10 +401,10 @@ We'd rather build a good product.
 
 ### Principles
 
-1. **Speed over polish** — Acknowledge fast, details follow
-2. **Honesty over spin** — Never downplay or hide
-3. **Responsibility over blame** — Own mistakes fully
-4. **Action over words** — Say what you're doing, then do it
+1. **Speed over polish:** Acknowledge fast, details follow
+2. **Honesty over spin:** Never downplay or hide
+3. **Responsibility over blame:** Own mistakes fully
+4. **Action over words:** Say what you're doing, then do it
 
 ### Response Templates
 
@@ -444,7 +444,7 @@ Expected resolution: [time]
 
 Your funds are safe. We're working to process the backlog.
 
-Sorry for the wait—we'll update every [X] hours until resolved.
+Sorry for the wait. We'll update every [X] hours until resolved.
 ```
 
 ### What NOT to Do in a Crisis
@@ -571,7 +571,7 @@ getlazy.xyz
 ### LinkedIn
 
 ```
-Lazy Protocol builds yield infrastructure for passive investors. Our vaults let users earn on their crypto assets without active management—deposit, earn automatically, withdraw anytime.
+Lazy Protocol builds yield infrastructure for passive investors. Our vaults let users earn on their crypto assets without active management. Deposit, earn automatically, withdraw anytime.
 
 Backed by formal verification and built for simplicity.
 ```

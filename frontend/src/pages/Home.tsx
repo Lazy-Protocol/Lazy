@@ -70,15 +70,15 @@ export function Home() {
         <div className="container">
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-value">{isLoading ? '—' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
+              <div className="stat-value">{isLoading ? '...' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{protocolStats?.apr ? `${protocolStats.apr}%` : '—'}</div>
+              <div className="stat-value">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
               <div className="stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{isLoading ? '—' : `$${yieldDistributed}`}</div>
+              <div className="stat-value">{isLoading ? '...' : `$${yieldDistributed}`}</div>
               <div className="stat-label">Yield Distributed</div>
             </div>
             <div className="stat-item">
@@ -111,11 +111,11 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
-                <div className="vault-stat-value positive">{protocolStats?.apr ? `${protocolStats.apr}%` : '—'}</div>
+                <div className="vault-stat-value positive">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">{isLoading ? '—' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
+                <div className="vault-stat-value">{isLoading ? '...' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
               </div>
             </div>
 
@@ -166,11 +166,11 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
             </div>
 
@@ -202,11 +202,11 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
             </div>
 
@@ -257,7 +257,7 @@ export function Home() {
             <div className="step-number">3</div>
             <h3 className="step-title">Collect</h3>
             <p className="step-description">
-              When you're ready, claim your capital—plus everything it earned.
+              When you're ready, claim your capital, plus everything it earned.
             </p>
           </div>
           </div>
@@ -289,7 +289,7 @@ export function Home() {
               </div>
               <h3 className="step-title">Visible positions</h3>
               <p className="step-description">
-                Every asset, every position — fully verifiable. See exactly where your capital is working.
+                Every asset, every position. Fully verifiable. See exactly where your capital is working.
               </p>
             </div>
 
@@ -299,7 +299,7 @@ export function Home() {
               </div>
               <h3 className="step-title">Onchain execution</h3>
               <p className="step-description">
-                Positions held on Hyperliquid and Lighter. All trades, all movements — public and auditable.
+                Positions held on Hyperliquid and Lighter. All trades, all movements. Public and auditable.
               </p>
             </div>
           </div>
@@ -319,7 +319,7 @@ export function Home() {
           <div className="security-text">
             <h3>Built by paranoid engineers.</h3>
             <p>
-              Lazy vaults are secured by formal mathematical proofs—not just audits.
+              Lazy vaults are secured by formal mathematical proofs, not just audits.
               Five invariants guarantee your assets are handled fairly, always.
             </p>
           </div>

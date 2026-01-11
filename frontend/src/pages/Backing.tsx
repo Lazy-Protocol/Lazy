@@ -51,7 +51,7 @@ export function Backing() {
           <h1 className="hero-title">No black boxes.</h1>
           <p className="hero-subtitle">
             Patient capital doesn't hide. Neither do we.<br />
-            Everything backing your lazyUSD — visible, verifiable, onchain.
+            Everything backing your lazyUSD. Visible, verifiable, onchain.
           </p>
         </div>
       </section>
@@ -241,7 +241,7 @@ export function Backing() {
               <h4>Up to 7-day cooldown</h4>
               <p>
                 Withdrawal requests have a cooldown period before they can be claimed.
-                This gives the strategy time to unwind positions safely — protecting
+                This gives the strategy time to unwind positions safely, protecting
                 both your capital and others' yields.
               </p>
             </div>
@@ -282,7 +282,7 @@ export function Backing() {
             <div className="step-card">
               <div className="step-number">2</div>
               <h3 className="step-title">See the positions</h3>
-              <p className="step-description">Hyperliquid, Lighter, Pendle — all onchain, all visible.</p>
+              <p className="step-description">Hyperliquid, Lighter, Pendle. All onchain, all visible.</p>
             </div>
             <div className="step-card">
               <div className="step-number">3</div>

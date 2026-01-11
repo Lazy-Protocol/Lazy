@@ -157,13 +157,13 @@ export function DepositModal({ onClose }: DepositModalProps) {
           </div>
           <div className="conversion-row">
             <span className="conversion-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</span>
-            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ? `${protocolStats.apr}%` : '—'}</span>
+            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</span>
           </div>
         </div>
 
         <div className="modal-info">
           <Info size={20} />
-          <p>Your lazyUSD will grow in value as yield accrues. No action needed—it's automatic.</p>
+          <p>Your lazyUSD will grow in value as yield accrues. No action needed. It's automatic.</p>
         </div>
 
         <button

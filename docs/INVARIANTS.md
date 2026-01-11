@@ -14,7 +14,7 @@ This document defines the formal invariants that the LazyUSD Vault MUST maintain
 
 ---
 
-## I.1 — Conservation of Value via Shares (Primary)
+## I.1: Conservation of Value via Shares (Primary)
 
 ### Statement
 
@@ -54,7 +54,7 @@ function invariant_shareValueConservation() public {
 
 ---
 
-## I.2 — Share Escrow Safety
+## I.2: Share Escrow Safety
 
 ### Statement
 
@@ -121,7 +121,7 @@ WITH ESCROW (safe):
 
 ---
 
-## I.3 — Universal NAV Application
+## I.3: Universal NAV Application
 
 ### Statement
 
@@ -155,7 +155,7 @@ sharePrice = totalAssets() / totalShares()
 
 ---
 
-## I.4 — Fee Isolation
+## I.4: Fee Isolation
 
 ### Statement
 
@@ -211,7 +211,7 @@ function invariant_feeRateCapped() public {
 
 ---
 
-## I.5 — Withdrawal Queue Liveness
+## I.5: Withdrawal Queue Liveness
 
 ### Statement
 
