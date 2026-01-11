@@ -2,6 +2,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 import { useEvmBalances, type TokenBalance } from '@/hooks/useEvmBalances';
 import { usePendlePositions, type PendlePTPosition } from '@/hooks/usePendle';
 import { useHyperliquidPositions, type HyperliquidPosition } from '@/hooks/useHyperliquid';
+import { useLighterPositions, type LighterPosition } from '@/hooks/useLighter';
 import { useSolanaPositions } from '@/hooks/useSolana';
 
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
@@ -189,16 +190,60 @@ export function PendlePositions() {
 
 // Lighter Positions Component
 export function LighterPositions() {
+  const { collateral, positions, isLoading, isError } = useLighterPositions(MULTISIG_ADDRESS);
+
+  if (isLoading) {
+    return (
+      <div className="backing-data-card">
+        <div className="backing-data-header">
+          <h3>Lighter Perps</h3>
+          <RefreshCw size={16} className="spinning" />
+        </div>
+        <div className="backing-data-loading">Loading positions...</div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="backing-data-card">
+        <div className="backing-data-header">
+          <h3>Lighter Perps</h3>
+          <span className="backing-data-badge">Multisig</span>
+        </div>
+        <div className="backing-data-error">Failed to load positions</div>
+      </div>
+    );
+  }
+
   return (
     <div className="backing-data-card">
       <div className="backing-data-header">
         <h3>Lighter Perps</h3>
-        <span className="backing-data-badge">Multisig</span>
+        {collateral > 0 && <span className="backing-data-value">{formatUsd(collateral)}</span>}
       </div>
 
-      <div className="lighter-info">
-        <p>ETH and HYPE perpetual positions for delta-neutral hedging.</p>
-      </div>
+      {positions.length === 0 ? (
+        <div className="backing-data-empty">No positions</div>
+      ) : (
+        <div className="position-list">
+          {positions.map((pos: LighterPosition) => (
+            <div key={pos.market} className="position-item">
+              <div className="position-info">
+                <span className="position-coin">{pos.market}</span>
+                <span className={`position-side ${pos.side.toLowerCase()}`}>{pos.side}</span>
+              </div>
+              <div className="position-details">
+                <span className="position-size">{formatNumber(pos.size, 2)}</span>
+                <span className="position-entry">@ ${formatNumber(pos.entryPrice, 2)}</span>
+              </div>
+              <span className={`position-pnl ${pos.unrealizedPnl >= 0 ? 'positive' : 'negative'}`}>
+                {pos.unrealizedPnl >= 0 ? '+' : ''}{formatUsd(pos.unrealizedPnl)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <a
         href={`https://app.lighter.xyz/explorer/accounts/${MULTISIG_ADDRESS}`}
