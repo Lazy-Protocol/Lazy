@@ -157,7 +157,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
           </div>
           <div className="conversion-row">
             <span className="conversion-label">APR</span>
-            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ?? 10}%</span>
+            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ? `${protocolStats.apr}%` : '—'}</span>
           </div>
         </div>
 

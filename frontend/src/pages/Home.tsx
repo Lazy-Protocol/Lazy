@@ -74,7 +74,7 @@ export function Home() {
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{protocolStats?.apr ?? 10}%</div>
+              <div className="stat-value">{protocolStats?.apr ? `${protocolStats.apr}%` : '—'}</div>
               <div className="stat-label">APR</div>
             </div>
             <div className="stat-item">
@@ -111,7 +111,7 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">APR</div>
-                <div className="vault-stat-value positive">{protocolStats?.apr ?? 10}%</div>
+                <div className="vault-stat-value positive">{protocolStats?.apr ? `${protocolStats.apr}%` : '—'}</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>

@@ -26,9 +26,6 @@ interface ProtocolStats {
 
 const STATS_URL = 'https://raw.githubusercontent.com/sirmoremoney/AYP/main/frontend/public/stats.json';
 
-// Hardcoded APR until yield calculation is stable
-const HARDCODED_APR = 10;
-
 export function useProtocolStats() {
   return useQuery<ProtocolStats>({
     queryKey: ['protocol-stats'],
@@ -38,13 +35,7 @@ export function useProtocolStats() {
       if (!response.ok) {
         throw new Error('Failed to fetch stats');
       }
-      const stats = await response.json();
-      // Override APR with hardcoded value for now
-      return {
-        ...stats,
-        apr: HARDCODED_APR,
-        aprSource: 'static' as const,
-      };
+      return response.json();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
