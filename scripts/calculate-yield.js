@@ -12,9 +12,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
 const OPERATOR_ADDRESS = '0xF466ad87c98f50473Cf4Fe32CdF8db652F9E36D6';
+const OPERATOR_SOLANA_ADDRESS = '1AxbVeo57DHrMghgWDL5d25j394LDPdwMLEtHHYTkgU';
 const VAULT_ADDRESS = '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805';
 
 const ETH_RPC = process.env.ETH_RPC_URL || 'https://eth.llamarpc.com';
+const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
 
 // Entry/exit cost rates for deploying/unwinding capital
 const ENTRY_COST_RATE = 0.00055;  // 0.055% on deposits
@@ -405,6 +407,197 @@ async function fetchHyperliquidEquity(address) {
 }
 
 // ============================================
+// Solana Balance & Staking
+// ============================================
+
+async function fetchSolanaData(address) {
+  try {
+    // Fetch SOL price from CoinGecko first
+    let solPrice = 0;
+    try {
+      const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+      if (priceRes.ok) {
+        const priceData = await priceRes.json();
+        solPrice = priceData.solana?.usd || 0;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch SOL price:', e.message);
+    }
+
+    // 1. Fetch native SOL balance
+    const balanceRes = await fetch(SOLANA_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getBalance',
+        params: [address],
+      }),
+    });
+
+    let solBalance = 0;
+    if (balanceRes.ok) {
+      const balanceData = await balanceRes.json();
+      const lamports = balanceData.result?.value || 0;
+      solBalance = lamports / 1e9;
+    }
+
+    // 2. Fetch stake accounts
+    let stakedSol = 0;
+    let stakeAccounts = [];
+    try {
+      const stakeRes = await fetch(SOLANA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'getProgramAccounts',
+          params: [
+            'Stake11111111111111111111111111111111111111',
+            {
+              encoding: 'jsonParsed',
+              filters: [
+                {
+                  memcmp: {
+                    offset: 12, // Withdraw authority offset
+                    bytes: address,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (stakeRes.ok) {
+        const stakeData = await stakeRes.json();
+        if (stakeData.result) {
+          for (const account of stakeData.result) {
+            const info = account.account?.data?.parsed?.info;
+            if (info?.stake?.delegation) {
+              const lamports = parseInt(info.stake.delegation.stake || 0);
+              const sol = lamports / 1e9;
+              stakedSol += sol;
+              stakeAccounts.push({
+                pubkey: account.pubkey,
+                amount: sol,
+                voter: info.stake.delegation.voter,
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch stake accounts:', e.message);
+    }
+
+    // 3. Fetch Jupiter Lend positions (for jlWSOL underlying SOL value)
+    let jupiterLendingSol = 0;
+    let jlWsolShares = 0;
+    try {
+      const jupLendRes = await fetch(`https://lite-api.jup.ag/lend/v1/earn/positions?users=${address}`);
+      if (jupLendRes.ok) {
+        const jupLendData = await jupLendRes.json();
+        for (const position of jupLendData) {
+          // jlWSOL token (Jupiter Lend WSOL)
+          if (position.token?.address === '2uQsyo1fXXQkDtcpXnLofWy88PxcvnfH2L8FPSE62FVU') {
+            // underlyingAssets is the actual SOL value (9 decimals)
+            jupiterLendingSol = parseInt(position.underlyingAssets || 0) / 1e9;
+            jlWsolShares = parseInt(position.shares || 0) / 1e9;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch Jupiter Lend positions:', e.message);
+    }
+
+    // 4. Fetch token accounts (for JLP and other tokens)
+    let jlpBalance = 0;
+    let jlpValue = 0;
+    try {
+      const tokenRes = await fetch(SOLANA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'getTokenAccountsByOwner',
+          params: [
+            address,
+            { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' },
+            { encoding: 'jsonParsed' },
+          ],
+        }),
+      });
+
+      if (tokenRes.ok) {
+        const tokenData = await tokenRes.json();
+        if (tokenData.result?.value) {
+          for (const account of tokenData.result.value) {
+            const info = account.account?.data?.parsed?.info;
+            const mint = info?.mint;
+            const amount = parseFloat(info?.tokenAmount?.uiAmount || 0);
+
+            // JLP token mint address
+            if (mint === '27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4') {
+              jlpBalance = amount;
+              // Fetch JLP price from Jupiter
+              try {
+                const jlpPriceRes = await fetch('https://api.jup.ag/price/v2?ids=27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4');
+                if (jlpPriceRes.ok) {
+                  const jlpPriceData = await jlpPriceRes.json();
+                  const jlpPrice = parseFloat(jlpPriceData.data?.['27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4']?.price || 0);
+                  jlpValue = jlpBalance * jlpPrice;
+                }
+              } catch (e) {
+                console.warn('Failed to fetch JLP price:', e.message);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch token accounts:', e.message);
+    }
+
+    const totalSol = solBalance + stakedSol + jupiterLendingSol;
+    const solValue = totalSol * solPrice;
+    const totalValue = solValue + jlpValue;
+
+    return {
+      solBalance,
+      stakedSol,
+      jupiterLendingSol,
+      jlWsolShares,
+      totalSol,
+      solPrice,
+      solValue,
+      jlpBalance,
+      jlpValue,
+      totalValue,
+      stakeAccounts,
+    };
+  } catch (e) {
+    console.warn('Failed to fetch Solana data:', e.message);
+    return {
+      solBalance: 0,
+      stakedSol: 0,
+      jupiterLendingSol: 0,
+      jlWsolShares: 0,
+      totalSol: 0,
+      solPrice: 0,
+      solValue: 0,
+      jlpBalance: 0,
+      jlpValue: 0,
+      totalValue: 0,
+      stakeAccounts: [],
+    };
+  }
+}
+
+// ============================================
 // Vault Data
 // ============================================
 
@@ -514,6 +707,7 @@ async function calculateYield() {
     pendleData,
     lighterData,
     hyperliquidData,
+    solanaData,
     vaultData,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
@@ -522,6 +716,7 @@ async function calculateYield() {
     fetchPendlePositions(MULTISIG_ADDRESS),
     fetchLighterEquity(MULTISIG_ADDRESS),
     fetchHyperliquidEquity(OPERATOR_ADDRESS),
+    fetchSolanaData(OPERATOR_SOLANA_ADDRESS),
     fetchVaultData(),
   ]);
 
@@ -576,12 +771,12 @@ async function calculateYield() {
   console.log(`  SPOT TOTAL: $${spotTotalUsd.toFixed(2)}`);
 
   // 4. Calculate HYPE exposure and hedged/unhedged portions
+  // Now considering shorts from BOTH Lighter AND Hyperliquid with their respective entry prices
   console.log('');
   console.log('HYPE EXPOSURE ANALYSIS:');
 
-  // Get prices
-  const hypeEntryPrice = entryPrices['HYPE'] || 0;
-  const hypeCurrentPrice = pendleData.positions[0]?.underlyingPrice || hypeEntryPrice;
+  // Get current HYPE price
+  const hypeCurrentPrice = pendleData.positions[0]?.underlyingPrice || entryPrices['HYPE'] || 0;
 
   // Calculate total HYPE holdings (spot + PT equivalent)
   let totalHypeHoldings = 0;
@@ -600,35 +795,72 @@ async function calculateYield() {
   console.log(`  ─────────────────────────`);
   console.log(`  Total holdings:   ${totalHypeHoldings.toFixed(2)} HYPE`);
 
-  // Get total HYPE short from Lighter
-  const hypeShort = Math.abs(parseFloat(
-    lighterData.positions.find(p => p.market === 'HYPE')?.size || 0
-  ));
-  console.log(`  HYPE short:       ${hypeShort.toFixed(2)} HYPE`);
+  // Get HYPE shorts from BOTH venues with their entry prices
+  const lighterHypePos = lighterData.positions.find(p => p.market === 'HYPE');
+  const lighterHypeShort = Math.abs(parseFloat(lighterHypePos?.size || 0));
+  const lighterHypeEntry = parseFloat(lighterHypePos?.entryPrice || 0);
 
-  // Calculate hedged and unhedged portions
-  const hedgedAmount = Math.min(totalHypeHoldings, hypeShort);
-  const netExposure = totalHypeHoldings - hypeShort; // positive = extra, negative = debt
-
-  console.log(`  ─────────────────────────`);
-  console.log(`  Hedged:           ${hedgedAmount.toFixed(2)} HYPE @ $${hypeEntryPrice.toFixed(2)} (entry)`);
-
-  if (netExposure > 0) {
-    console.log(`  Unhedged (asset): ${netExposure.toFixed(2)} HYPE @ $${hypeCurrentPrice.toFixed(2)} (current)`);
-  } else if (netExposure < 0) {
-    console.log(`  Unhedged (DEBT):  ${Math.abs(netExposure).toFixed(2)} HYPE @ $${hypeCurrentPrice.toFixed(2)} (current)`);
-  } else {
-    console.log(`  Perfectly hedged!`);
+  // Find Hyperliquid HYPE position
+  let hyperliquidHypeShort = 0;
+  let hyperliquidHypeEntry = 0;
+  for (const pos of hyperliquidData.positions) {
+    const position = pos.position || pos;
+    const coin = position.coin || pos.coin;
+    if (coin === 'HYPE') {
+      const szi = parseFloat(position.szi || pos.szi || 0);
+      if (szi < 0) { // Short position
+        hyperliquidHypeShort = Math.abs(szi);
+        hyperliquidHypeEntry = parseFloat(position.entryPx || pos.entryPx || 0);
+      }
+    }
   }
 
-  // Calculate HYPE position value
-  const hedgedValue = hedgedAmount * hypeEntryPrice;
-  const unhedgedValue = netExposure * hypeCurrentPrice; // negative if debt
-  const totalHypeValue = hedgedValue + unhedgedValue;
+  const totalHypeShort = lighterHypeShort + hyperliquidHypeShort;
+  console.log(`  Shorts:`);
+  if (lighterHypeShort > 0) {
+    console.log(`    Lighter:        ${lighterHypeShort.toFixed(2)} HYPE @ $${lighterHypeEntry.toFixed(2)}`);
+  }
+  if (hyperliquidHypeShort > 0) {
+    console.log(`    Hyperliquid:    ${hyperliquidHypeShort.toFixed(2)} HYPE @ $${hyperliquidHypeEntry.toFixed(2)}`);
+  }
+  console.log(`  Total short:      ${totalHypeShort.toFixed(2)} HYPE`);
+
+  // Calculate hedged value using each venue's entry price
+  // Allocate holdings proportionally to each hedge
+  const netExposure = totalHypeHoldings - totalHypeShort;
+  let totalHypeValue = 0;
 
   console.log(`  ─────────────────────────`);
-  console.log(`  Hedged value:     $${hedgedValue.toFixed(2)}`);
-  console.log(`  Unhedged value:   $${unhedgedValue.toFixed(2)}`);
+
+  if (totalHypeShort > 0) {
+    // Value hedged portions at their respective entry prices
+    const lighterHedgedValue = lighterHypeShort * lighterHypeEntry;
+    const hyperliquidHedgedValue = hyperliquidHypeShort * hyperliquidHypeEntry;
+    const totalHedgedValue = lighterHedgedValue + hyperliquidHedgedValue;
+
+    console.log(`  Hedged via Lighter:     ${lighterHypeShort.toFixed(2)} × $${lighterHypeEntry.toFixed(2)} = $${lighterHedgedValue.toFixed(2)}`);
+    console.log(`  Hedged via Hyperliquid: ${hyperliquidHypeShort.toFixed(2)} × $${hyperliquidHypeEntry.toFixed(2)} = $${hyperliquidHedgedValue.toFixed(2)}`);
+
+    totalHypeValue = totalHedgedValue;
+
+    if (netExposure > 0) {
+      const unhedgedValue = netExposure * hypeCurrentPrice;
+      console.log(`  Unhedged (asset):       ${netExposure.toFixed(2)} × $${hypeCurrentPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
+      totalHypeValue += unhedgedValue;
+    } else if (netExposure < 0) {
+      const unhedgedValue = netExposure * hypeCurrentPrice; // negative
+      console.log(`  Unhedged (DEBT):        ${Math.abs(netExposure).toFixed(2)} × $${hypeCurrentPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
+      totalHypeValue += unhedgedValue;
+    } else {
+      console.log(`  Perfectly hedged!`);
+    }
+  } else {
+    // No hedges - all at current price
+    totalHypeValue = totalHypeHoldings * hypeCurrentPrice;
+    console.log(`  Unhedged (all):   ${totalHypeHoldings.toFixed(2)} × $${hypeCurrentPrice.toFixed(2)} = $${totalHypeValue.toFixed(2)}`);
+  }
+
+  console.log(`  ─────────────────────────`);
   console.log(`  HYPE TOTAL:       $${totalHypeValue.toFixed(2)}`);
 
   // 5. Perp positions (collateral only - unrealized PnL offsets spot price changes)
@@ -645,11 +877,92 @@ async function calculateYield() {
     }
   }
 
-  if (hyperliquidData.equity > 0) {
+  if (hyperliquidData.equity > 0 || hyperliquidData.positions.length > 0) {
     console.log('');
     console.log('HYPERLIQUID:');
     console.log(`  Equity: $${hyperliquidData.equity.toFixed(2)}`);
+    if (hyperliquidData.positions.length > 0) {
+      console.log('  Positions:');
+      for (const pos of hyperliquidData.positions) {
+        const position = pos.position || pos;
+        const coin = position.coin || pos.coin;
+        const szi = parseFloat(position.szi || pos.szi || 0);
+        const entryPx = parseFloat(position.entryPx || pos.entryPx || 0);
+        const unrealizedPnl = parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0);
+        const side = szi >= 0 ? 'LONG' : 'SHORT';
+        const size = Math.abs(szi);
+        const pnlSign = unrealizedPnl >= 0 ? '+' : '';
+        console.log(`    ${coin} ${side}: ${size.toFixed(4)} @ $${entryPx.toFixed(2)} (${pnlSign}$${unrealizedPnl.toFixed(2)})`);
+      }
+    }
   }
+
+  // Calculate SOL exposure with Hyperliquid hedge
+  console.log('');
+  console.log('SOL EXPOSURE ANALYSIS:');
+  console.log(`  Native SOL:          ${solanaData.solBalance.toFixed(4)} SOL`);
+  console.log(`  Staked SOL:          ${solanaData.stakedSol.toFixed(4)} SOL`);
+  if (solanaData.jupiterLendingSol > 0) {
+    console.log(`  Jupiter Lend:        ${solanaData.jlWsolShares.toFixed(4)} jlWSOL → ${solanaData.jupiterLendingSol.toFixed(4)} SOL`);
+  }
+  console.log(`  ─────────────────────────`);
+  console.log(`  Total holdings:      ${solanaData.totalSol.toFixed(4)} SOL`);
+
+  // Find Hyperliquid SOL short
+  let hyperliquidSolShort = 0;
+  let hyperliquidSolEntry = 0;
+  for (const pos of hyperliquidData.positions) {
+    const position = pos.position || pos;
+    const coin = position.coin || pos.coin;
+    if (coin === 'SOL') {
+      const szi = parseFloat(position.szi || pos.szi || 0);
+      if (szi < 0) { // Short position
+        hyperliquidSolShort = Math.abs(szi);
+        hyperliquidSolEntry = parseFloat(position.entryPx || pos.entryPx || 0);
+      }
+    }
+  }
+
+  let solValue = 0;
+  if (hyperliquidSolShort > 0) {
+    console.log(`  Short:               ${hyperliquidSolShort.toFixed(4)} SOL @ $${hyperliquidSolEntry.toFixed(2)} (Hyperliquid)`);
+
+    const hedgedSol = Math.min(solanaData.totalSol, hyperliquidSolShort);
+    const unhedgedSol = solanaData.totalSol - hyperliquidSolShort;
+
+    const hedgedValue = hedgedSol * hyperliquidSolEntry;
+    console.log(`  ─────────────────────────`);
+    console.log(`  Hedged:              ${hedgedSol.toFixed(4)} × $${hyperliquidSolEntry.toFixed(2)} = $${hedgedValue.toFixed(2)}`);
+
+    solValue = hedgedValue;
+
+    if (unhedgedSol > 0) {
+      const unhedgedValue = unhedgedSol * solanaData.solPrice;
+      console.log(`  Unhedged (asset):    ${unhedgedSol.toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
+      solValue += unhedgedValue;
+    } else if (unhedgedSol < 0) {
+      const unhedgedValue = unhedgedSol * solanaData.solPrice;
+      console.log(`  Unhedged (DEBT):     ${Math.abs(unhedgedSol).toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
+      solValue += unhedgedValue;
+    }
+  } else {
+    // No hedge - all at current price
+    solValue = solanaData.totalSol * solanaData.solPrice;
+    console.log(`  No hedge - current:  ${solanaData.totalSol.toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${solValue.toFixed(2)}`);
+  }
+
+  if (solanaData.jlpBalance > 0) {
+    console.log(`  JLP Balance:         ${solanaData.jlpBalance.toFixed(4)} JLP = $${solanaData.jlpValue.toFixed(2)}`);
+    solValue += solanaData.jlpValue;
+  }
+  if (solanaData.stakeAccounts.length > 0) {
+    console.log('  Stake Accounts:');
+    for (const stake of solanaData.stakeAccounts) {
+      console.log(`    ${stake.pubkey.slice(0, 8)}...: ${stake.amount.toFixed(4)} SOL`);
+    }
+  }
+  console.log(`  ─────────────────────────`);
+  console.log(`  SOL TOTAL:           $${solValue.toFixed(2)}`);
 
   // 6. Calculate total NAV
   // HYPE value (hedged + unhedged) + ETH (at entry) + USDC + Lighter collateral
@@ -663,12 +976,13 @@ async function calculateYield() {
     .filter(b => STABLECOINS.includes(b.symbol))
     .reduce((sum, b) => sum + parseFloat(b.balance), 0);
 
-  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidData.equity;
+  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidData.equity + solValue;
 
   console.log('');
   console.log('='.repeat(60));
   console.log('NAV SUMMARY (Delta-Neutral Valuation):');
-  console.log(`  HYPE (hedged+unhedged): $${totalHypeValue.toFixed(2)}`);
+  console.log(`  HYPE (hedged):    $${totalHypeValue.toFixed(2)}`);
+  console.log(`  SOL (hedged):     $${solValue.toFixed(2)}`);
   console.log(`  ETH (at entry):   $${ethValue.toFixed(2)}`);
   console.log(`  USDC:             $${usdcBalance.toFixed(2)}`);
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
@@ -744,6 +1058,8 @@ async function calculateYield() {
     ethValue,
     usdcBalance,
     lighterCollateral: lighterData.collateral,
+    hyperliquidEquity: hyperliquidData.equity,
+    solValue,
     netHypeExposure: netExposure,
     // Cumulative flow tracking for cost socialization
     cumulativeDeposited: vaultData.totalDeposited,
@@ -787,6 +1103,8 @@ async function calculateYield() {
       eth: ethValue,
       usdc: usdcBalance,
       lighterCollateral: lighterData.collateral,
+      hyperliquidEquity: hyperliquidData.equity,
+      sol: solValue,
     },
   };
 }
