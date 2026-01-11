@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 
 const LIGHTER_API = 'https://mainnet.zklighter.elliot.ai/api/v1';
+const LIGHTER_EXPLORER_API = 'https://explorer.elliot.ai/api';
 
 // Market index to symbol mapping
 const LIGHTER_MARKETS: Record<number, string> = {
   0: 'ETH',
   1: 'BTC',
-  5: 'HYPE',
+  24: 'HYPE',
 };
 
 export interface LighterPosition {
@@ -25,7 +26,7 @@ interface LighterState {
 
 async function fetchLighterState(address: string): Promise<LighterState> {
   try {
-    // First get the account index from L1 address
+    // First get the account index and collateral from L1 address
     const accountsRes = await fetch(
       `${LIGHTER_API}/accountsByL1Address?l1_address=${address}`
     );
@@ -36,56 +37,54 @@ async function fetchLighterState(address: string): Promise<LighterState> {
     }
 
     const accountsData = await accountsRes.json();
-    const accounts = accountsData.accounts || [];
+    const subAccounts = accountsData.sub_accounts || [];
 
-    if (accounts.length === 0) {
+    if (subAccounts.length === 0) {
       return { collateral: 0, unrealizedPnl: 0, positions: [] };
     }
 
-    // Use the first account
-    const accountIndex = accounts[0].index;
+    // Sum collateral from all sub-accounts and get account index
+    let totalCollateral = 0;
+    let accountIndex = 0;
+    for (const account of subAccounts) {
+      totalCollateral += parseFloat(account.collateral || 0);
+      if (account.index) {
+        accountIndex = account.index;
+      }
+    }
 
-    // Fetch account details
-    const detailsRes = await fetch(
-      `${LIGHTER_API}/account?account_index=${accountIndex}`
+    // Fetch positions from explorer API
+    const positionsRes = await fetch(
+      `${LIGHTER_EXPLORER_API}/accounts/${accountIndex}/positions`
     );
 
-    if (!detailsRes.ok) {
-      console.warn('Lighter account API error:', detailsRes.status);
-      return { collateral: 0, unrealizedPnl: 0, positions: [] };
-    }
-
-    const data = await detailsRes.json();
-
-    // Parse collateral (in USDC, 6 decimals)
-    const collateral = parseFloat(data.collateral || 0) / 1e6;
-
-    // Parse positions
     const positions: LighterPosition[] = [];
     let totalUnrealizedPnl = 0;
 
-    const positionsData = data.positions || [];
-    for (const pos of positionsData) {
-      const size = parseFloat(pos.size || 0);
-      if (size === 0) continue;
+    if (positionsRes.ok) {
+      const positionsData = await positionsRes.json();
 
-      const marketIdx = parseInt(pos.market_index || 0);
-      const entryPrice = parseFloat(pos.average_entry_price || 0) / 1e8;
-      const unrealizedPnl = parseFloat(pos.unrealized_pnl || 0) / 1e6;
+      for (const [marketIdx, position] of Object.entries(positionsData.positions || {})) {
+        const pos = position as { pnl: string; side: string; size: string; entry_price: string };
+        const pnl = parseFloat(pos.pnl || '0');
+        const size = parseFloat(pos.size || '0');
 
-      totalUnrealizedPnl += unrealizedPnl;
+        if (size === 0) continue;
 
-      positions.push({
-        market: LIGHTER_MARKETS[marketIdx] || `Market ${marketIdx}`,
-        side: size >= 0 ? 'LONG' : 'SHORT',
-        size: Math.abs(size),
-        entryPrice,
-        unrealizedPnl,
-      });
+        totalUnrealizedPnl += pnl;
+
+        positions.push({
+          market: LIGHTER_MARKETS[parseInt(marketIdx)] || `Market ${marketIdx}`,
+          side: pos.side === 'short' ? 'SHORT' : 'LONG',
+          size: Math.abs(size),
+          entryPrice: parseFloat(pos.entry_price || '0'),
+          unrealizedPnl: pnl,
+        });
+      }
     }
 
     return {
-      collateral,
+      collateral: totalCollateral,
       unrealizedPnl: totalUnrealizedPnl,
       positions,
     };
