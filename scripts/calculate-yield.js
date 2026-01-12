@@ -15,6 +15,13 @@ const OPERATOR_ADDRESS = '0xF466ad87c98f50473Cf4Fe32CdF8db652F9E36D6';
 const OPERATOR_SOLANA_ADDRESS = '1AxbVeo57DHrMghgWDL5d25j394LDPdwMLEtHHYTkgU';
 const VAULT_ADDRESS = '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805';
 
+// Jupiter Borrow Vault (SOL collateral, earns interest, can borrow USDC against it)
+// Reads on-chain position and applies collateral exchange rate automatically
+const JUPITER_VAULT_ACCOUNT = 'Gg2Y3pNYb7aR7dAt35DZfwtupKGSAFMyYewAy8afY8qd';
+const JUPITER_VAULT_NFT = 'ECZoMG9irmKbFrqp1FeuZYsQgxt8xdr95bUVE6GHPWRC';
+const JUPITER_VAULT_CONFIG = 'FU6R6LFuFUjq1PzquPxBbwvaSs3nxCNWUzi7JntkMZtf'; // Per-position exchange rate
+const JUPITER_VAULT_USDC_DEBT = 0; // USDC borrowed (update when borrowing)
+
 const ETH_RPC = process.env.ETH_RPC_URL || 'https://eth.llamarpc.com';
 const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
 
@@ -598,6 +605,98 @@ async function fetchSolanaData(address) {
 }
 
 // ============================================
+// Jupiter Borrow Vault
+// ============================================
+
+async function fetchJupiterBorrowVault() {
+  try {
+    // Fetch both the vault position and config accounts in parallel
+    const [positionRes, configRes] = await Promise.all([
+      fetch(SOLANA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getAccountInfo',
+          params: [JUPITER_VAULT_ACCOUNT, { encoding: 'base64' }],
+        }),
+      }),
+      fetch(SOLANA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'getAccountInfo',
+          params: [JUPITER_VAULT_CONFIG, { encoding: 'base64' }],
+        }),
+      }),
+    ]);
+
+    if (!positionRes.ok || !configRes.ok) {
+      console.warn('Failed to fetch Jupiter vault accounts');
+      return { solCollateral: 0, exists: false };
+    }
+
+    const [positionData, configData] = await Promise.all([
+      positionRes.json(),
+      configRes.json(),
+    ]);
+
+    const positionInfo = positionData.result?.value;
+    const configInfo = configData.result?.value;
+
+    if (!positionInfo) {
+      console.warn('Jupiter vault position account not found');
+      return { solCollateral: 0, exists: false };
+    }
+
+    // Decode position account (contains raw jlWSOL-equivalent amount)
+    const positionBuffer = Buffer.from(positionInfo.data[0], 'base64');
+
+    // Raw collateral amount at offset 55 (0x37) - little-endian u64 in lamports
+    // This is the internal "shares" representation before exchange rate
+    if (positionBuffer.length < 63) {
+      console.warn('Jupiter vault position account too small');
+      return { solCollateral: 0, exists: false };
+    }
+
+    const rawLamports = positionBuffer.readBigUInt64LE(55);
+    const rawSol = Number(rawLamports) / 1e9;
+
+    // Get collateral exchange rate from vault config account
+    // The rate at offset 99 includes accrued interest (updated periodically by Fluid)
+    // May slightly underreport by ~0.03% between updates - conservative for NAV tracking
+    let collateralRate = 1.0;
+    if (configInfo && configInfo.data) {
+      const configBuffer = Buffer.from(configInfo.data[0], 'base64');
+      if (configBuffer.length >= 107) {
+        const rateRaw = configBuffer.readBigUInt64LE(99);
+        collateralRate = Number(rateRaw) / 1e12;
+      }
+    }
+
+    // Apply exchange rate to get actual SOL value
+    const solCollateral = rawSol * collateralRate;
+
+    return {
+      solCollateral,
+      rawSol, // For debugging
+      collateralRate, // For debugging
+      usdcDebt: JUPITER_VAULT_USDC_DEBT,
+      exists: true,
+      vaultAccount: JUPITER_VAULT_ACCOUNT,
+      nftMint: JUPITER_VAULT_NFT,
+      source: 'on-chain',
+    };
+  } catch (e) {
+    console.warn('Failed to fetch Jupiter borrow vault:', e.message);
+    return { solCollateral: 0, exists: false };
+  }
+}
+
+// ============================================
 // Vault Data
 // ============================================
 
@@ -708,6 +807,7 @@ async function calculateYield() {
     lighterData,
     hyperliquidData,
     solanaData,
+    jupiterVaultData,
     vaultData,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
@@ -717,6 +817,7 @@ async function calculateYield() {
     fetchLighterEquity(MULTISIG_ADDRESS),
     fetchHyperliquidEquity(OPERATOR_ADDRESS),
     fetchSolanaData(OPERATOR_SOLANA_ADDRESS),
+    fetchJupiterBorrowVault(),
     fetchVaultData(),
   ]);
 
@@ -919,8 +1020,17 @@ async function calculateYield() {
   if (solanaData.jupiterLendingSol > 0) {
     console.log(`  Jupiter Lend:        ${solanaData.jlWsolShares.toFixed(4)} jlWSOL → ${solanaData.jupiterLendingSol.toFixed(4)} SOL`);
   }
+  if (jupiterVaultData.solCollateral > 0) {
+    const sourceInfo = jupiterVaultData.source === 'on-chain'
+      ? `${jupiterVaultData.rawSol?.toFixed(4)} raw × ${jupiterVaultData.collateralRate?.toFixed(6)} rate`
+      : 'override';
+    console.log(`  Jupiter Borrow Vault: ${jupiterVaultData.solCollateral.toFixed(4)} SOL (${sourceInfo})`);
+  }
+
+  // Include Jupiter vault SOL in total holdings
+  const totalSolWithVault = solanaData.totalSol + jupiterVaultData.solCollateral;
   console.log(`  ─────────────────────────`);
-  console.log(`  Total holdings:      ${solanaData.totalSol.toFixed(4)} SOL`);
+  console.log(`  Total holdings:      ${totalSolWithVault.toFixed(4)} SOL`);
 
   // Find Hyperliquid SOL short
   let hyperliquidSolShort = 0;
@@ -941,8 +1051,8 @@ async function calculateYield() {
   if (hyperliquidSolShort > 0) {
     console.log(`  Short:               ${hyperliquidSolShort.toFixed(4)} SOL @ $${hyperliquidSolEntry.toFixed(2)} (Hyperliquid)`);
 
-    const hedgedSol = Math.min(solanaData.totalSol, hyperliquidSolShort);
-    const unhedgedSol = solanaData.totalSol - hyperliquidSolShort;
+    const hedgedSol = Math.min(totalSolWithVault, hyperliquidSolShort);
+    const unhedgedSol = totalSolWithVault - hyperliquidSolShort;
 
     const hedgedValue = hedgedSol * hyperliquidSolEntry;
     console.log(`  ─────────────────────────`);
@@ -961,8 +1071,8 @@ async function calculateYield() {
     }
   } else {
     // No hedge - all at current price
-    solValue = solanaData.totalSol * solanaData.solPrice;
-    console.log(`  No hedge - current:  ${solanaData.totalSol.toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${solValue.toFixed(2)}`);
+    solValue = totalSolWithVault * solanaData.solPrice;
+    console.log(`  No hedge - current:  ${totalSolWithVault.toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${solValue.toFixed(2)}`);
   }
 
   if (solanaData.jlpBalance > 0) {
@@ -990,18 +1100,26 @@ async function calculateYield() {
     .filter(b => STABLECOINS.includes(b.symbol))
     .reduce((sum, b) => sum + parseFloat(b.balance), 0);
 
-  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidCollateral + solValue;
+  // Subtract Jupiter vault USDC debt if borrowing
+  const jupiterDebt = jupiterVaultData.usdcDebt || 0;
+  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidCollateral + solValue - jupiterDebt;
 
   console.log('');
   console.log('='.repeat(60));
   console.log('NAV SUMMARY (Delta-Neutral Valuation):');
   console.log(`  HYPE (hedged):    $${totalHypeValue.toFixed(2)}`);
   console.log(`  SOL (hedged):     $${solValue.toFixed(2)}`);
+  if (jupiterVaultData.solCollateral > 0) {
+    console.log(`    (incl. Jupiter Borrow Vault: ${jupiterVaultData.solCollateral.toFixed(2)} SOL)`);
+  }
   console.log(`  ETH (at entry):   $${ethValue.toFixed(2)}`);
   console.log(`  USDC:             $${usdcBalance.toFixed(2)}`);
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
   if (hyperliquidCollateral > 0) {
     console.log(`  Hyperliquid col:  $${hyperliquidCollateral.toFixed(2)}`);
+  }
+  if (jupiterDebt > 0) {
+    console.log(`  Jupiter USDC debt: -$${jupiterDebt.toFixed(2)}`);
   }
   console.log(`  ─────────────────────────`);
   console.log(`  TOTAL NAV:        $${totalNav.toFixed(2)}`);
@@ -1074,6 +1192,7 @@ async function calculateYield() {
     lighterCollateral: lighterData.collateral,
     hyperliquidEquity: hyperliquidData.equity,
     solValue,
+    jupiterVaultSol: jupiterVaultData.solCollateral,
     netHypeExposure: netExposure,
     // Cumulative flow tracking for cost socialization
     cumulativeDeposited: vaultData.totalDeposited,
@@ -1119,6 +1238,7 @@ async function calculateYield() {
       lighterCollateral: lighterData.collateral,
       hyperliquidEquity: hyperliquidData.equity,
       sol: solValue,
+      jupiterVaultSol: jupiterVaultData.solCollateral,
     },
   };
 }
