@@ -20,7 +20,6 @@ const VAULT_ADDRESS = '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805';
 const JUPITER_VAULT_ACCOUNT = 'Gg2Y3pNYb7aR7dAt35DZfwtupKGSAFMyYewAy8afY8qd';
 const JUPITER_VAULT_NFT = 'ECZoMG9irmKbFrqp1FeuZYsQgxt8xdr95bUVE6GHPWRC';
 const JUPITER_VAULT_CONFIG = 'FU6R6LFuFUjq1PzquPxBbwvaSs3nxCNWUzi7JntkMZtf'; // Per-position exchange rate
-const JUPITER_VAULT_USDC_DEBT = 0; // USDC borrowed (update when borrowing)
 
 const ETH_RPC = process.env.ETH_RPC_URL || 'https://eth.llamarpc.com';
 const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
@@ -665,6 +664,10 @@ async function fetchJupiterBorrowVault() {
     const rawLamports = positionBuffer.readBigUInt64LE(55);
     const rawSol = Number(rawLamports) / 1e9;
 
+    // USDC debt at offset 63 (6 decimals)
+    const debtRaw = positionBuffer.readBigUInt64LE(63);
+    const usdcDebt = Number(debtRaw) / 1e6;
+
     // Get collateral exchange rate from vault config account
     // The rate at offset 99 includes accrued interest (updated periodically by Fluid)
     // May slightly underreport by ~0.03% between updates - conservative for NAV tracking
@@ -684,7 +687,7 @@ async function fetchJupiterBorrowVault() {
       solCollateral,
       rawSol, // For debugging
       collateralRate, // For debugging
-      usdcDebt: JUPITER_VAULT_USDC_DEBT,
+      usdcDebt,
       exists: true,
       vaultAccount: JUPITER_VAULT_ACCOUNT,
       nftMint: JUPITER_VAULT_NFT,
