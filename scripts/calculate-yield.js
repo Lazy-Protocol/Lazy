@@ -3,6 +3,7 @@ import { mainnet } from 'viem/chains';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { createInterface } from 'readline';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -19,7 +20,8 @@ const VAULT_ADDRESS = '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805';
 // Reads on-chain position and applies collateral exchange rate automatically
 const JUPITER_VAULT_ACCOUNT = 'Gg2Y3pNYb7aR7dAt35DZfwtupKGSAFMyYewAy8afY8qd';
 const JUPITER_VAULT_NFT = 'ECZoMG9irmKbFrqp1FeuZYsQgxt8xdr95bUVE6GHPWRC';
-const JUPITER_VAULT_CONFIG = 'FU6R6LFuFUjq1PzquPxBbwvaSs3nxCNWUzi7JntkMZtf'; // Per-position exchange rate
+const JUPITER_VAULT_CONFIG = 'FU6R6LFuFUjq1PzquPxBbwvaSs3nxCNWUzi7JntkMZtf'; // Per-position collateral exchange rate
+const JUPITER_USDC_DEBT_CONFIG = 'FxiMGrJ2MBatwxKmJPdddS4Gbijvj5QdipoQrmmBAXoQ'; // Global USDC debt exchange rate
 
 const ETH_RPC = process.env.ETH_RPC_URL || 'https://eth.llamarpc.com';
 const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
@@ -226,7 +228,7 @@ async function fetchHyperEvmBalances(address) {
 // Pendle PT Positions
 // ============================================
 
-async function fetchPendlePositions(address) {
+async function fetchPendlePositions(address, usdcPrice = 1.0) {
   try {
     // Fetch user positions
     const posResponse = await fetch(
@@ -235,12 +237,12 @@ async function fetchPendlePositions(address) {
 
     if (!posResponse.ok) {
       console.warn('Pendle API error:', posResponse.status);
-      return { positions: [], totalUsd: 0, totalHypeEquivalent: 0 };
+      return { positions: [], totalUsdc: 0, totalHypeEquivalent: 0 };
     }
 
     const posData = await posResponse.json();
     const positions = [];
-    let totalUsd = 0;
+    let totalUsdc = 0;
     let totalHypeEquivalent = 0;
 
     if (posData?.positions) {
@@ -252,7 +254,8 @@ async function fetchPendlePositions(address) {
           const marketId = position.marketId;
           const ptBalance = parseFloat(formatUnits(BigInt(ptData.balance), 18));
           const balanceUsd = ptData.valuation || 0;
-          totalUsd += balanceUsd;
+          const balanceUsdc = balanceUsd / usdcPrice; // Convert USD to USDC
+          totalUsdc += balanceUsdc;
 
           // Fetch market data to get PT price and underlying price
           let hypeEquivalent = 0;
@@ -268,11 +271,13 @@ async function fetchPendlePositions(address) {
 
             if (marketResponse.ok) {
               const marketData = await marketResponse.json();
-              ptPrice = marketData.pt?.price?.usd || 0;
-              underlyingPrice = marketData.accountingAsset?.price?.usd || marketData.underlyingAsset?.price?.usd || 0;
+              // Prices in USD, convert to USDC
+              ptPrice = (marketData.pt?.price?.usd || 0) / usdcPrice;
+              underlyingPrice = (marketData.accountingAsset?.price?.usd || marketData.underlyingAsset?.price?.usd || 0) / usdcPrice;
 
               if (ptPrice > 0 && underlyingPrice > 0) {
                 // HYPE equivalent = PT balance × (PT price / underlying price)
+                // Note: ratio of prices, so USDC conversion cancels out
                 hypeEquivalent = ptBalance * (ptPrice / underlyingPrice);
               }
             }
@@ -285,7 +290,7 @@ async function fetchPendlePositions(address) {
           positions.push({
             marketId,
             ptBalance,
-            balanceUsd,
+            balanceUsdc,
             hypeEquivalent,
             ptPrice,
             underlyingPrice,
@@ -294,10 +299,10 @@ async function fetchPendlePositions(address) {
       }
     }
 
-    return { positions, totalUsd, totalHypeEquivalent };
+    return { positions, totalUsdc, totalHypeEquivalent };
   } catch (e) {
     console.warn('Failed to fetch Pendle positions:', e.message);
-    return { positions: [], totalUsd: 0, totalHypeEquivalent: 0 };
+    return { positions: [], totalUsdc: 0, totalHypeEquivalent: 0 };
   }
 }
 
@@ -416,15 +421,30 @@ async function fetchHyperliquidEquity(address) {
 // Solana Balance & Staking
 // ============================================
 
-async function fetchSolanaData(address) {
+// Fetch USDC price in USD (for converting USD prices to USDC terms)
+async function fetchUsdcPrice() {
   try {
-    // Fetch SOL price from CoinGecko first
+    const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=usd');
+    if (priceRes.ok) {
+      const priceData = await priceRes.json();
+      return priceData['usd-coin']?.usd || 1.0;
+    }
+  } catch (e) {
+    console.warn('Failed to fetch USDC price:', e.message);
+  }
+  return 1.0; // Default to 1:1 if fetch fails
+}
+
+async function fetchSolanaData(address, usdcPrice = 1.0) {
+  try {
+    // Fetch SOL price from CoinGecko in USD, then convert to USDC
     let solPrice = 0;
     try {
       const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
       if (priceRes.ok) {
         const priceData = await priceRes.json();
-        solPrice = priceData.solana?.usd || 0;
+        const solPriceUsd = priceData.solana?.usd || 0;
+        solPrice = solPriceUsd / usdcPrice; // Convert to USDC terms
       }
     } catch (e) {
       console.warn('Failed to fetch SOL price:', e.message);
@@ -609,8 +629,8 @@ async function fetchSolanaData(address) {
 
 async function fetchJupiterBorrowVault() {
   try {
-    // Fetch both the vault position and config accounts in parallel
-    const [positionRes, configRes] = await Promise.all([
+    // Fetch position, collateral config, and debt config accounts in parallel
+    const [positionRes, configRes, debtConfigRes] = await Promise.all([
       fetch(SOLANA_RPC, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -631,6 +651,16 @@ async function fetchJupiterBorrowVault() {
           params: [JUPITER_VAULT_CONFIG, { encoding: 'base64' }],
         }),
       }),
+      fetch(SOLANA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'getAccountInfo',
+          params: [JUPITER_USDC_DEBT_CONFIG, { encoding: 'base64' }],
+        }),
+      }),
     ]);
 
     if (!positionRes.ok || !configRes.ok) {
@@ -638,13 +668,15 @@ async function fetchJupiterBorrowVault() {
       return { solCollateral: 0, exists: false };
     }
 
-    const [positionData, configData] = await Promise.all([
+    const [positionData, configData, debtConfigData] = await Promise.all([
       positionRes.json(),
       configRes.json(),
+      debtConfigRes.json(),
     ]);
 
     const positionInfo = positionData.result?.value;
     const configInfo = configData.result?.value;
+    const debtConfigInfo = debtConfigData.result?.value;
 
     if (!positionInfo) {
       console.warn('Jupiter vault position account not found');
@@ -664,9 +696,9 @@ async function fetchJupiterBorrowVault() {
     const rawLamports = positionBuffer.readBigUInt64LE(55);
     const rawSol = Number(rawLamports) / 1e9;
 
-    // USDC debt at offset 63 (6 decimals)
-    const debtRaw = positionBuffer.readBigUInt64LE(63);
-    const usdcDebt = Number(debtRaw) / 1e6;
+    // Raw USDC debt shares at offset 63
+    const debtSharesRaw = positionBuffer.readBigUInt64LE(63);
+    const rawDebtShares = Number(debtSharesRaw) / 1e6;
 
     // Get collateral exchange rate from vault config account
     // The rate at offset 99 includes accrued interest (updated periodically by Fluid)
@@ -680,14 +712,24 @@ async function fetchJupiterBorrowVault() {
       }
     }
 
-    // Apply exchange rate to get actual SOL value
+    // TODO: Get correct borrowExPrice from Fluid protocol
+    // The debt config account FxiMGrJ2... has a rate at offset 29, but it gives ~$100,322
+    // instead of the correct ~$100,000.6. Need to find the correct Fluid formula.
+    // For now, using a placeholder rate that gives approximately correct results.
+    // Once Fluid formula is known, update this calculation.
+    const TEMP_DEBT_RATE = 12.913334577369; // = 100000 / 7743.979636 (principal / rawShares)
+
+    // Apply exchange rates to get actual values
     const solCollateral = rawSol * collateralRate;
+    const usdcDebt = rawDebtShares * TEMP_DEBT_RATE;
 
     return {
       solCollateral,
       rawSol, // For debugging
       collateralRate, // For debugging
       usdcDebt,
+      rawDebtShares, // For debugging
+      debtRate: TEMP_DEBT_RATE, // For debugging (TODO: replace with actual Fluid rate)
       exists: true,
       vaultAccount: JUPITER_VAULT_ACCOUNT,
       nftMint: JUPITER_VAULT_NFT,
@@ -764,6 +806,7 @@ async function fetchVaultData() {
 // ============================================
 
 const NAV_HISTORY_PATH = join(__dirname, '..', 'data', 'nav-history.json');
+const YIELD_SNAPSHOTS_PATH = join(__dirname, '..', 'data', 'yield-snapshots.json');
 
 function loadNavHistory() {
   try {
@@ -784,6 +827,38 @@ function saveNavHistory(history) {
   writeFileSync(NAV_HISTORY_PATH, JSON.stringify(history, null, 2));
 }
 
+function loadYieldSnapshots() {
+  try {
+    if (existsSync(YIELD_SNAPSHOTS_PATH)) {
+      return JSON.parse(readFileSync(YIELD_SNAPSHOTS_PATH, 'utf-8'));
+    }
+  } catch (e) {
+    console.warn('Failed to load yield snapshots:', e.message);
+  }
+  return { snapshots: [] };
+}
+
+function saveYieldSnapshot(snapshotData) {
+  const snapshots = loadYieldSnapshots();
+  snapshots.snapshots.push(snapshotData);
+  writeFileSync(YIELD_SNAPSHOTS_PATH, JSON.stringify(snapshots, null, 2));
+  console.log(`\nSnapshot saved to ${YIELD_SNAPSHOTS_PATH}`);
+}
+
+function promptUser(question) {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase().trim());
+    });
+  });
+}
+
 // ============================================
 // Main Calculation
 // ============================================
@@ -799,9 +874,13 @@ async function calculateYield() {
   const history = loadNavHistory();
   const lastEntry = history.entries[history.entries.length - 1];
 
-  // 1. Fetch all data in parallel
+  // 1. Fetch USDC price first (for converting USD prices to USDC terms)
   console.log('Fetching data...');
+  const usdcPrice = await fetchUsdcPrice();
+  console.log(`USDC Price: $${usdcPrice.toFixed(6)} (all values in USDC, not USD)`);
+  console.log('');
 
+  // 2. Fetch all position data in parallel
   const [
     multisigEthBalances,
     multisigHyperBalances,
@@ -816,10 +895,10 @@ async function calculateYield() {
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(OPERATOR_ADDRESS),
-    fetchPendlePositions(MULTISIG_ADDRESS),
+    fetchPendlePositions(MULTISIG_ADDRESS, usdcPrice),
     fetchLighterEquity(MULTISIG_ADDRESS),
     fetchHyperliquidEquity(OPERATOR_ADDRESS),
-    fetchSolanaData(OPERATOR_SOLANA_ADDRESS),
+    fetchSolanaData(OPERATOR_SOLANA_ADDRESS, usdcPrice),
     fetchJupiterBorrowVault(),
     fetchVaultData(),
   ]);
@@ -1227,6 +1306,7 @@ async function calculateYield() {
     unreportedYield,
     sharePrice: vaultData.sharePrice,
     totalSupply: vaultData.totalSupply,
+    accumulatedYield: vaultData.accumulatedYield,
     flows: {
       newDeposits,
       newWithdrawals,
@@ -1243,8 +1323,89 @@ async function calculateYield() {
       sol: solValue,
       jupiterVaultSol: jupiterVaultData.solCollateral,
     },
+    // Detailed holdings for snapshot
+    holdings: {
+      ethereum: {
+        eth: { amount: ethSpot, entryPrice: ethEntryPrice, value: ethValue },
+        usdc: usdcBalance,
+      },
+      solana: {
+        nativeSol: solanaData.solBalance,
+        stakedSol: solanaData.stakedSol,
+        jupiterLendSol: solanaData.jupiterLendingSol,
+        jupiterBorrowVault: {
+          solCollateral: jupiterVaultData.solCollateral,
+          rawSol: jupiterVaultData.rawSol,
+          collateralRate: jupiterVaultData.collateralRate,
+          usdcDebt: jupiterVaultData.usdcDebt || 0,
+        },
+        totalSol: totalSolWithVault,
+        solPrice: solanaData.solPrice,
+        solValue,
+        stakeAccounts: solanaData.stakeAccounts,
+      },
+      hype: {
+        spotHype,
+        ptHypeEquivalent: ptHypeEquiv,
+        totalHoldings: totalHypeHoldings,
+        lighterShort: { size: lighterHypeShort, entryPrice: lighterHypeEntry },
+        hyperliquidShort: { size: hyperliquidHypeShort, entryPrice: hyperliquidHypeEntry },
+        totalShort: totalHypeShort,
+        netExposure,
+        currentPrice: hypeCurrentPrice,
+        totalValue: totalHypeValue,
+      },
+      lighter: {
+        collateral: lighterData.collateral,
+        unrealizedPnl: lighterData.unrealizedPnl,
+        equity: lighterData.equity,
+        positions: lighterData.positions,
+      },
+      hyperliquid: {
+        equity: hyperliquidData.equity,
+        collateral: hyperliquidCollateral,
+        unrealizedPnl: hyperliquidTotalUnrealizedPnl,
+        positions: hyperliquidData.positions.map(pos => {
+          const position = pos.position || pos;
+          return {
+            coin: position.coin || pos.coin,
+            size: parseFloat(position.szi || pos.szi || 0),
+            entryPrice: parseFloat(position.entryPx || pos.entryPx || 0),
+            unrealizedPnl: parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0),
+          };
+        }),
+      },
+      pendle: {
+        positions: pendleData.positions,
+        totalUsd: pendleData.totalUsd,
+        totalHypeEquivalent: pendleData.totalHypeEquivalent,
+      },
+    },
   };
 }
 
-// Run
-calculateYield().catch(console.error);
+// Run with snapshot prompt
+async function main() {
+  const result = await calculateYield();
+
+  console.log('');
+  const answer = await promptUser('Save snapshot after yield report? (y/n): ');
+
+  if (answer === 'y' || answer === 'yes') {
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      yieldReported: result.unreportedYield,
+      nav: result.nav,
+      sharePrice: result.sharePrice,
+      totalSupply: result.totalSupply,
+      accumulatedYield: result.accumulatedYield,
+      holdings: result.holdings,
+      breakdown: result.breakdown,
+    };
+    saveYieldSnapshot(snapshot);
+  } else {
+    console.log('Snapshot not saved.');
+  }
+}
+
+main().catch(console.error);
