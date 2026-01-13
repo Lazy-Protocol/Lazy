@@ -30,3 +30,9 @@ data/
 .netlify
 .local-config
 .dev-instructions
+
+# Brand assets (generated images)
+brand/assets/
+
+# DefiLlama adapters (separate repo)
+defillama-adapters/
