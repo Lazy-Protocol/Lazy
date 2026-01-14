@@ -21,14 +21,23 @@ export function Home() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const { address, isConnected } = useAccount();
-  const { totalAssets, accumulatedYield, isLoading } = useVaultStats();
+  const { totalAssets, accumulatedYield } = useVaultStats();
   const { shareBalance, usdcValue, totalDeposited } = useUserData(address);
   const { data: protocolStats } = useProtocolStats();
 
-  // Format yield for display (only show positive yield as "distributed")
-  const yieldDistributed = accumulatedYield !== undefined && accumulatedYield > 0n
-    ? formatUsdc(accumulatedYield)
-    : '0.00';
+  // Use protocolStats (from GitHub) as primary source, fallback to contract data
+  const tvlDisplay = protocolStats?.formatted?.tvl
+    ? `$${Number(protocolStats.formatted.tvl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : totalAssets
+      ? `$${formatUsdc(totalAssets)}`
+      : '...';
+
+  const yieldDistributed = protocolStats?.formatted?.accumulatedYield
+    ? `$${Number(protocolStats.formatted.accumulatedYield).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : accumulatedYield !== undefined && accumulatedYield > 0n
+      ? `$${formatUsdc(accumulatedYield)}`
+      : '...';
+
   const location = useLocation();
 
   // Handle hash scroll on navigation
@@ -70,7 +79,7 @@ export function Home() {
         <div className="container">
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-value">{isLoading ? '...' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
+              <div className="stat-value">{tvlDisplay}</div>
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
@@ -78,7 +87,7 @@ export function Home() {
               <div className="stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{isLoading ? '...' : `$${yieldDistributed}`}</div>
+              <div className="stat-value">{yieldDistributed}</div>
               <div className="stat-label">Yield Distributed</div>
             </div>
             <div className="stat-item">
@@ -115,7 +124,7 @@ export function Home() {
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">{isLoading ? '...' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
+                <div className="vault-stat-value">{tvlDisplay}</div>
               </div>
             </div>
 
