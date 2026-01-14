@@ -1,0 +1,8 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- lazyUSD Token Icon - 16px (pixel-aligned) -->
+  <circle cx="8" cy="8" r="8" fill="#1a2332"/>
+  <!-- Simplified S-curve, pulled inward for optical balance -->
+  <path d="M 10 5 C 10 3.5 9 3 8 3 C 6.5 3 6 4 6 5 C 6 6 6.5 6.5 8 8 C 9.5 9.5 10 10 10 11 C 10 12.5 9 13 8 13 C 6.5 13 6 12 6 11" stroke="#FAFBFC" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <!-- Vertical line - pixel aligned -->
+  <line x1="8" y1="2" x2="8" y2="14" stroke="#FAFBFC" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

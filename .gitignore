@@ -31,8 +31,13 @@ data/
 .local-config
 .dev-instructions
 
-# Brand assets (generated images)
+# Brand assets (generated images, except final logos)
 brand/assets/
+!brand/assets/lazyusd-token*.svg
+!brand/assets/lazyusd-token*.png
 
 # DefiLlama adapters (separate repo)
 defillama-adapters/
+
+# Claude Code config
+.claude/

@@ -1,0 +1,7 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- lazyUSD Token - Primary Logo -->
+  <!-- Colors: Lazy Navy #1a2332, Drift White #FAFBFC -->
+  <circle cx="64" cy="64" r="64" fill="#1a2332"/>
+  <path d="M 80 36 C 80 28 72 22 64 22 C 52 22 48 30 48 40 C 48 48 52 52 64 64 C 76 76 80 80 80 90 C 80 100 72 106 64 106 C 52 106 48 98 48 90" stroke="#FAFBFC" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <line x1="64" y1="14" x2="64" y2="114" stroke="#FAFBFC" stroke-width="5" stroke-linecap="round"/>
+</svg>

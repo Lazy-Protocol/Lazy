@@ -1,0 +1,6 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- lazyUSD Token Icon - 256px (Marketing) -->
+  <circle cx="128" cy="128" r="128" fill="#1a2332"/>
+  <path d="M 160 72 C 160 56 144 44 128 44 C 104 44 96 60 96 80 C 96 96 104 104 128 128 C 152 152 160 160 160 180 C 160 200 144 212 128 212 C 104 212 96 196 96 180" stroke="#FAFBFC" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <line x1="128" y1="28" x2="128" y2="228" stroke="#FAFBFC" stroke-width="10" stroke-linecap="round"/>
+</svg>
