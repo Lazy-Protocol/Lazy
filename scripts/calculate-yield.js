@@ -382,6 +382,38 @@ async function fetchLighterEquity(address) {
 }
 
 // ============================================
+// Lighter Spot Assets
+// ============================================
+
+async function fetchLighterSpotAssets() {
+  try {
+    const response = await fetch(
+      `https://explorer.elliot.ai/api/accounts/${LIGHTER_ACCOUNT_INDEX}/assets`
+    );
+
+    if (!response.ok) {
+      console.warn('Lighter spot assets API error:', response.status);
+      return { assets: {}, litBalance: 0 };
+    }
+
+    const data = await response.json();
+    const assets = data.assets || {};
+
+    // Extract LIT balance (asset_id 2)
+    const litAsset = assets['2'] || {};
+    const litBalance = parseFloat(litAsset.balance || 0);
+
+    return {
+      assets,
+      litBalance,
+    };
+  } catch (e) {
+    console.warn('Failed to fetch Lighter spot assets:', e.message);
+    return { assets: {}, litBalance: 0 };
+  }
+}
+
+// ============================================
 // Hyperliquid L1 Positions
 // ============================================
 
@@ -887,6 +919,7 @@ async function calculateYield() {
     operatorHyperBalances,
     pendleData,
     lighterData,
+    lighterSpotData,
     hyperliquidData,
     solanaData,
     jupiterVaultData,
@@ -897,6 +930,7 @@ async function calculateYield() {
     fetchHyperEvmBalances(OPERATOR_ADDRESS),
     fetchPendlePositions(MULTISIG_ADDRESS, usdcPrice),
     fetchLighterEquity(MULTISIG_ADDRESS),
+    fetchLighterSpotAssets(),
     fetchHyperliquidEquity(OPERATOR_ADDRESS),
     fetchSolanaData(OPERATOR_SOLANA_ADDRESS, usdcPrice),
     fetchJupiterBorrowVault(),
@@ -1170,6 +1204,64 @@ async function calculateYield() {
   console.log(`  ─────────────────────────`);
   console.log(`  SOL TOTAL:           $${solValue.toFixed(2)}`);
 
+  // Calculate LIT exposure with Hyperliquid hedge
+  console.log('');
+  console.log('LIT EXPOSURE ANALYSIS:');
+  const litSpot = lighterSpotData.litBalance;
+  console.log(`  Spot (Lighter):      ${litSpot.toFixed(4)} LIT`);
+
+  // Find Hyperliquid LIT short
+  let hyperliquidLitShort = 0;
+  let hyperliquidLitEntry = 0;
+  let litCurrentPrice = 0;
+  for (const pos of hyperliquidData.positions) {
+    const position = pos.position || pos;
+    const coin = position.coin || pos.coin;
+    if (coin === 'LIT') {
+      const szi = parseFloat(position.szi || pos.szi || 0);
+      if (szi < 0) { // Short position
+        hyperliquidLitShort = Math.abs(szi);
+        hyperliquidLitEntry = parseFloat(position.entryPx || pos.entryPx || 0);
+        // Derive current price from entry and PnL
+        const pnl = parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0);
+        litCurrentPrice = hyperliquidLitEntry - (pnl / hyperliquidLitShort);
+      }
+    }
+  }
+
+  let litValue = 0;
+  if (hyperliquidLitShort > 0) {
+    console.log(`  Short (Hyperliquid): ${hyperliquidLitShort.toFixed(4)} LIT @ $${hyperliquidLitEntry.toFixed(4)}`);
+    console.log(`  ─────────────────────────`);
+
+    const hedgedLit = Math.min(litSpot, hyperliquidLitShort);
+    const unhedgedLit = litSpot - hyperliquidLitShort;
+
+    const hedgedValue = hedgedLit * hyperliquidLitEntry;
+    console.log(`  Hedged:              ${hedgedLit.toFixed(4)} × $${hyperliquidLitEntry.toFixed(4)} = $${hedgedValue.toFixed(2)}`);
+
+    litValue = hedgedValue;
+
+    if (unhedgedLit > 0) {
+      const unhedgedValue = unhedgedLit * litCurrentPrice;
+      console.log(`  Unhedged (asset):    ${unhedgedLit.toFixed(4)} × $${litCurrentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
+      litValue += unhedgedValue;
+    } else if (unhedgedLit < 0) {
+      const unhedgedValue = unhedgedLit * litCurrentPrice;
+      console.log(`  Unhedged (DEBT):     ${Math.abs(unhedgedLit).toFixed(4)} × $${litCurrentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
+      litValue += unhedgedValue;
+    } else {
+      console.log(`  Perfectly hedged!`);
+    }
+  } else if (litSpot > 0) {
+    // No hedge - would need current price from an API
+    console.log(`  No hedge - unhedged spot position`);
+    litValue = 0; // Can't value without price
+  }
+
+  console.log(`  ─────────────────────────`);
+  console.log(`  LIT TOTAL:           $${litValue.toFixed(2)}`);
+
   // 6. Calculate total NAV
   // HYPE value (hedged + unhedged) + ETH (at entry) + USDC + Lighter collateral
   const ethSpot = allSpotBalances
@@ -1184,7 +1276,7 @@ async function calculateYield() {
 
   // Subtract Jupiter vault USDC debt if borrowing
   const jupiterDebt = jupiterVaultData.usdcDebt || 0;
-  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidCollateral + solValue - jupiterDebt;
+  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidCollateral + solValue + litValue - jupiterDebt;
 
   console.log('');
   console.log('='.repeat(60));
@@ -1194,6 +1286,7 @@ async function calculateYield() {
   if (jupiterVaultData.solCollateral > 0) {
     console.log(`    (incl. Jupiter Borrow Vault: ${jupiterVaultData.solCollateral.toFixed(2)} SOL)`);
   }
+  console.log(`  LIT (hedged):     $${litValue.toFixed(2)}`);
   console.log(`  ETH (at entry):   $${ethValue.toFixed(2)}`);
   console.log(`  USDC:             $${usdcBalance.toFixed(2)}`);
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
@@ -1274,8 +1367,10 @@ async function calculateYield() {
     lighterCollateral: lighterData.collateral,
     hyperliquidEquity: hyperliquidData.equity,
     solValue,
+    litValue,
     jupiterVaultSol: jupiterVaultData.solCollateral,
     netHypeExposure: netExposure,
+    netLitExposure: litSpot - hyperliquidLitShort,
     // Cumulative flow tracking for cost socialization
     cumulativeDeposited: vaultData.totalDeposited,
     cumulativeWithdrawn: vaultData.totalWithdrawn,
@@ -1321,6 +1416,7 @@ async function calculateYield() {
       lighterCollateral: lighterData.collateral,
       hyperliquidEquity: hyperliquidData.equity,
       sol: solValue,
+      lit: litValue,
       jupiterVaultSol: jupiterVaultData.solCollateral,
     },
     // Detailed holdings for snapshot
@@ -1360,6 +1456,14 @@ async function calculateYield() {
         unrealizedPnl: lighterData.unrealizedPnl,
         equity: lighterData.equity,
         positions: lighterData.positions,
+        spotAssets: lighterSpotData.assets,
+      },
+      lit: {
+        spotBalance: litSpot,
+        hyperliquidShort: { size: hyperliquidLitShort, entryPrice: hyperliquidLitEntry },
+        netExposure: litSpot - hyperliquidLitShort,
+        currentPrice: litCurrentPrice,
+        totalValue: litValue,
       },
       hyperliquid: {
         equity: hyperliquidData.equity,
