@@ -403,13 +403,18 @@ async function fetchLighterSpotAssets() {
     const litAsset = assets['2'] || {};
     const litBalance = parseFloat(litAsset.balance || 0);
 
+    // Extract USDC balance (asset_id 3)
+    const usdcAsset = assets['3'] || {};
+    const usdcBalance = parseFloat(usdcAsset.balance || 0);
+
     return {
       assets,
       litBalance,
+      usdcBalance,
     };
   } catch (e) {
     console.warn('Failed to fetch Lighter spot assets:', e.message);
-    return { assets: {}, litBalance: 0 };
+    return { assets: {}, litBalance: 0, usdcBalance: 0 };
   }
 }
 
@@ -1274,9 +1279,13 @@ async function calculateYield() {
     .filter(b => STABLECOINS.includes(b.symbol))
     .reduce((sum, b) => sum + parseFloat(b.balance), 0);
 
+  // Add Lighter spot USDC
+  const lighterUsdcBalance = lighterSpotData.usdcBalance || 0;
+  const totalUsdcBalance = usdcBalance + lighterUsdcBalance;
+
   // Subtract Jupiter vault USDC debt if borrowing
   const jupiterDebt = jupiterVaultData.usdcDebt || 0;
-  const totalNav = totalHypeValue + ethValue + usdcBalance + lighterData.collateral + hyperliquidCollateral + solValue + litValue - jupiterDebt;
+  const totalNav = totalHypeValue + ethValue + totalUsdcBalance + lighterData.collateral + hyperliquidCollateral + solValue + litValue - jupiterDebt;
 
   console.log('');
   console.log('='.repeat(60));
@@ -1288,7 +1297,10 @@ async function calculateYield() {
   }
   console.log(`  LIT (hedged):     $${litValue.toFixed(2)}`);
   console.log(`  ETH (at entry):   $${ethValue.toFixed(2)}`);
-  console.log(`  USDC:             $${usdcBalance.toFixed(2)}`);
+  console.log(`  USDC:             $${totalUsdcBalance.toFixed(2)}`);
+  if (lighterUsdcBalance > 0) {
+    console.log(`    (incl. Lighter spot: $${lighterUsdcBalance.toFixed(2)})`);
+  }
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
   if (hyperliquidCollateral > 0) {
     console.log(`  Hyperliquid col:  $${hyperliquidCollateral.toFixed(2)}`);
@@ -1412,7 +1424,7 @@ async function calculateYield() {
     breakdown: {
       hype: totalHypeValue,
       eth: ethValue,
-      usdc: usdcBalance,
+      usdc: totalUsdcBalance,
       lighterCollateral: lighterData.collateral,
       hyperliquidEquity: hyperliquidData.equity,
       sol: solValue,
@@ -1424,6 +1436,10 @@ async function calculateYield() {
       ethereum: {
         eth: { amount: ethSpot, entryPrice: ethEntryPrice, value: ethValue },
         usdc: usdcBalance,
+      },
+      lighterSpot: {
+        usdc: lighterUsdcBalance,
+        lit: litSpot,
       },
       solana: {
         nativeSol: solanaData.solBalance,
