@@ -31,6 +31,14 @@ const ENTRY_COST_RATE = 0.00055;  // 0.055% on deposits
 const EXIT_COST_RATE = 0.00055;   // 0.055% on withdrawals
 const HYPEREVM_RPC = 'https://rpc.hyperliquid.xyz/evm';
 
+// Manual adjustments for positions not yet trackable via APIs
+// These are added to the NAV calculation
+const MANUAL_ADJUSTMENTS = {
+  hype: 923.083,    // Untracked HYPE position
+  sol: 1.3,         // Untracked SOL position
+  usdc: -40,        // Untracked USDC (negative = debt)
+};
+
 // Token addresses
 const TOKENS = {
   ethereum: {
@@ -1014,6 +1022,13 @@ async function calculateYield() {
   const ptHypeEquiv = pendleData.totalHypeEquivalent || 0;
   totalHypeHoldings += ptHypeEquiv;
   console.log(`  PT HYPE equiv:    ${ptHypeEquiv.toFixed(2)} HYPE`);
+
+  // Manual HYPE adjustment (untracked positions)
+  const manualHype = MANUAL_ADJUSTMENTS.hype || 0;
+  if (manualHype !== 0) {
+    totalHypeHoldings += manualHype;
+    console.log(`  Manual (untracked): ${manualHype.toFixed(2)} HYPE`);
+  }
   console.log(`  ─────────────────────────`);
   console.log(`  Total holdings:   ${totalHypeHoldings.toFixed(2)} HYPE`);
 
@@ -1149,7 +1164,14 @@ async function calculateYield() {
   }
 
   // Include Jupiter vault SOL in total holdings
-  const totalSolWithVault = solanaData.totalSol + jupiterVaultData.solCollateral;
+  let totalSolWithVault = solanaData.totalSol + jupiterVaultData.solCollateral;
+
+  // Manual SOL adjustment (untracked positions)
+  const manualSol = MANUAL_ADJUSTMENTS.sol || 0;
+  if (manualSol !== 0) {
+    totalSolWithVault += manualSol;
+    console.log(`  Manual (untracked):  ${manualSol.toFixed(4)} SOL`);
+  }
   console.log(`  ─────────────────────────`);
   console.log(`  Total holdings:      ${totalSolWithVault.toFixed(4)} SOL`);
 
@@ -1281,7 +1303,10 @@ async function calculateYield() {
 
   // Add Lighter spot USDC
   const lighterUsdcBalance = lighterSpotData.usdcBalance || 0;
-  const totalUsdcBalance = usdcBalance + lighterUsdcBalance;
+
+  // Manual USDC adjustment (untracked positions, can be negative for debt)
+  const manualUsdc = MANUAL_ADJUSTMENTS.usdc || 0;
+  const totalUsdcBalance = usdcBalance + lighterUsdcBalance + manualUsdc;
 
   // Subtract Jupiter vault USDC debt if borrowing
   const jupiterDebt = jupiterVaultData.usdcDebt || 0;
@@ -1300,6 +1325,9 @@ async function calculateYield() {
   console.log(`  USDC:             $${totalUsdcBalance.toFixed(2)}`);
   if (lighterUsdcBalance > 0) {
     console.log(`    (incl. Lighter spot: $${lighterUsdcBalance.toFixed(2)})`);
+  }
+  if (manualUsdc !== 0) {
+    console.log(`    (incl. manual adj: $${manualUsdc.toFixed(2)})`);
   }
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
   if (hyperliquidCollateral > 0) {

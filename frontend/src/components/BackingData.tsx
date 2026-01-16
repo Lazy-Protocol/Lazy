@@ -2,7 +2,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 import { useEvmBalances, type TokenBalance } from '@/hooks/useEvmBalances';
 import { usePendlePositions, type PendlePTPosition } from '@/hooks/usePendle';
 import { useHyperliquidPositions, type HyperliquidPosition } from '@/hooks/useHyperliquid';
-import { useLighterPositions, type LighterPosition } from '@/hooks/useLighter';
+import { useLighterPositions, type LighterPosition, type LighterSpotAsset } from '@/hooks/useLighter';
 import { useSolanaPositions } from '@/hooks/useSolana';
 
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
@@ -26,9 +26,13 @@ function formatUsd(value: string | number): string {
   return `$${formatNumber(Math.abs(num))}`;
 }
 
-// Multisig Spot Holdings Component
+// Multisig Spot Holdings Component (includes EVM, Lighter spot, and Solana)
 export function MultisigBalances() {
-  const { ethBalances, hyperEvmBalances, isLoading, isError } = useEvmBalances(MULTISIG_ADDRESS);
+  const { ethBalances, hyperEvmBalances, isLoading: evmLoading, isError: evmError } = useEvmBalances(MULTISIG_ADDRESS);
+  const { spotAssets: lighterSpotAssets, isLoading: lighterLoading } = useLighterPositions(MULTISIG_ADDRESS);
+  const { data: solanaData, isLoading: solanaLoading } = useSolanaPositions(OPERATOR_SOLANA_ADDRESS);
+
+  const isLoading = evmLoading || lighterLoading || solanaLoading;
 
   if (isLoading) {
     return (
@@ -42,7 +46,7 @@ export function MultisigBalances() {
     );
   }
 
-  if (isError) {
+  if (evmError) {
     return (
       <div className="backing-data-card">
         <div className="backing-data-header">
@@ -53,17 +57,44 @@ export function MultisigBalances() {
     );
   }
 
+  const hasData = ethBalances.length > 0 || hyperEvmBalances.length > 0 || lighterSpotAssets.length > 0 || solanaData.totalSol > 0;
+
   return (
     <div className="backing-data-card">
       <div className="backing-data-header">
         <h3>Spot Holdings</h3>
-        <span className="backing-data-badge">EVM</span>
+        <span className="backing-data-badge">Multi-chain</span>
       </div>
 
-      {ethBalances.length === 0 && hyperEvmBalances.length === 0 ? (
+      {!hasData ? (
         <div className="backing-data-empty">No spot holdings found</div>
       ) : (
         <div className="balance-list">
+          {/* Solana SOL */}
+          {solanaData.totalSol > 0.001 && (
+            <>
+              <div className="balance-chain-label">Solana</div>
+              <div className="balance-item">
+                <span className="balance-coin">SOL</span>
+                <span className="balance-amount">{formatNumber(solanaData.totalSol, 4)}</span>
+              </div>
+            </>
+          )}
+
+          {/* Lighter Spot (LIT, USDC) */}
+          {lighterSpotAssets.length > 0 && (
+            <>
+              <div className="balance-chain-label">Lighter</div>
+              {lighterSpotAssets.map((asset: LighterSpotAsset) => (
+                <div key={`lighter-${asset.symbol}`} className="balance-item">
+                  <span className="balance-coin">{asset.symbol}</span>
+                  <span className="balance-amount">{formatNumber(asset.balance, 4)}</span>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Ethereum */}
           {ethBalances.length > 0 && (
             <>
               <div className="balance-chain-label">Ethereum</div>
@@ -79,6 +110,8 @@ export function MultisigBalances() {
               ))}
             </>
           )}
+
+          {/* HyperEVM */}
           {hyperEvmBalances.length > 0 && (
             <>
               <div className="balance-chain-label">HyperEVM</div>
@@ -380,6 +413,12 @@ export function SolanaPositions() {
           <div className="balance-item">
             <span className="balance-coin">Jupiter Lend</span>
             <span className="balance-amount">{formatNumber(data.jupiterLendingSol, 4)} SOL</span>
+          </div>
+        )}
+        {data.jupiterBorrowVaultSol > 0 && (
+          <div className="balance-item">
+            <span className="balance-coin">Jupiter Borrow Vault</span>
+            <span className="balance-amount">{formatNumber(data.jupiterBorrowVaultSol, 4)} SOL</span>
           </div>
         )}
         <div className="balance-item" style={{ borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '8px' }}>

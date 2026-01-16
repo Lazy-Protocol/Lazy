@@ -18,10 +18,16 @@ export interface LighterPosition {
   unrealizedPnl: number;
 }
 
+export interface LighterSpotAsset {
+  symbol: string;
+  balance: number;
+}
+
 interface LighterState {
   collateral: number;
   unrealizedPnl: number;
   positions: LighterPosition[];
+  spotAssets: LighterSpotAsset[];
 }
 
 async function fetchLighterState(address: string): Promise<LighterState> {
@@ -33,14 +39,14 @@ async function fetchLighterState(address: string): Promise<LighterState> {
 
     if (!accountsRes.ok) {
       console.warn('Lighter API error:', accountsRes.status);
-      return { collateral: 0, unrealizedPnl: 0, positions: [] };
+      return { collateral: 0, unrealizedPnl: 0, positions: [], spotAssets: [] };
     }
 
     const accountsData = await accountsRes.json();
     const subAccounts = accountsData.sub_accounts || [];
 
     if (subAccounts.length === 0) {
-      return { collateral: 0, unrealizedPnl: 0, positions: [] };
+      return { collateral: 0, unrealizedPnl: 0, positions: [], spotAssets: [] };
     }
 
     // Sum collateral from all sub-accounts and get account index
@@ -53,10 +59,11 @@ async function fetchLighterState(address: string): Promise<LighterState> {
       }
     }
 
-    // Fetch positions from explorer API
-    const positionsRes = await fetch(
-      `${LIGHTER_EXPLORER_API}/accounts/${accountIndex}/positions`
-    );
+    // Fetch positions and spot assets from explorer API in parallel
+    const [positionsRes, assetsRes] = await Promise.all([
+      fetch(`${LIGHTER_EXPLORER_API}/accounts/${accountIndex}/positions`),
+      fetch(`${LIGHTER_EXPLORER_API}/accounts/${accountIndex}/assets`),
+    ]);
 
     const positions: LighterPosition[] = [];
     let totalUnrealizedPnl = 0;
@@ -83,14 +90,31 @@ async function fetchLighterState(address: string): Promise<LighterState> {
       }
     }
 
+    // Parse spot assets (LIT, USDC, etc.)
+    const spotAssets: LighterSpotAsset[] = [];
+    if (assetsRes.ok) {
+      const assetsData = await assetsRes.json();
+      for (const asset of Object.values(assetsData.assets || {})) {
+        const a = asset as { symbol: string; balance: string };
+        const balance = parseFloat(a.balance || '0');
+        if (balance > 0) {
+          spotAssets.push({
+            symbol: a.symbol,
+            balance,
+          });
+        }
+      }
+    }
+
     return {
       collateral: totalCollateral,
       unrealizedPnl: totalUnrealizedPnl,
       positions,
+      spotAssets,
     };
   } catch (e) {
     console.warn('Failed to fetch Lighter state:', e);
-    return { collateral: 0, unrealizedPnl: 0, positions: [] };
+    return { collateral: 0, unrealizedPnl: 0, positions: [], spotAssets: [] };
   }
 }
 
@@ -107,6 +131,7 @@ export function useLighterPositions(address: string) {
     collateral: query.data?.collateral ?? 0,
     unrealizedPnl: query.data?.unrealizedPnl ?? 0,
     positions: query.data?.positions ?? [],
+    spotAssets: query.data?.spotAssets ?? [],
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: query.refetch,
