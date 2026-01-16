@@ -50,8 +50,9 @@ export function DepositModal({ onClose }: DepositModalProps) {
     ? (parsedAmount * BigInt(1e18)) / sharePrice
     : 0n;
 
+  // sharePrice is scaled to 6 decimals (1e6 = 1 USDC per share)
   const exchangeRate = sharePrice
-    ? Number(formatUnits(sharePrice, 18)).toFixed(4)
+    ? Number(formatUnits(sharePrice, 6)).toFixed(4)
     : '1.0000';
 
   // Handle approve success
@@ -155,14 +156,14 @@ export function DepositModal({ onClose }: DepositModalProps) {
             <span className="conversion-value">1 lazyUSD = {exchangeRate} USDC</span>
           </div>
           <div className="conversion-row">
-            <span className="conversion-label">APR</span>
-            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ?? 10}%</span>
+            <span className="conversion-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</span>
+            <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</span>
           </div>
         </div>
 
         <div className="modal-info">
           <Info size={20} />
-          <p>Your lazyUSD will grow in value as yield accrues. No action needed—it's automatic.</p>
+          <p>Your lazyUSD will grow in value as yield accrues. No action needed. It's automatic.</p>
         </div>
 
         <button

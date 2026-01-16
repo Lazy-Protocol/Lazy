@@ -1,6 +1,6 @@
 import { createPublicClient, http, formatUnits } from 'viem';
 import { mainnet } from 'viem/chains';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -151,36 +151,93 @@ async function fetchStats() {
       console.warn('Depositor count will be 0. Consider using an RPC that supports historical logs.');
     }
 
-    // Calculate APR
+    // ============================================
+    // PPS History & 7-Day Rolling APR
+    // ============================================
+
+    const ppsHistoryPath = join(__dirname, '..', 'frontend', 'public', 'pps-history.json');
+    let ppsHistory = [];
+
+    // Load existing PPS history
+    if (existsSync(ppsHistoryPath)) {
+      try {
+        ppsHistory = JSON.parse(readFileSync(ppsHistoryPath, 'utf-8'));
+      } catch (e) {
+        console.warn('Could not parse PPS history, starting fresh');
+        ppsHistory = [];
+      }
+    }
+
+    // Get today's date (UTC) as YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
+    const currentPPS = Number(formatUnits(sharePrice, 6));
+
+    // Add or update today's PPS entry
+    const existingIndex = ppsHistory.findIndex(entry => entry.date === today);
+    if (existingIndex >= 0) {
+      ppsHistory[existingIndex].pps = currentPPS;
+      ppsHistory[existingIndex].timestamp = Date.now();
+    } else {
+      ppsHistory.push({
+        date: today,
+        pps: currentPPS,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Keep only last 30 days of history
+    ppsHistory = ppsHistory
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-30);
+
+    // Save updated history
+    writeFileSync(ppsHistoryPath, JSON.stringify(ppsHistory, null, 2));
+
+    // Calculate APR using 7-day rolling window (or inception if < 7 days)
     let apr = STATIC_APR;
     let aprSource = 'static';
+    let aprPeriod = 'static';
 
-    // Only calculate dynamic APR if we have yield data and deposits
-    if (accumulatedYield > 0n && totalAssets > 0n && lastYieldReportTime > 0n) {
-      // Calculate principal (totalAssets minus accumulated yield)
-      const principal = totalAssets - BigInt(accumulatedYield);
+    const INITIAL_PPS = 1000000n;
 
-      if (principal > 0n) {
-        // Calculate time elapsed since deployment (in seconds)
+    if (sharePrice > INITIAL_PPS && lastYieldReportTime > 0n) {
+      // Try 7-day rolling APR first
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
+      // Find PPS from ~7 days ago (closest available)
+      const oldEntry = ppsHistory.find(entry => entry.date <= sevenDaysAgoStr);
+
+      if (oldEntry && ppsHistory.length >= 7) {
+        // Use 7-day rolling APR
+        const oldPPS = oldEntry.pps;
+        const daysDiff = (Date.now() - oldEntry.timestamp) / (1000 * 60 * 60 * 24);
+
+        if (oldPPS > 0 && daysDiff >= 6) {
+          const ppsGain = (currentPPS - oldPPS) / oldPPS;
+          apr = ppsGain * (365 / daysDiff) * 100;
+          aprSource = 'calculated';
+          aprPeriod = '7d';
+        }
+      }
+
+      // Fall back to inception-to-date if we don't have 7 days
+      if (aprPeriod !== '7d') {
         const now = Math.floor(Date.now() / 1000);
         const elapsedSeconds = now - DEPLOYMENT_TIMESTAMP;
         const elapsedDays = elapsedSeconds / 86400;
 
-        // Only calculate if we have at least 1 day of data
         if (elapsedDays >= 1) {
-          // APR = (yield / principal) * (365 / days) * 100
-          const yieldNum = Number(formatUnits(accumulatedYield, 6));
-          const principalNum = Number(formatUnits(principal, 6));
-
-          if (principalNum > 0) {
-            apr = (yieldNum / principalNum) * (365 / elapsedDays) * 100;
-            aprSource = 'calculated';
-
-            // Cap APR at reasonable bounds (0-100%)
-            apr = Math.max(0, Math.min(100, apr));
-          }
+          const ppsGain = currentPPS - 1.0; // Initial PPS is 1.0
+          apr = ppsGain * (365 / elapsedDays) * 100;
+          aprSource = 'calculated';
+          aprPeriod = 'inception';
         }
       }
+
+      // Cap APR at reasonable bounds (0-100%)
+      apr = Math.max(0, Math.min(100, apr));
     }
 
     const stats = {
@@ -208,6 +265,7 @@ async function fetchStats() {
       // APR
       apr: Math.round(apr * 100) / 100, // Round to 2 decimal places
       aprSource, // 'static' or 'calculated'
+      aprPeriod, // '7d', 'inception', or 'static'
 
       // Metadata
       updatedAt: new Date().toISOString(),
@@ -220,7 +278,8 @@ async function fetchStats() {
     console.log('  TVL:', stats.formatted.tvl, 'USDC');
     console.log('  Share Price:', stats.formatted.sharePrice);
     console.log('  Accumulated Yield:', stats.formatted.accumulatedYield, 'USDC');
-    console.log('  APR:', stats.apr + '%', `(${stats.aprSource})`);
+    console.log('  APR:', stats.apr + '%', `(${stats.aprPeriod} ${stats.aprSource})`);
+    console.log('  PPS History:', ppsHistory.length, 'days');
     console.log('  Unique Depositors:', stats.depositorCount);
     console.log('  Total Deposits:', stats.depositCount);
 

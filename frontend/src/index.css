@@ -388,6 +388,23 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
 
 .vault-user-earnings { color: var(--earn-green); font-weight: 500; }
 
+.vault-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(26, 37, 49, 0.05);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--slate);
+  margin-bottom: var(--space-md);
+}
+
+.vault-notice svg {
+  color: var(--lazy-navy);
+  flex-shrink: 0;
+}
+
 .vault-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1427,6 +1444,37 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
 .position-pnl.positive .value { color: var(--earn-green); }
 .position-pnl.negative .value { color: var(--risk-red); }
 
+.position-size {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--lazy-navy);
+}
+
+.position-entry {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--slate);
+  margin-left: var(--space-xs);
+}
+
+.position-pnl {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  margin-left: auto;
+}
+
+.position-pnl.positive { color: var(--earn-green); }
+.position-pnl.negative { color: var(--risk-red); }
+
+.address-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-right: var(--space-sm);
+  min-width: 50px;
+}
+
 /* Balance List */
 .balance-list {
   display: flex;
@@ -2036,6 +2084,63 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
 
 .yield-note a:hover {
   text-decoration: underline;
+}
+
+/* Patient Capital Section */
+.patient-capital-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-xl);
+  margin-bottom: var(--space-xl);
+}
+
+.patient-capital-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.patient-capital-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--lazy-navy);
+  color: var(--drift-white);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-md);
+}
+
+.patient-capital-card h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--lazy-navy);
+  margin-bottom: var(--space-sm);
+}
+
+.patient-capital-card p {
+  color: var(--slate);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.patient-capital-note {
+  text-align: center;
+  color: var(--slate);
+  font-size: 0.9375rem;
+  font-style: italic;
+  padding: var(--space-md) var(--space-xl);
+  background: rgba(26, 37, 49, 0.03);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 768px) {
+  .patient-capital-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
 }
 
 /* Verify CTA */

@@ -1,4 +1,4 @@
-# Lazy Protocol — Visual Identity Guide
+# Lazy Protocol: Visual Identity Guide
 
 ## Design Philosophy
 
@@ -11,10 +11,10 @@ Users should feel calm and unburdened. Designers and developers should see preci
 
 ### Design Principles
 
-1. **Calm over exciting** — We're not a memecoin. No visual chaos.
-2. **Warm over cold** — Approachable, not sterile corporate.
-3. **Precise over decorative** — Every element earns its place.
-4. **Confident over loud** — Quiet authority, not desperate attention-seeking.
+1. **Calm over exciting:** We're not a memecoin. No visual chaos.
+2. **Warm over cold:** Approachable, not sterile corporate.
+3. **Precise over decorative:** Every element earns its place.
+4. **Confident over loud:** Quiet authority, not desperate attention-seeking.
 
 ---
 
@@ -47,11 +47,11 @@ Users should feel calm and unburdened. Designers and developers should see preci
 
 ### Color Psychology
 
-**Lazy Navy** — Deep, restful, trustworthy. Evokes nighttime (when you're sleeping and your yield is working). Not the aggressive navy of corporate finance—softer, with warmth.
+**Lazy Navy:** Deep, restful, trustworthy. Evokes nighttime (when you're sleeping and your yield is working). Not the aggressive navy of corporate finance, softer, with warmth.
 
-**Yield Gold** — Earned, not flashy. This isn't crypto-bro gold. It's the warm gold of morning light, of something valuable that accumulated quietly. Use sparingly for maximum impact.
+**Yield Gold:** Earned, not flashy. This isn't crypto-bro gold. It's the warm gold of morning light, of something valuable that accumulated quietly. Use sparingly for maximum impact.
 
-**Drift White** — Not pure white (#FFFFFF). Slightly warm, easier on the eyes. Suggests calm, openness, nothing to hide.
+**Drift White:** Not pure white (#FFFFFF). Slightly warm, easier on the eyes. Suggests calm, openness, nothing to hide.
 
 ### Color Usage Ratios
 
@@ -110,10 +110,10 @@ font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
 ### Typography Principles
 
-1. **Generous line height** — Body text at 1.6 feels calm and readable
-2. **Limited weights** — Only 400 (regular), 500 (medium), 600 (semibold), 700 (bold)
-3. **Tabular numerals** — Use `font-variant-numeric: tabular-nums` for financial data
-4. **No italics in UI** — Reserve for documentation emphasis only
+1. **Generous line height:** Body text at 1.6 feels calm and readable
+2. **Limited weights:** Only 400 (regular), 500 (medium), 600 (semibold), 700 (bold)
+3. **Tabular numerals:** Use `font-variant-numeric: tabular-nums` for financial data
+4. **No italics in UI:** Reserve for documentation emphasis only
 
 ### Sample Hierarchy
 
@@ -172,7 +172,7 @@ Current APY: 5.2%                           [Mono, 400]
 
 ### Concept 3: The Yield Curve
 
-**Description:** An upward-curving line that suggests growth while remaining horizontal/calm. Not a steep chart—a gentle, inevitable rise.
+**Description:** An upward-curving line that suggests growth while remaining horizontal/calm. Not a steep chart. A gentle, inevitable rise.
 
 ```
                     ╱
@@ -265,10 +265,10 @@ yield on autopilot
 
 ### Icon Principles
 
-1. **Simple geometry** — Circles, lines, basic shapes
-2. **Consistent weight** — All icons feel like a family
-3. **Purposeful** — Every icon communicates function
-4. **No decoration** — No unnecessary flourishes
+1. **Simple geometry:** Circles, lines, basic shapes
+2. **Consistent weight:** All icons feel like a family
+3. **Purposeful:** Every icon communicates function
+4. **No decoration:** No unnecessary flourishes
 
 ### Core Icon Set
 
@@ -398,10 +398,10 @@ Use multiples of 4px:
 
 ### Principles
 
-1. **Subtle over dramatic** — Animations should feel natural, not performative
-2. **Purposeful** — Motion communicates state change, not decoration
-3. **Quick** — 150-300ms for most transitions
-4. **Eased** — Use ease-out for entering, ease-in for exiting
+1. **Subtle over dramatic:** Animations should feel natural, not performative
+2. **Purposeful:** Motion communicates state change, not decoration
+3. **Quick:** 150-300ms for most transitions
+4. **Eased:** Use ease-out for entering, ease-in for exiting
 
 ### Timing
 
@@ -460,10 +460,10 @@ animation: fadeUp 300ms ease-out;
 
 ### Scaling Principles
 
-1. **Type scales down** — Reduce display/headline sizes on mobile
-2. **Spacing compresses** — Use 60-70% of desktop spacing on mobile
-3. **Stack, don't shrink** — Multi-column layouts become single column
-4. **Touch targets** — Minimum 44x44px on mobile
+1. **Type scales down:** Reduce display/headline sizes on mobile
+2. **Spacing compresses:** Use 60-70% of desktop spacing on mobile
+3. **Stack, don't shrink:** Multi-column layouts become single column
+4. **Touch targets:** Minimum 44x44px on mobile
 
 ---
 
@@ -500,14 +500,14 @@ animation: fadeUp 300ms ease-out;
 
 ### Visual Don'ts
 
-1. **No neon colors** — We're not a nightclub
-2. **No gradients in core brand** — Save for subtle backgrounds only
-3. **No 3D renders** — Dated, crypto-cliché
-4. **No busy patterns** — Calm > chaos
-5. **No stock photos of people looking at charts** — Overdone
-6. **No aggressive animations** — Bouncing, shaking, flashing
-7. **No drop shadows on everything** — Use sparingly
-8. **No rounded everything** — Mix radiuses intentionally
+1. **No neon colors:** We're not a nightclub
+2. **No gradients in core brand:** Save for subtle backgrounds only
+3. **No 3D renders:** Dated, crypto-cliché
+4. **No busy patterns:** Calm > chaos
+5. **No stock photos of people looking at charts:** Overdone
+6. **No aggressive animations:** Bouncing, shaking, flashing
+7. **No drop shadows on everything:** Use sparingly
+8. **No rounded everything:** Mix radiuses intentionally
 
 ### Brand Dilution
 

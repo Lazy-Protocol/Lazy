@@ -2,7 +2,7 @@
 
 ## System Overview
 
-**The home for patient capital.** The LazyUSD Vault is a streamlined DeFi protocol consisting of two contracts that work together to provide secure, yield-bearing USDC deposits. Patience is the strategy—deposit, wait, and collect when ready.
+**The home for patient capital.** The LazyUSD Vault is a streamlined DeFi protocol consisting of two contracts that work together to provide secure, yield-bearing USDC deposits. Patience is the strategy: deposit, wait, and collect when ready.
 
 ```
                                     ┌──────────────┐

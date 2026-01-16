@@ -20,7 +20,24 @@ lcov.info
 # macOS
 .DS_Store
 
+# Node
+node_modules/
+
+# Generated data
+data/
+
 # Local Netlify folder
 .netlify
 .local-config
 .dev-instructions
+
+# Brand assets (generated images, except final logos)
+brand/assets/
+!brand/assets/lazyusd-token*.svg
+!brand/assets/lazyusd-token*.png
+
+# DefiLlama adapters (separate repo)
+defillama-adapters/
+
+# Claude Code config
+.claude/

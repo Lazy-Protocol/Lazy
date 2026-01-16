@@ -47,7 +47,7 @@ export function Docs() {
               <h3 className="step-title">Collect</h3>
               <p className="step-description">
                 Request a withdrawal when you're ready. After a short cooldown,
-                collect your USDC—plus everything it earned.
+                collect your USDC, plus everything it earned.
               </p>
             </div>
           </div>
@@ -162,7 +162,7 @@ export function Docs() {
               <h3>FIFO Queue</h3>
               <p>
                 Withdrawals are processed in the order they're received.
-                This ensures fair treatment for all depositors—first come, first served.
+                This ensures fair treatment for all depositors: first come, first served.
               </p>
             </div>
           </div>
@@ -221,7 +221,7 @@ export function Docs() {
             <div className="security-text">
               <h3>5 Verified Invariants</h3>
               <p>
-                Lazy vaults are secured by formal mathematical proofs—not just audits.
+                Lazy vaults are secured by formal mathematical proofs, not just audits.
                 These invariants guarantee your assets are handled fairly, always.
               </p>
             </div>
@@ -272,7 +272,7 @@ export function Docs() {
               <span className="invariant-id">I.3</span>
               <div>
                 <strong>Universal NAV Application</strong>
-                <p>Share price applies uniformly to all shares—no special treatment.</p>
+                <p>Share price applies uniformly to all shares. No special treatment.</p>
               </div>
             </div>
 

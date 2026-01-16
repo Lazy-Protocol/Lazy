@@ -1,19 +1,19 @@
-# Lazy Protocol — Brand Messaging Framework
+# Lazy Protocol: Brand Messaging Framework
 
 ## Brand Foundation
 
 ### Brand Name
 **Protocol:** Lazy Protocol (or Lazy Finance)
 **Domain:** getlazy.xyz
-**Token Convention:** lazy[ASSET] — lazyUSD, lazyETH, lazyHYPE, etc.
+**Token Convention:** lazy[ASSET] (e.g., lazyUSD, lazyETH, lazyHYPE)
 
 ### Brand Essence
-Lazy is the home for patient capital. We reward users who are willing to wait—deposit, let time work, and collect when ready. The name is a promise: being lazy is the strategy. Patience pays.
+Lazy is the home for patient capital. We reward users who are willing to wait: deposit, let time work, and collect when ready. The name is a promise: being lazy is the strategy. Patience pays.
 
 ### Core Tension
 > **"Patient capital, rewarded."**
 
-This tension is the brand's heartbeat. Every piece of communication should reinforce that patience—not active management—is how users earn yield.
+This tension is the brand's heartbeat. Every piece of communication should reinforce that patience, not active management, is how users earn yield.
 
 ---
 
@@ -32,7 +32,7 @@ Primary options:
 > "Lazy is the home for patient capital. You deposit USDC or other assets. Your lazy tokens grow in value over time. When you're ready, you collect your capital plus everything it earned. No staking. No claiming. No active management. Patience is the strategy."
 
 ### Level 4: Full Positioning (2 paragraphs)
-> Lazy Protocol rewards patience. While other protocols demand constant attention—claiming rewards, rotating strategies, monitoring positions—Lazy asks you to do one thing: wait. Deposit your assets, receive lazy tokens that grow in value, and collect when you're ready.
+> Lazy Protocol rewards patience. While other protocols demand constant attention (claiming rewards, rotating strategies, monitoring positions), Lazy asks you to do one thing: wait. Deposit your assets, receive lazy tokens that grow in value, and collect when you're ready.
 >
 > Behind the simplicity is serious engineering. Lazy vaults are secured by formal mathematical proofs, not just audits. Five invariants guarantee that your assets are handled fairly: first-in-first-out withdrawals, profit-only fees, and equal treatment for all depositors. Your capital is ready to work. Are you ready to wait?
 
@@ -41,10 +41,10 @@ Primary options:
 ## Voice & Tone Guidelines
 
 ### Brand Personality
-- **Confident, not arrogant** — We know what we're doing, but we don't lecture
-- **Simple, not dumb** — We make complex things accessible without being condescending
-- **Honest, not boring** — We're direct about trade-offs without being dry
-- **Warm, not cute** — Approachable personality without excessive playfulness
+- **Confident, not arrogant:** We know what we're doing, but we don't lecture
+- **Simple, not dumb:** We make complex things accessible without being condescending
+- **Honest, not boring:** We're direct about trade-offs without being dry
+- **Warm, not cute:** Approachable personality without excessive playfulness
 
 ### Voice Principles
 
@@ -95,7 +95,7 @@ Primary options:
 **Key message:** "Patient capital, rewarded."
 
 **Sample copy:**
-> "Deposit, wait, collect. That's the whole strategy. Your lazyUSD grows in value over time—no staking, no claiming, no active management. Patience is how you earn."
+> "Deposit, wait, collect. That's the whole strategy. Your lazyUSD grows in value over time. No staking, no claiming, no active management. Patience is how you earn."
 
 ### DeFi Natives (Secondary)
 
@@ -148,14 +148,14 @@ Users see simplicity. Engineers see rigor. Both are true.
 ### Security Copy Examples
 
 **Badge/tooltip:**
-> "This vault is secured by 5 formal invariants—mathematical proofs that guarantee fair asset handling regardless of market conditions."
+> "This vault is secured by 5 formal invariants: mathematical proofs that guarantee fair asset handling regardless of market conditions."
 
 **FAQ entry:**
 > **"Is Lazy safe?"**
-> "Lazy vaults are formally verified using Halmos, a symbolic execution tool that proves security properties mathematically. We don't just test for bugs—we prove they can't exist. View our invariant specifications →"
+> "Lazy vaults are formally verified using Halmos, a symbolic execution tool that proves security properties mathematically. We don't just test for bugs. We prove they can't exist. View our invariant specifications →"
 
 **Technical docs intro:**
-> "Lazy Protocol enforces five invariants that hold true in all possible states. These aren't aspirational—they're mathematically guaranteed and verified through symbolic execution."
+> "Lazy Protocol enforces five invariants that hold true in all possible states. These aren't aspirational. They're mathematically guaranteed and verified through symbolic execution."
 
 ---
 
@@ -223,7 +223,7 @@ Patient capital starts here.
    Your lazyUSD grows in value over time. Patience is the strategy.
 
 3. Collect
-   When you're ready, claim your capital—plus everything it earned.
+   When you're ready, claim your capital, plus everything it earned.
 ```
 
 ### CTA Section
@@ -258,7 +258,7 @@ You'll receive: ~987.23 lazyUSD
 Current rate: 1 lazyUSD = 1.0129 USDC
 
 Your lazyUSD will grow in value as yield accrues.
-No action needed—it's automatic.
+No action needed. It's automatic.
 
 [Confirm Deposit]
 ```
@@ -313,7 +313,7 @@ Transaction: 0x1234...5678
 > "Your withdrawal is queued (#4) and will be ready in approximately 18 hours."
 
 **Cooldown not met:**
-> "Withdrawal cooldown: 1 day 4 hours remaining. Your assets are safe—just waiting."
+> "Withdrawal cooldown: 1 day 4 hours remaining. Your assets are safe. Just waiting."
 
 ### 404 Page
 ```
@@ -375,14 +375,14 @@ The home for patient capital.
 
 ## Governance Note
 
-This messaging framework should be treated as a living document. As Lazy Protocol evolves—new vaults, new features, new audiences—the messaging should evolve with it.
+This messaging framework should be treated as a living document. As Lazy Protocol evolves (new vaults, new features, new audiences), the messaging should evolve with it.
 
 Core principles that should remain stable:
-1. **"Patient capital, rewarded"** — The central promise
-2. **Simplicity first, security underneath** — Messaging hierarchy
-3. **Honest about trade-offs** — No overpromising
-4. **Human voice** — Never corporate, never degen
-5. **Patience as strategy** — Waiting is the feature, not a bug
+1. **"Patient capital, rewarded":** The central promise
+2. **Simplicity first, security underneath:** Messaging hierarchy
+3. **Honest about trade-offs:** No overpromising
+4. **Human voice:** Never corporate, never degen
+5. **Patience as strategy:** Waiting is the feature, not a bug
 
 ---
 

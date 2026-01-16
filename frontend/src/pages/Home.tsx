@@ -8,18 +8,36 @@ import { WithdrawModal } from '@/components/WithdrawModal';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
 
+// Vault launch date (January 7, 2026)
+const LAUNCH_DATE = new Date('2026-01-07T00:00:00Z');
+
+function getDaysLive(): number {
+  const now = new Date();
+  const diffMs = now.getTime() - LAUNCH_DATE.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
 export function Home() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const { address, isConnected } = useAccount();
-  const { totalAssets, accumulatedYield, isLoading } = useVaultStats();
+  const { totalAssets, accumulatedYield } = useVaultStats();
   const { shareBalance, usdcValue, totalDeposited } = useUserData(address);
   const { data: protocolStats } = useProtocolStats();
 
-  // Format yield for display (only show positive yield as "distributed")
-  const yieldDistributed = accumulatedYield !== undefined && accumulatedYield > 0n
-    ? formatUsdc(accumulatedYield)
-    : '0.00';
+  // Use protocolStats (from GitHub) as primary source, fallback to contract data
+  const tvlDisplay = protocolStats?.formatted?.tvl
+    ? `$${Number(protocolStats.formatted.tvl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : totalAssets
+      ? `$${formatUsdc(totalAssets)}`
+      : '...';
+
+  const yieldDistributed = protocolStats?.formatted?.accumulatedYield
+    ? `$${Number(protocolStats.formatted.accumulatedYield).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : accumulatedYield !== undefined && accumulatedYield > 0n
+      ? `$${formatUsdc(accumulatedYield)}`
+      : '...';
+
   const location = useLocation();
 
   // Handle hash scroll on navigation
@@ -61,20 +79,20 @@ export function Home() {
         <div className="container">
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-value">{isLoading ? '—' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
+              <div className="stat-value">{tvlDisplay}</div>
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{protocolStats?.apr ?? 10}%</div>
-              <div className="stat-label">APR</div>
+              <div className="stat-value">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
+              <div className="stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{protocolStats?.depositorCount ?? '—'}</div>
-              <div className="stat-label">Depositors</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-value">{isLoading ? '—' : `$${yieldDistributed}`}</div>
+              <div className="stat-value">{yieldDistributed}</div>
               <div className="stat-label">Yield Distributed</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-value">{getDaysLive()}</div>
+              <div className="stat-label">Days Live</div>
             </div>
           </div>
         </div>
@@ -101,13 +119,18 @@ export function Home() {
 
             <div className="vault-stats">
               <div>
-                <div className="vault-stat-label">APR</div>
-                <div className="vault-stat-value positive">{protocolStats?.apr ?? 10}%</div>
+                <div className="vault-stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
+                <div className="vault-stat-value positive">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">{isLoading ? '—' : `$${totalAssets ? formatUsdc(totalAssets) : '0.00'}`}</div>
+                <div className="vault-stat-value">{tvlDisplay}</div>
               </div>
+            </div>
+
+            <div className="vault-notice">
+              <Clock size={14} />
+              <span>Designed for patient capital · Up to 7-day withdrawal cooldown</span>
             </div>
 
             <div className="vault-user-section">
@@ -152,11 +175,11 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
             </div>
 
@@ -188,11 +211,11 @@ export function Home() {
             <div className="vault-stats">
               <div>
                 <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">—</div>
+                <div className="vault-stat-value">...</div>
               </div>
             </div>
 
@@ -243,7 +266,7 @@ export function Home() {
             <div className="step-number">3</div>
             <h3 className="step-title">Collect</h3>
             <p className="step-description">
-              When you're ready, claim your capital—plus everything it earned.
+              When you're ready, claim your capital, plus everything it earned.
             </p>
           </div>
           </div>
@@ -275,7 +298,7 @@ export function Home() {
               </div>
               <h3 className="step-title">Visible positions</h3>
               <p className="step-description">
-                Every asset, every position — fully verifiable. See exactly where your capital is working.
+                Every asset, every position. Fully verifiable. See exactly where your capital is working.
               </p>
             </div>
 
@@ -285,7 +308,7 @@ export function Home() {
               </div>
               <h3 className="step-title">Onchain execution</h3>
               <p className="step-description">
-                Positions held on Hyperliquid and Lighter. All trades, all movements — public and auditable.
+                Positions held on Hyperliquid and Lighter. All trades, all movements. Public and auditable.
               </p>
             </div>
           </div>
@@ -305,7 +328,7 @@ export function Home() {
           <div className="security-text">
             <h3>Built by paranoid engineers.</h3>
             <p>
-              Lazy vaults are secured by formal mathematical proofs—not just audits.
+              Lazy vaults are secured by formal mathematical proofs, not just audits.
               Five invariants guarantee your assets are handled fairly, always.
             </p>
           </div>

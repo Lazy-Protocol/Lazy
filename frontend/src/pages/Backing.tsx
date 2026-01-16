@@ -1,4 +1,4 @@
-import { ExternalLink, Copy, Check, Shield, Activity } from 'lucide-react';
+import { ExternalLink, Copy, Check, Shield, Activity, Clock, TrendingUp } from 'lucide-react';
 import { LiveBackingData } from '@/components/BackingData';
 import { useState } from 'react';
 
@@ -7,6 +7,9 @@ const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
 
 // Operator wallet - for apps without Safe support
 const OPERATOR_ADDRESS = '0xF466ad87c98f50473Cf4Fe32CdF8db652F9E36D6';
+
+// Operator Solana wallet
+const OPERATOR_SOLANA_ADDRESS = '1AxbVeo57DHrMghgWDL5d25j394LDPdwMLEtHHYTkgU';
 
 // Explorer links
 const EXPLORERS = {
@@ -19,6 +22,7 @@ const EXPLORERS = {
   operator: {
     hypurrscan: `https://hypurrscan.io/address/${OPERATOR_ADDRESS}`,
     hyperevm: `https://hyperevmscan.io/address/${OPERATOR_ADDRESS}`,
+    solscan: `https://solscan.io/account/${OPERATOR_SOLANA_ADDRESS}`,
   },
 };
 
@@ -47,7 +51,7 @@ export function Backing() {
           <h1 className="hero-title">No black boxes.</h1>
           <p className="hero-subtitle">
             Patient capital doesn't hide. Neither do we.<br />
-            Everything backing your lazyUSD — visible, verifiable, onchain.
+            Everything backing your lazyUSD. Visible, verifiable, onchain.
           </p>
         </div>
       </section>
@@ -102,8 +106,14 @@ export function Backing() {
                 Executes on venues without Safe support. Same transparency.
               </p>
               <div className="wallet-card-address">
+                <span className="address-label">EVM</span>
                 <code>{OPERATOR_ADDRESS}</code>
                 <CopyButton text={OPERATOR_ADDRESS} />
+              </div>
+              <div className="wallet-card-address" style={{ marginTop: '8px' }}>
+                <span className="address-label">Solana</span>
+                <code>{OPERATOR_SOLANA_ADDRESS}</code>
+                <CopyButton text={OPERATOR_SOLANA_ADDRESS} />
               </div>
               <div className="wallet-card-links">
                 <a href={EXPLORERS.operator.hypurrscan} target="_blank" rel="noopener noreferrer">
@@ -111,6 +121,9 @@ export function Backing() {
                 </a>
                 <a href={EXPLORERS.operator.hyperevm} target="_blank" rel="noopener noreferrer">
                   HyperEVM <ExternalLink size={12} />
+                </a>
+                <a href={EXPLORERS.operator.solscan} target="_blank" rel="noopener noreferrer">
+                  Solscan <ExternalLink size={12} />
                 </a>
               </div>
             </div>
@@ -153,10 +166,9 @@ export function Backing() {
             <h4>Then the spot earns.</h4>
             <p>The 70% spot holdings are deployed into yield-bearing positions:</p>
             <div className="yield-assets">
-              <span>stHYPE</span>
-              <span>stETH</span>
-              <span>jitoSOL</span>
               <span>Pendle PT</span>
+              <span>Jupiter Lending</span>
+              <span>Validator Staking</span>
             </div>
           </div>
 
@@ -185,9 +197,9 @@ export function Backing() {
               <span className="yield-source-tag">From the 30%</span>
             </div>
             <div className="yield-source-card">
-              <h4>Staking & PT Yields</h4>
+              <h4>Lending & PT Yields</h4>
               <p>
-                Spot holdings earn staking rewards (stHYPE, stETH, jitoSOL)
+                Spot holdings earn lending yields (Jupiter Lend), staking rewards,
                 or fixed PT yields via Pendle.
               </p>
               <span className="yield-source-tag">From the 70%</span>
@@ -197,6 +209,59 @@ export function Backing() {
           <p className="yield-note">
             Rates fluctuate. That's DeFi. Current vault APY is always shown on the{' '}
             <a href="/">deposit page</a>.
+          </p>
+        </div>
+      </section>
+
+      {/* Patient Capital */}
+      <section className="section">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Built for patient capital.</h2>
+            <p className="section-subtitle">Time is the strategy. Cooldowns protect everyone.</p>
+          </div>
+
+          <div className="patient-capital-grid">
+            <div className="patient-capital-card">
+              <div className="patient-capital-icon">
+                <TrendingUp size={24} />
+              </div>
+              <h4>Compounding takes time</h4>
+              <p>
+                Delta-neutral strategies need time to generate meaningful yield.
+                Funding rates compound. PT positions mature. Rushing in and out
+                destroys value for everyone.
+              </p>
+            </div>
+
+            <div className="patient-capital-card">
+              <div className="patient-capital-icon">
+                <Clock size={24} />
+              </div>
+              <h4>Up to 7-day cooldown</h4>
+              <p>
+                Withdrawal requests have a cooldown period before they can be claimed.
+                This gives the strategy time to unwind positions safely, protecting
+                both your capital and others' yields.
+              </p>
+            </div>
+
+            <div className="patient-capital-card">
+              <div className="patient-capital-icon">
+                <Shield size={24} />
+              </div>
+              <h4>Protects patient depositors</h4>
+              <p>
+                Quick exits hurt everyone. The cooldown ensures capital isn't pulled
+                during volatile periods, preserving yield for those who stay.
+                Patient capital, patient returns.
+              </p>
+            </div>
+          </div>
+
+          <p className="patient-capital-note">
+            This vault is designed for depositors who understand that real yield takes time.
+            If you need instant liquidity, this isn't the right fit.
           </p>
         </div>
       </section>
@@ -217,7 +282,7 @@ export function Backing() {
             <div className="step-card">
               <div className="step-number">2</div>
               <h3 className="step-title">See the positions</h3>
-              <p className="step-description">Hyperliquid, Lighter, Pendle — all onchain, all visible.</p>
+              <p className="step-description">Hyperliquid, Lighter, Pendle. All onchain, all visible.</p>
             </div>
             <div className="step-card">
               <div className="step-number">3</div>

@@ -18,4 +18,3 @@ export const ETHERSCAN_ADDRESS_URL = (address: string) => `${ETHERSCAN_BASE_URL}
 // Protocol info
 export const PROTOCOL_NAME = 'Lazy Protocol';
 export const VAULT_SYMBOL = 'lazyUSD';
-export const BASE_APR = 10; // 10% base APR

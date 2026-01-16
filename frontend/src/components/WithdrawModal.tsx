@@ -49,8 +49,9 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
     },
   });
 
+  // sharePrice is scaled to 6 decimals (1e6 = 1 USDC per share)
   const exchangeRate = sharePrice
-    ? Number(formatUnits(sharePrice, 18)).toFixed(4)
+    ? Number(formatUnits(sharePrice, 6)).toFixed(4)
     : '1.0000';
 
   const cooldownDays = cooldownPeriod ? Number(cooldownPeriod) / 86400 : 7;

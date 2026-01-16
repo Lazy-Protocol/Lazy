@@ -105,11 +105,11 @@ export function Portfolio() {
             <span className="text-drift-white/70">Your Withdrawals</span>
           </div>
           <div className="text-2xl font-bold text-drift-white">
-            {userPendingCount !== undefined ? String(userPendingCount) : '—'}
+            {userPendingCount !== undefined ? String(userPendingCount) : '...'}
           </div>
           <div className="text-sm text-drift-white/50 mt-1">
             {userPendingCount && userPendingCount > 0n
-              ? `pending (${queueDepth ?? '—'} total in queue)`
+              ? `pending (${queueDepth ?? '...'} total in queue)`
               : 'No pending requests'}
           </div>
         </div>
@@ -142,19 +142,19 @@ export function Portfolio() {
           <div>
             <div className="text-drift-white/50 text-sm mb-1">Total Value Locked</div>
             <div className="text-xl font-semibold text-drift-white">
-              ${totalAssets ? formatUsdc(totalAssets) : '—'}
+              ${totalAssets ? formatUsdc(totalAssets) : '...'}
             </div>
           </div>
           <div>
             <div className="text-drift-white/50 text-sm mb-1">Share Price</div>
             <div className="text-xl font-semibold text-drift-white">
-              ${sharePrice ? Number(formatUnits(sharePrice, 18)).toFixed(4) : '—'}
+              ${sharePrice ? Number(formatUnits(sharePrice, 18)).toFixed(4) : '...'}
             </div>
           </div>
           <div>
             <div className="text-drift-white/50 text-sm mb-1">Cooldown Period</div>
             <div className="text-xl font-semibold text-drift-white">
-              {cooldownPeriod ? `${Number(cooldownPeriod) / 86400} days` : '—'}
+              {cooldownPeriod ? `${Number(cooldownPeriod) / 86400} days` : '...'}
             </div>
           </div>
         </div>

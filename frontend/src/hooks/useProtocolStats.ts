@@ -18,13 +18,14 @@ interface ProtocolStats {
   depositCount: number;
   apr: number;
   aprSource: 'static' | 'calculated';
+  aprPeriod: '7d' | 'inception' | 'static';
   updatedAt: string;
   vaultAddress: string;
   chainId: number;
   lastYieldReportTime: string;
 }
 
-const STATS_URL = 'https://raw.githubusercontent.com/sirmoremoney/AYP/main/frontend/public/stats.json';
+const STATS_URL = 'https://raw.githubusercontent.com/Lazy-Protocol/lazy/main/frontend/public/stats.json';
 
 export function useProtocolStats() {
   return useQuery<ProtocolStats>({
