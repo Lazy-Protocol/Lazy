@@ -34,7 +34,7 @@ const HYPEREVM_RPC = 'https://rpc.hyperliquid.xyz/evm';
 // Manual adjustments for positions not yet trackable via APIs
 // These are added to the NAV calculation
 const MANUAL_ADJUSTMENTS = {
-  hype: 923.083,    // Untracked HYPE position
+  hype: 0,          // No untracked HYPE
   sol: 1.3,         // Untracked SOL position
   usdc: -40,        // Untracked USDC (negative = debt)
 };
@@ -482,17 +482,35 @@ async function fetchUsdcPrice() {
 
 async function fetchSolanaData(address, usdcPrice = 1.0) {
   try {
-    // Fetch SOL price from CoinGecko in USD, then convert to USDC
+    // Fetch SOL price - try multiple sources for reliability
     let solPrice = 0;
+
+    // Try Jupiter price API first (more reliable, no rate limits)
     try {
-      const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-      if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        const solPriceUsd = priceData.solana?.usd || 0;
-        solPrice = solPriceUsd / usdcPrice; // Convert to USDC terms
+      const jupPriceRes = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112');
+      if (jupPriceRes.ok) {
+        const jupPriceData = await jupPriceRes.json();
+        const solPriceUsd = parseFloat(jupPriceData.data?.['So11111111111111111111111111111111111111112']?.price || 0);
+        if (solPriceUsd > 0) {
+          solPrice = solPriceUsd / usdcPrice;
+        }
       }
     } catch (e) {
-      console.warn('Failed to fetch SOL price:', e.message);
+      console.warn('Jupiter price API failed:', e.message);
+    }
+
+    // Fallback to CoinGecko if Jupiter failed
+    if (solPrice === 0) {
+      try {
+        const priceRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        if (priceRes.ok) {
+          const priceData = await priceRes.json();
+          const solPriceUsd = priceData.solana?.usd || 0;
+          solPrice = solPriceUsd / usdcPrice;
+        }
+      } catch (e) {
+        console.warn('CoinGecko price API failed:', e.message);
+      }
     }
 
     // 1. Fetch native SOL balance
