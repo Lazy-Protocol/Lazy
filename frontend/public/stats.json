@@ -14,10 +14,10 @@
   },
   "depositorCount": 6,
   "depositCount": 7,
-  "apr": 10.97,
+  "apr": 10.94,
   "aprSource": "calculated",
   "aprPeriod": "inception",
-  "updatedAt": "2026-01-19T10:28:14.452Z",
+  "updatedAt": "2026-01-19T11:20:58.330Z",
   "vaultAddress": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
   "chainId": 1,
   "lastYieldReportTime": "1768787147"
