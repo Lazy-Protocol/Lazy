@@ -10,15 +10,6 @@ import { AnimatedNumber } from '@/components/AnimatedNumber';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
 
-// Vault launch date (January 7, 2026)
-const LAUNCH_DATE = new Date('2026-01-07T00:00:00Z');
-
-function getDaysLive(): number {
-  const now = new Date();
-  const diffMs = now.getTime() - LAUNCH_DATE.getTime();
-  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-}
-
 export function Home() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -41,7 +32,6 @@ export function Home() {
       : 0;
 
   const aprValue = protocolStats?.apr ? Number(protocolStats.apr) : 0;
-  const daysLive = getDaysLive();
 
   // Legacy string display for vault cards
   const tvlDisplay = tvlValue > 0
@@ -114,9 +104,11 @@ export function Home() {
             </div>
             <div className="stat-item">
               <div className="stat-value">
-                <AnimatedNumber value={daysLive} decimals={0} />
+                {protocolStats?.depositorCount ? (
+                  <AnimatedNumber value={protocolStats.depositorCount} decimals={0} />
+                ) : '...'}
               </div>
-              <div className="stat-label">Days Live</div>
+              <div className="stat-label">Depositors</div>
             </div>
           </div>
         </div>
@@ -382,7 +374,7 @@ export function Home() {
         <div className="container-narrow">
           <h2 className="section-title">Patience pays.</h2>
           <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
-            Your capital is ready to work. Are you ready to wait?
+            Your capital is ready. Patience is the only requirement.
           </p>
           <a href="#vaults" className="btn btn-gold">Start Earning</a>
         </div>

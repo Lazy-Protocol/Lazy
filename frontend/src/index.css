@@ -624,10 +624,10 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.1);
   color: var(--slate);
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition: background-color 150ms ease-out, color 150ms ease-out, transform 150ms ease-out;
 }
 
-.social-link:hover { background: rgba(255, 255, 255, 0.15); color: var(--drift-white); }
+.social-link:hover { background: rgba(255, 255, 255, 0.15); color: var(--drift-white); transform: scale(1.05); }
 .social-link svg { width: 20px; height: 20px; }
 
 /* Modal */
@@ -635,7 +635,7 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
