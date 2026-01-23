@@ -6,6 +6,7 @@ import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
 import { TimeMachine } from '@/components/TimeMachine';
+import { AnimatedNumber } from '@/components/AnimatedNumber';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
 
@@ -27,17 +28,25 @@ export function Home() {
   const { data: protocolStats } = useProtocolStats();
 
   // Use protocolStats (from GitHub) as primary source, fallback to contract data
-  const tvlDisplay = protocolStats?.formatted?.tvl
-    ? `$${Number(protocolStats.formatted.tvl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const tvlValue = protocolStats?.formatted?.tvl
+    ? Number(protocolStats.formatted.tvl)
     : totalAssets
-      ? `$${formatUsdc(totalAssets)}`
-      : '...';
+      ? Number(totalAssets) / 1e6
+      : 0;
 
-  const yieldDistributed = protocolStats?.formatted?.accumulatedYield
-    ? `$${Number(protocolStats.formatted.accumulatedYield).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const yieldValue = protocolStats?.formatted?.accumulatedYield
+    ? Number(protocolStats.formatted.accumulatedYield)
     : accumulatedYield !== undefined && accumulatedYield > 0n
-      ? `$${formatUsdc(accumulatedYield)}`
-      : '...';
+      ? Number(accumulatedYield) / 1e6
+      : 0;
+
+  const aprValue = protocolStats?.apr ? Number(protocolStats.apr) : 0;
+  const daysLive = getDaysLive();
+
+  // Legacy string display for vault cards
+  const tvlDisplay = tvlValue > 0
+    ? `$${tvlValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '...';
 
   const location = useLocation();
 
@@ -80,19 +89,33 @@ export function Home() {
         <div className="container">
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-value">{tvlDisplay}</div>
+              <div className="stat-value">
+                {tvlValue > 0 ? (
+                  <AnimatedNumber value={tvlValue} decimals={2} prefix="$" />
+                ) : '...'}
+              </div>
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
+              <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
+                {aprValue > 0 ? (
+                  <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
+                ) : '...'}
+              </div>
               <div className="stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{yieldDistributed}</div>
+              <div className="stat-value">
+                {yieldValue > 0 ? (
+                  <AnimatedNumber value={yieldValue} decimals={2} prefix="$" />
+                ) : '...'}
+              </div>
               <div className="stat-label">Yield Distributed</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{getDaysLive()}</div>
+              <div className="stat-value">
+                <AnimatedNumber value={daysLive} decimals={0} />
+              </div>
               <div className="stat-label">Days Live</div>
             </div>
           </div>
