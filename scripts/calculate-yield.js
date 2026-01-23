@@ -1073,10 +1073,10 @@ async function calculateYield() {
   const totalHypeShort = lighterHypeShort + hyperliquidHypeShort;
   console.log(`  Shorts:`);
   if (lighterHypeShort > 0) {
-    console.log(`    Lighter:        ${lighterHypeShort.toFixed(2)} HYPE @ $${lighterHypeEntry.toFixed(2)}`);
+    console.log(`    Lighter:        ${lighterHypeShort.toFixed(2)} HYPE @ $${lighterHypeEntry.toFixed(4)}`);
   }
   if (hyperliquidHypeShort > 0) {
-    console.log(`    Hyperliquid:    ${hyperliquidHypeShort.toFixed(2)} HYPE @ $${hyperliquidHypeEntry.toFixed(2)}`);
+    console.log(`    Hyperliquid:    ${hyperliquidHypeShort.toFixed(2)} HYPE @ $${hyperliquidHypeEntry.toFixed(4)}`);
   }
   console.log(`  Total short:      ${totalHypeShort.toFixed(2)} HYPE`);
 
@@ -1093,8 +1093,8 @@ async function calculateYield() {
     const hyperliquidHedgedValue = hyperliquidHypeShort * hyperliquidHypeEntry;
     const totalHedgedValue = lighterHedgedValue + hyperliquidHedgedValue;
 
-    console.log(`  Hedged via Lighter:     ${lighterHypeShort.toFixed(2)} × $${lighterHypeEntry.toFixed(2)} = $${lighterHedgedValue.toFixed(2)}`);
-    console.log(`  Hedged via Hyperliquid: ${hyperliquidHypeShort.toFixed(2)} × $${hyperliquidHypeEntry.toFixed(2)} = $${hyperliquidHedgedValue.toFixed(2)}`);
+    console.log(`  Hedged via Lighter:     ${lighterHypeShort.toFixed(2)} × $${lighterHypeEntry.toFixed(4)} = $${lighterHedgedValue.toFixed(2)}`);
+    console.log(`  Hedged via Hyperliquid: ${hyperliquidHypeShort.toFixed(2)} × $${hyperliquidHypeEntry.toFixed(4)} = $${hyperliquidHedgedValue.toFixed(2)}`);
 
     totalHypeValue = totalHedgedValue;
 
@@ -1161,7 +1161,7 @@ async function calculateYield() {
         const side = szi >= 0 ? 'LONG' : 'SHORT';
         const size = Math.abs(szi);
         const pnlSign = unrealizedPnl >= 0 ? '+' : '';
-        console.log(`    ${coin} ${side}: ${size.toFixed(4)} @ $${entryPx.toFixed(2)} (${pnlSign}$${unrealizedPnl.toFixed(2)})`);
+        console.log(`    ${coin} ${side}: ${size.toFixed(4)} @ $${entryPx.toFixed(4)} (${pnlSign}$${unrealizedPnl.toFixed(2)})`);
       }
     }
   }
@@ -1196,6 +1196,7 @@ async function calculateYield() {
   // Find Hyperliquid SOL short
   let hyperliquidSolShort = 0;
   let hyperliquidSolEntry = 0;
+  let hyperliquidSolPnl = 0;
   for (const pos of hyperliquidData.positions) {
     const position = pos.position || pos;
     const coin = position.coin || pos.coin;
@@ -1204,36 +1205,45 @@ async function calculateYield() {
       if (szi < 0) { // Short position
         hyperliquidSolShort = Math.abs(szi);
         hyperliquidSolEntry = parseFloat(position.entryPx || pos.entryPx || 0);
+        hyperliquidSolPnl = parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0);
       }
     }
   }
 
+  // Derive current SOL price from Hyperliquid if API price fetch failed
+  let currentSolPrice = solanaData.solPrice;
+  if (currentSolPrice === 0 && hyperliquidSolShort > 0 && hyperliquidSolEntry > 0) {
+    // For short: positive PnL means price dropped, so current = entry - (pnl/size)
+    currentSolPrice = hyperliquidSolEntry - (hyperliquidSolPnl / hyperliquidSolShort);
+    console.log(`  (SOL price derived from Hyperliquid: $${currentSolPrice.toFixed(2)})`);
+  }
+
   let solValue = 0;
   if (hyperliquidSolShort > 0) {
-    console.log(`  Short:               ${hyperliquidSolShort.toFixed(4)} SOL @ $${hyperliquidSolEntry.toFixed(2)} (Hyperliquid)`);
+    console.log(`  Short:               ${hyperliquidSolShort.toFixed(4)} SOL @ $${hyperliquidSolEntry.toFixed(4)} (Hyperliquid)`);
 
     const hedgedSol = Math.min(totalSolWithVault, hyperliquidSolShort);
     const unhedgedSol = totalSolWithVault - hyperliquidSolShort;
 
     const hedgedValue = hedgedSol * hyperliquidSolEntry;
     console.log(`  ─────────────────────────`);
-    console.log(`  Hedged:              ${hedgedSol.toFixed(4)} × $${hyperliquidSolEntry.toFixed(2)} = $${hedgedValue.toFixed(2)}`);
+    console.log(`  Hedged:              ${hedgedSol.toFixed(4)} × $${hyperliquidSolEntry.toFixed(4)} = $${hedgedValue.toFixed(2)}`);
 
     solValue = hedgedValue;
 
     if (unhedgedSol > 0) {
-      const unhedgedValue = unhedgedSol * solanaData.solPrice;
-      console.log(`  Unhedged (asset):    ${unhedgedSol.toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
+      const unhedgedValue = unhedgedSol * currentSolPrice;
+      console.log(`  Unhedged (asset):    ${unhedgedSol.toFixed(4)} × $${currentSolPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
       solValue += unhedgedValue;
     } else if (unhedgedSol < 0) {
-      const unhedgedValue = unhedgedSol * solanaData.solPrice;
-      console.log(`  Unhedged (DEBT):     ${Math.abs(unhedgedSol).toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
+      const unhedgedValue = unhedgedSol * currentSolPrice;
+      console.log(`  Unhedged (DEBT):     ${Math.abs(unhedgedSol).toFixed(4)} × $${currentSolPrice.toFixed(2)} = $${unhedgedValue.toFixed(2)}`);
       solValue += unhedgedValue;
     }
   } else {
     // No hedge - all at current price
-    solValue = totalSolWithVault * solanaData.solPrice;
-    console.log(`  No hedge - current:  ${totalSolWithVault.toFixed(4)} × $${solanaData.solPrice.toFixed(2)} = $${solValue.toFixed(2)}`);
+    solValue = totalSolWithVault * currentSolPrice;
+    console.log(`  No hedge - current:  ${totalSolWithVault.toFixed(4)} × $${currentSolPrice.toFixed(2)} = $${solValue.toFixed(2)}`);
   }
 
   if (solanaData.jlpBalance > 0) {
