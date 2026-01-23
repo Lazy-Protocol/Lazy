@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Calculator, TrendingUp, Clock, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { Calculator, TrendingUp, Clock, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
 import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { ShareCard } from './ShareCard';
 
@@ -152,8 +152,8 @@ export function TimeMachine() {
                   onClick={() => setShowShareCard(true)}
                   style={{ flex: 1 }}
                 >
-                  <Download size={16} />
-                  Create Shareable Card
+                  <Share2 size={16} />
+                  Share Your Projection
                 </button>
               </div>
             </div>

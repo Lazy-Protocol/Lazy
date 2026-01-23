@@ -33,13 +33,13 @@ export function ShareCard({ amount, futureValue, targetYear, years, apy, onClose
   const savingsValue = calculateFutureValue(amount, SAVINGS_APY, years);
 
   // Generate share text (social manager approved)
-  const tweetText = `Just ran the math on $${amount.toLocaleString()} held for ${years} years.
+  const tweetText = `${formatCurrency(futureValue)} by ${targetYear}.
 
-${formatCurrency(futureValue)}. ${multiplier.toFixed(1)}x.
+That's what $${amount.toLocaleString()} could become. ${multiplier.toFixed(1)}x. No leverage. No lock-up.
 
 Patience has a number.
 
-getlazy.xyz`;
+getlazy.xyz/time-machine?utm_source=share&utm_medium=twitter #PatientCapital`;
 
   const handleDownload = async () => {
     if (!cardRef.current) return;
@@ -126,7 +126,6 @@ getlazy.xyz`;
       background: '#C4A052',
       marginTop: '12px',
       marginBottom: '8px',
-      opacity: 0.6,
     },
     year: {
       fontSize: '16px',
@@ -223,7 +222,7 @@ getlazy.xyz`;
             <div style={styles.grid} />
 
             {/* Logo - top left */}
-            <div style={styles.logo}>lazy.</div>
+            <div style={styles.logo}>Lazy</div>
 
             {/* Content - centered */}
             <div style={styles.content}>
@@ -262,7 +261,7 @@ getlazy.xyz`;
             </div>
 
             {/* URL - bottom right */}
-            <div style={styles.url}>getlazy.xyz</div>
+            <div style={styles.url}>getlazy.xyz/time-machine</div>
           </div>
         </div>
 
@@ -280,7 +279,7 @@ getlazy.xyz`;
         </div>
 
         <p className="share-modal-hint">
-          Download the card and attach it to your post for maximum impact.
+          Download the card and attach it to your post.
         </p>
       </div>
     </div>

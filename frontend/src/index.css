@@ -2236,7 +2236,7 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   font-weight: 600;
   background: white;
   border: 2px solid var(--cloud);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   color: var(--ink);
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
@@ -2264,7 +2264,7 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   color: var(--slate);
   background: white;
   border: 1px solid var(--cloud);
-  border-radius: var(--radius-md);
+  border-radius: 4px;
   cursor: pointer;
   transition: all 150ms ease-out;
 }
@@ -2293,7 +2293,7 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   color: var(--slate);
   background: white;
   border: 2px solid var(--cloud);
-  border-radius: var(--radius-md);
+  border-radius: 4px;
   cursor: pointer;
   transition: all 150ms ease-out;
 }
@@ -2324,7 +2324,7 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
 
 .tm-result-card {
   background: var(--lazy-navy);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   padding: var(--space-xl);
   color: white;
 }
@@ -2629,6 +2629,19 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
 
 /* Share Card Responsive */
 @media (max-width: 640px) {
+  .share-modal {
+    padding: var(--space-md);
+    max-width: calc(100vw - 32px);
+  }
+
+  .share-card-wrapper {
+    transform: scale(0.5);
+    transform-origin: top center;
+    width: 600px;
+    height: 157px; /* 314px * 0.5 */
+    margin-bottom: calc(var(--space-lg) - 157px); /* Compensate for scaled height */
+  }
+
   .share-modal-actions {
     flex-direction: column;
   }
