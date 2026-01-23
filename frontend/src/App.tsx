@@ -11,6 +11,8 @@ import { Home } from '@/pages/Home';
 import { Portfolio } from '@/pages/Portfolio';
 import { Docs } from '@/pages/Docs';
 import Backing from '@/pages/Backing';
+import { About } from '@/pages/About';
+import { NotFound } from '@/pages/NotFound';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -36,6 +38,8 @@ function App() {
                   <Route path="portfolio" element={<Portfolio />} />
                   <Route path="backing" element={<Backing />} />
                   <Route path="docs" element={<Docs />} />
+                  <Route path="about" element={<About />} />
+                  <Route path="*" element={<NotFound />} />
                 </Route>
               </Routes>
             </ErrorBoundary>

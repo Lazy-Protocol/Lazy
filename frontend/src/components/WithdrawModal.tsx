@@ -61,7 +61,7 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
     if (isSuccess && isProcessing) {
       toast.success(
         <span>
-          Withdrawal requested!{' '}
+          Withdrawal queued.{' '}
           <a href={ETHERSCAN_TX_URL(hash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
             View tx
           </a>
@@ -76,7 +76,7 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
   // Handle errors
   useEffect(() => {
     if (error) {
-      toast.error('Withdrawal request failed');
+      toast.error('Request did not complete. Review and retry.');
       setIsProcessing(false);
     }
   }, [error]);
@@ -160,7 +160,7 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
           onClick={handleSubmit}
           disabled={!isValidAmount || isProcessing}
         >
-          {isProcessing ? 'Processing...' : 'Request Withdrawal'}
+          {isProcessing ? 'Confirming...' : 'Request Withdrawal'}
         </button>
 
         {hasInsufficientBalance && (

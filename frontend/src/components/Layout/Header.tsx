@@ -111,7 +111,7 @@ export function Header() {
                           className="btn btn-sm"
                           style={{ background: 'var(--risk-red)', color: 'white' }}
                         >
-                          Wrong Network
+                          Switch Network
                         </button>
                       );
                     }

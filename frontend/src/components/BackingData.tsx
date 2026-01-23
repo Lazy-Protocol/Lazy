@@ -41,7 +41,7 @@ export function MultisigBalances() {
           <h3>Spot Holdings</h3>
           <RefreshCw size={16} className="spinning" />
         </div>
-        <div className="backing-data-loading">Loading balances...</div>
+        <div className="backing-data-loading">Fetching balances</div>
       </div>
     );
   }
@@ -52,7 +52,7 @@ export function MultisigBalances() {
         <div className="backing-data-header">
           <h3>Spot Holdings</h3>
         </div>
-        <div className="backing-data-error">Failed to load balances</div>
+        <div className="backing-data-error">Balance data unavailable</div>
       </div>
     );
   }
@@ -67,7 +67,7 @@ export function MultisigBalances() {
       </div>
 
       {!hasData ? (
-        <div className="backing-data-empty">No spot holdings found</div>
+        <div className="backing-data-empty">No spot holdings</div>
       ) : (
         <div className="balance-list">
           {/* Solana SOL */}
@@ -154,7 +154,7 @@ export function PendlePositions() {
           <h3>Pendle PT</h3>
           <RefreshCw size={16} className="spinning" />
         </div>
-        <div className="backing-data-loading">Loading PT positions...</div>
+        <div className="backing-data-loading">Fetching PT positions</div>
       </div>
     );
   }
@@ -166,7 +166,7 @@ export function PendlePositions() {
           <h3>Pendle PT</h3>
           <span className="backing-data-badge">Yield</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -181,7 +181,7 @@ export function PendlePositions() {
       </div>
 
       {ptPositions.length === 0 ? (
-        <div className="backing-data-empty">No PT positions</div>
+        <div className="backing-data-empty">No PT positions held</div>
       ) : (
         <div className="pt-list">
           {ptPositions.map((pt: PendlePTPosition, idx: number) => {
@@ -232,7 +232,7 @@ export function LighterPositions() {
           <h3>Lighter Perps</h3>
           <RefreshCw size={16} className="spinning" />
         </div>
-        <div className="backing-data-loading">Loading positions...</div>
+        <div className="backing-data-loading">Fetching positions</div>
       </div>
     );
   }
@@ -244,7 +244,7 @@ export function LighterPositions() {
           <h3>Lighter Perps</h3>
           <span className="backing-data-badge">Multisig</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -302,7 +302,7 @@ export function HyperliquidPositions() {
           <h3>Hyperliquid Perps</h3>
           <RefreshCw size={16} className="spinning" />
         </div>
-        <div className="backing-data-loading">Loading positions...</div>
+        <div className="backing-data-loading">Fetching positions</div>
       </div>
     );
   }
@@ -314,7 +314,7 @@ export function HyperliquidPositions() {
           <h3>Hyperliquid Perps</h3>
           <span className="backing-data-badge">Operator</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -372,7 +372,7 @@ export function SolanaPositions() {
           <h3>Solana Holdings</h3>
           <RefreshCw size={16} className="spinning" />
         </div>
-        <div className="backing-data-loading">Loading positions...</div>
+        <div className="backing-data-loading">Fetching positions</div>
       </div>
     );
   }
@@ -384,7 +384,7 @@ export function SolanaPositions() {
           <h3>Solana Holdings</h3>
           <span className="backing-data-badge">Operator</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -447,7 +447,7 @@ export function LiveBackingData() {
       <div className="container">
         <div className="section-header">
           <h2 className="section-title">Live Positions</h2>
-          <p className="section-subtitle">Real-time data from onchain wallets</p>
+          <p className="section-subtitle">Real-time data from on-chain wallets</p>
         </div>
 
         <div className="backing-data-grid">

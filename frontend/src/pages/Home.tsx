@@ -290,9 +290,9 @@ export function Home() {
               <div className="step-number">
                 <Info size={24} />
               </div>
-              <h3 className="step-title">Onchain NAV</h3>
+              <h3 className="step-title">On-chain NAV</h3>
               <p className="step-description">
-                Net Asset Value computed transparently onchain. No offchain oracles, no trust assumptions.
+                Net Asset Value computed transparently on-chain. No off-chain oracles, no trust assumptions.
               </p>
             </div>
 
@@ -310,7 +310,7 @@ export function Home() {
               <div className="step-number">
                 <Activity size={24} />
               </div>
-              <h3 className="step-title">Onchain execution</h3>
+              <h3 className="step-title">On-chain execution</h3>
               <p className="step-description">
                 Positions held on Hyperliquid and Lighter. All trades, all movements. Public and auditable.
               </p>
