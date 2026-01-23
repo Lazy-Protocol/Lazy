@@ -1440,6 +1440,57 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   color: var(--slate);
 }
 
+/* Skeleton Loading States */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--cloud) 25%,
+    rgba(196, 160, 82, 0.08) 50%,
+    var(--cloud) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--cloud);
+}
+
+.skeleton-row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-text {
+  height: 14px;
+  border-radius: 4px;
+}
+
+.skeleton-text-sm {
+  height: 12px;
+  border-radius: 4px;
+}
+
+.skeleton-text-lg {
+  height: 20px;
+  border-radius: 4px;
+}
+
+.skeleton-badge {
+  height: 24px;
+  width: 80px;
+  border-radius: 4px;
+}
+
 /* Position List */
 .position-list {
   display: flex;

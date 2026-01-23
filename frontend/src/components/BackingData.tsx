@@ -1,9 +1,10 @@
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { useEvmBalances, type TokenBalance } from '@/hooks/useEvmBalances';
 import { usePendlePositions, type PendlePTPosition } from '@/hooks/usePendle';
 import { useHyperliquidPositions, type HyperliquidPosition } from '@/hooks/useHyperliquid';
 import { useLighterPositions, type LighterPosition, type LighterSpotAsset } from '@/hooks/useLighter';
 import { useSolanaPositions } from '@/hooks/useSolana';
+import { Skeleton, SkeletonRow } from './Skeleton';
 
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
 const OPERATOR_ADDRESS = '0xF466ad87c98f50473Cf4Fe32CdF8db652F9E36D6';
@@ -39,9 +40,9 @@ export function MultisigBalances() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Spot Holdings</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Fetching balances</div>
+        <SkeletonRow count={4} />
       </div>
     );
   }
@@ -152,9 +153,9 @@ export function PendlePositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Pendle PT</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Fetching PT positions</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -230,9 +231,9 @@ export function LighterPositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Lighter Perps</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Fetching positions</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -257,7 +258,7 @@ export function LighterPositions() {
       </div>
 
       {positions.length === 0 ? (
-        <div className="backing-data-empty">No positions</div>
+        <div className="backing-data-empty">No open positions</div>
       ) : (
         <div className="position-list">
           {positions.map((pos: LighterPosition) => (
@@ -300,9 +301,9 @@ export function HyperliquidPositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Hyperliquid Perps</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Fetching positions</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -327,7 +328,7 @@ export function HyperliquidPositions() {
       </div>
 
       {positions.length === 0 ? (
-        <div className="backing-data-empty">No positions</div>
+        <div className="backing-data-empty">No open positions</div>
       ) : (
         <div className="position-list">
           {positions.map((pos: HyperliquidPosition) => (
@@ -370,9 +371,9 @@ export function SolanaPositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Solana Holdings</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Fetching positions</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
