@@ -124,6 +124,68 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   color: var(--lazy-navy);
 }
 
+/* Mobile Menu Button */
+.mobile-menu-btn {
+  display: none;
+  padding: 8px;
+  background: none;
+  border: none;
+  color: var(--lazy-navy);
+  cursor: pointer;
+  z-index: 1001;
+}
+
+/* Mobile Menu Drawer */
+.mobile-menu {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: -100%;
+  width: 280px;
+  height: 100vh;
+  background: white;
+  padding: 80px var(--space-lg) var(--space-xl);
+  flex-direction: column;
+  gap: var(--space-sm);
+  box-shadow: var(--shadow-xl);
+  transition: right 300ms ease-out;
+  z-index: 1000;
+}
+
+.mobile-menu.open {
+  right: 0;
+}
+
+.mobile-menu-link {
+  display: block;
+  padding: 14px 0;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--slate);
+  text-decoration: none;
+  border-bottom: 1px solid var(--cloud);
+  transition: color 150ms ease-out;
+}
+
+.mobile-menu-link:hover,
+.mobile-menu-link.active {
+  color: var(--lazy-navy);
+}
+
+.mobile-menu-connect {
+  margin-top: auto;
+  padding-top: var(--space-lg);
+}
+
+.mobile-menu-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+}
+
 .nav-logo {
   display: flex;
   align-items: center;
@@ -1806,6 +1868,9 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   .security-content { flex-direction: column; text-align: center; }
   .security-badges { flex-wrap: wrap; justify-content: center; }
   .nav-links { display: none; }
+  .mobile-menu-btn { display: block; }
+  .mobile-menu { display: flex; }
+  .mobile-menu-backdrop { display: block; }
   .footer-grid { grid-template-columns: 1fr; }
   .footer-bottom { flex-direction: column; gap: var(--space-md); text-align: center; }
   .vaults-grid { grid-template-columns: 1fr; }
