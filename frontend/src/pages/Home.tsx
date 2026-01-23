@@ -5,6 +5,7 @@ import { useVaultStats, useUserData, formatUsdc, formatShares } from '@/hooks/us
 import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
+import { TimeMachine } from '@/components/TimeMachine';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
 
@@ -272,6 +273,9 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      {/* Time Machine Calculator */}
+      <TimeMachine />
 
       {/* Transparency Section */}
       <section className="section" id="transparency">

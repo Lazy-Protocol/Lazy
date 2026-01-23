@@ -2176,3 +2176,367 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================
+   Time Machine Calculator
+   ============================================ */
+
+.time-machine-section {
+  background: linear-gradient(180deg, var(--drift-white) 0%, rgba(196, 160, 82, 0.04) 100%);
+}
+
+.time-machine {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xl);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Input Section */
+.tm-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.tm-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.tm-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--slate);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tm-amount-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tm-currency {
+  position: absolute;
+  left: 16px;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+.tm-input {
+  width: 100%;
+  padding: 16px 16px 16px 40px;
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 600;
+  background: white;
+  border: 2px solid var(--cloud);
+  border-radius: var(--radius-lg);
+  color: var(--ink);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.tm-input:focus {
+  outline: none;
+  border-color: var(--yield-gold);
+  box-shadow: 0 0 0 4px rgba(196, 160, 82, 0.15);
+}
+
+.tm-input::placeholder {
+  color: var(--cloud);
+}
+
+.tm-presets {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.tm-preset {
+  padding: 8px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--slate);
+  background: white;
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.tm-preset:hover {
+  border-color: var(--lazy-navy);
+  color: var(--lazy-navy);
+}
+
+.tm-preset.active {
+  background: var(--lazy-navy);
+  border-color: var(--lazy-navy);
+  color: white;
+}
+
+.tm-year-selector {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.tm-year {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--slate);
+  background: white;
+  border: 2px solid var(--cloud);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.tm-year:hover {
+  border-color: var(--lazy-navy);
+  color: var(--lazy-navy);
+}
+
+.tm-year.active {
+  background: var(--lazy-navy);
+  border-color: var(--lazy-navy);
+  color: white;
+}
+
+.tm-years-note {
+  font-size: 0.875rem;
+  color: var(--slate);
+  text-align: center;
+}
+
+/* Result Section */
+.tm-result-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.tm-result-card {
+  background: var(--lazy-navy);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  color: white;
+}
+
+.tm-result-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--slate);
+  margin-bottom: var(--space-md);
+}
+
+.tm-result-header svg {
+  color: var(--yield-gold);
+}
+
+.tm-result-value {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--yield-gold);
+  line-height: 1;
+  margin-bottom: var(--space-md);
+}
+
+.tm-result-details {
+  display: flex;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.tm-detail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.9375rem;
+  color: var(--drift-white);
+}
+
+.tm-detail svg {
+  color: var(--earn-green);
+}
+
+.tm-result-apy {
+  font-size: 0.8125rem;
+  color: var(--slate);
+  margin-bottom: var(--space-lg);
+}
+
+.tm-share-buttons {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.tm-share-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.tm-share-btn.btn-primary {
+  background: var(--yield-gold);
+  color: var(--ink);
+}
+
+.tm-share-btn.btn-primary:hover {
+  background: #d4b062;
+}
+
+.tm-share-btn.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.tm-share-btn.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Comparison Toggle */
+.tm-comparison-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--slate);
+  background: white;
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.tm-comparison-toggle:hover {
+  border-color: var(--lazy-navy);
+  color: var(--lazy-navy);
+}
+
+/* Comparison Table */
+.tm-comparison {
+  background: white;
+  border: 1px solid var(--cloud);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.tm-comparison-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--drift-white);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--slate);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tm-comparison-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border-top: 1px solid var(--cloud);
+  font-size: 0.9375rem;
+  align-items: center;
+}
+
+.tm-comparison-row.highlight {
+  background: rgba(196, 160, 82, 0.08);
+}
+
+.tm-comparison-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.tm-comparison-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tm-comparison-apy {
+  font-family: var(--font-mono);
+  color: var(--slate);
+}
+
+.tm-comparison-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+}
+
+.tm-comparison-row.highlight .tm-comparison-value {
+  color: var(--yield-gold);
+}
+
+/* Disclaimer */
+.tm-disclaimer {
+  font-size: 0.8125rem;
+  color: var(--slate);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Time Machine Responsive */
+@media (max-width: 768px) {
+  .time-machine {
+    grid-template-columns: 1fr;
+    gap: var(--space-xl);
+  }
+
+  .tm-result-value {
+    font-size: 2.25rem;
+  }
+
+  .tm-result-details {
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .tm-year {
+    padding: 12px 16px;
+    font-size: 1rem;
+  }
+
+  .tm-input {
+    font-size: 1.5rem;
+    padding-left: 36px;
+  }
+
+  .tm-currency {
+    font-size: 1.5rem;
+  }
+
+  .tm-comparison-header,
+  .tm-comparison-row {
+    grid-template-columns: 1.5fr 0.75fr 1fr;
+    gap: var(--space-sm);
+    font-size: 0.8125rem;
+  }
+}
