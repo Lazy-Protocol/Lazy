@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Calculator, Share2, TrendingUp, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calculator, TrendingUp, Clock, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { useProtocolStats } from '@/hooks/useProtocolStats';
+import { ShareCard } from './ShareCard';
 
 // Yield categories with APY ranges
 const YIELD_CATEGORIES = [
@@ -29,15 +30,11 @@ function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-// Generate share text
-function generateShareText(amount: number, futureValue: number, targetYear: number): string {
-  return `My $${amount.toLocaleString()} today → ${formatCurrency(futureValue)} in ${targetYear}. Patience has a number.\n\nSee what yours could be: https://getlazy.xyz`;
-}
-
 export function TimeMachine() {
   const [amount, setAmount] = useState('1000');
   const [targetYear, setTargetYear] = useState(2040);
   const [showComparison, setShowComparison] = useState(false);
+  const [showShareCard, setShowShareCard] = useState(false);
   const { data: protocolStats } = useProtocolStats();
 
   const parsedAmount = parseFloat(amount) || 0;
@@ -67,30 +64,6 @@ export function TimeMachine() {
 
   // Get Lazy projection
   const lazyProjection = projections.find((p) => p.isLazy)!;
-
-  // Handle share
-  const handleShare = async () => {
-    const text = generateShareText(parsedAmount, lazyProjection.futureValue, targetYear);
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
-      } catch {
-        // User cancelled or error
-      }
-    } else {
-      // Fallback: copy to clipboard
-      await navigator.clipboard.writeText(text);
-      // Could add toast notification here
-    }
-  };
-
-  // Handle Twitter/X share
-  const handleTwitterShare = () => {
-    const text = generateShareText(parsedAmount, lazyProjection.futureValue, targetYear);
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank', 'width=550,height=420');
-  };
 
   return (
     <section className="section time-machine-section" id="time-machine">
@@ -172,14 +145,15 @@ export function TimeMachine() {
                 Using current {lazyApy.toFixed(1)}% APY
               </div>
 
-              {/* Share Buttons */}
+              {/* Share Button */}
               <div className="tm-share-buttons">
-                <button className="btn btn-primary tm-share-btn" onClick={handleTwitterShare}>
-                  <Share2 size={16} />
-                  Share on X
-                </button>
-                <button className="btn btn-secondary tm-share-btn" onClick={handleShare}>
-                  Copy
+                <button
+                  className="btn btn-primary tm-share-btn"
+                  onClick={() => setShowShareCard(true)}
+                  style={{ flex: 1 }}
+                >
+                  <Download size={16} />
+                  Create Shareable Card
                 </button>
               </div>
             </div>
@@ -233,6 +207,18 @@ export function TimeMachine() {
           </div>
         </div>
       </div>
+
+      {/* Share Card Modal */}
+      {showShareCard && (
+        <ShareCard
+          amount={parsedAmount}
+          futureValue={lazyProjection.futureValue}
+          targetYear={targetYear}
+          years={years}
+          apy={lazyApy}
+          onClose={() => setShowShareCard(false)}
+        />
+      )}
     </section>
   );
 }
