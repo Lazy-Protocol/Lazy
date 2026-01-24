@@ -41,3 +41,6 @@ defillama-adapters/
 
 # Claude Code config
 .claude/
+
+# Social media drafts (internal)
+social/

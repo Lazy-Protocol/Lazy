@@ -1,0 +1,52 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700&amp;family=JetBrains+Mono&amp;display=swap');
+    </style>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#1a2332"/>
+
+  <!-- Grid overlay -->
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- Logo: Lazy -->
+  <text x="600" y="72"
+        font-family="Inter, sans-serif"
+        font-weight="700"
+        font-size="24"
+        fill="#FAFBFC"
+        text-anchor="middle">Lazy</text>
+
+  <!-- Primary headline -->
+  <text x="600" y="295"
+        font-family="Inter, sans-serif"
+        font-weight="700"
+        font-size="64"
+        fill="#FAFBFC"
+        text-anchor="middle"
+        letter-spacing="-0.03em">Patient capital, rewarded.</text>
+
+  <!-- Gold underline accent -->
+  <rect x="560" y="315" width="80" height="2" fill="#C4A052"/>
+
+  <!-- Secondary tagline -->
+  <text x="600" y="370"
+        font-family="Inter, sans-serif"
+        font-weight="500"
+        font-size="24"
+        fill="rgba(250,251,252,0.7)"
+        text-anchor="middle">No staking. No claiming. Just yield.</text>
+
+  <!-- URL -->
+  <text x="600" y="590"
+        font-family="JetBrains Mono, monospace"
+        font-weight="400"
+        font-size="14"
+        fill="#64748B"
+        text-anchor="middle">getlazy.xyz</text>
+</svg>

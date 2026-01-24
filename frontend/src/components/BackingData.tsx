@@ -1,9 +1,10 @@
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { useEvmBalances, type TokenBalance } from '@/hooks/useEvmBalances';
 import { usePendlePositions, type PendlePTPosition } from '@/hooks/usePendle';
 import { useHyperliquidPositions, type HyperliquidPosition } from '@/hooks/useHyperliquid';
 import { useLighterPositions, type LighterPosition, type LighterSpotAsset } from '@/hooks/useLighter';
 import { useSolanaPositions } from '@/hooks/useSolana';
+import { Skeleton, SkeletonRow } from './Skeleton';
 
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
 const OPERATOR_ADDRESS = '0xF466ad87c98f50473Cf4Fe32CdF8db652F9E36D6';
@@ -39,9 +40,9 @@ export function MultisigBalances() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Spot Holdings</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Loading balances...</div>
+        <SkeletonRow count={4} />
       </div>
     );
   }
@@ -52,7 +53,7 @@ export function MultisigBalances() {
         <div className="backing-data-header">
           <h3>Spot Holdings</h3>
         </div>
-        <div className="backing-data-error">Failed to load balances</div>
+        <div className="backing-data-error">Balance data unavailable</div>
       </div>
     );
   }
@@ -67,7 +68,7 @@ export function MultisigBalances() {
       </div>
 
       {!hasData ? (
-        <div className="backing-data-empty">No spot holdings found</div>
+        <div className="backing-data-empty">No spot holdings</div>
       ) : (
         <div className="balance-list">
           {/* Solana SOL */}
@@ -152,9 +153,9 @@ export function PendlePositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Pendle PT</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Loading PT positions...</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -166,7 +167,7 @@ export function PendlePositions() {
           <h3>Pendle PT</h3>
           <span className="backing-data-badge">Yield</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -181,7 +182,7 @@ export function PendlePositions() {
       </div>
 
       {ptPositions.length === 0 ? (
-        <div className="backing-data-empty">No PT positions</div>
+        <div className="backing-data-empty">No PT positions held</div>
       ) : (
         <div className="pt-list">
           {ptPositions.map((pt: PendlePTPosition, idx: number) => {
@@ -230,9 +231,9 @@ export function LighterPositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Lighter Perps</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Loading positions...</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -244,7 +245,7 @@ export function LighterPositions() {
           <h3>Lighter Perps</h3>
           <span className="backing-data-badge">Multisig</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -257,7 +258,7 @@ export function LighterPositions() {
       </div>
 
       {positions.length === 0 ? (
-        <div className="backing-data-empty">No positions</div>
+        <div className="backing-data-empty">No open positions</div>
       ) : (
         <div className="position-list">
           {positions.map((pos: LighterPosition) => (
@@ -300,9 +301,9 @@ export function HyperliquidPositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Hyperliquid Perps</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Loading positions...</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -314,7 +315,7 @@ export function HyperliquidPositions() {
           <h3>Hyperliquid Perps</h3>
           <span className="backing-data-badge">Operator</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -327,7 +328,7 @@ export function HyperliquidPositions() {
       </div>
 
       {positions.length === 0 ? (
-        <div className="backing-data-empty">No positions</div>
+        <div className="backing-data-empty">No open positions</div>
       ) : (
         <div className="position-list">
           {positions.map((pos: HyperliquidPosition) => (
@@ -370,9 +371,9 @@ export function SolanaPositions() {
       <div className="backing-data-card">
         <div className="backing-data-header">
           <h3>Solana Holdings</h3>
-          <RefreshCw size={16} className="spinning" />
+          <Skeleton width={70} height={24} />
         </div>
-        <div className="backing-data-loading">Loading positions...</div>
+        <SkeletonRow count={3} />
       </div>
     );
   }
@@ -384,7 +385,7 @@ export function SolanaPositions() {
           <h3>Solana Holdings</h3>
           <span className="backing-data-badge">Operator</span>
         </div>
-        <div className="backing-data-error">Failed to load positions</div>
+        <div className="backing-data-error">Position data unavailable</div>
       </div>
     );
   }
@@ -447,7 +448,7 @@ export function LiveBackingData() {
       <div className="container">
         <div className="section-header">
           <h2 className="section-title">Live Positions</h2>
-          <p className="section-subtitle">Real-time data from onchain wallets</p>
+          <p className="section-subtitle">Real-time data from on-chain wallets</p>
         </div>
 
         <div className="backing-data-grid">

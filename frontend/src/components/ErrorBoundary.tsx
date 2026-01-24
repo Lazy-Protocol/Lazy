@@ -38,16 +38,16 @@ export class ErrorBoundary extends Component<Props, State> {
               <AlertTriangle className="w-8 h-8 text-red-500" />
             </div>
             <h2 className="text-xl font-bold text-drift-white mb-2">
-              Something went wrong
+              Display interrupted.
             </h2>
             <p className="text-drift-white/70 mb-6">
-              An error occurred while loading this section. Please try refreshing the page.
+              This section could not load. A refresh typically resolves this.
             </p>
             <button
               onClick={() => window.location.reload()}
               className="bg-yield-gold hover:bg-yield-gold-light text-lazy-navy font-semibold px-6 py-2 rounded-xl transition-colors"
             >
-              Refresh Page
+              Refresh
             </button>
             {this.state.error && (
               <details className="mt-4 text-left">

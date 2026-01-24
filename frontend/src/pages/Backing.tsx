@@ -51,7 +51,7 @@ export function Backing() {
           <h1 className="hero-title">No black boxes.</h1>
           <p className="hero-subtitle">
             Patient capital doesn't hide. Neither do we.<br />
-            Everything backing your lazyUSD. Visible, verifiable, onchain.
+            Everything backing your lazyUSD. Visible, verifiable, on-chain.
           </p>
         </div>
       </section>
@@ -73,7 +73,7 @@ export function Backing() {
                 <h3>Treasury Multisig</h3>
               </div>
               <p className="wallet-card-desc">
-                Holds all protocol positions. Every asset verifiable onchain.
+                Holds all protocol positions. Every asset verifiable on-chain.
               </p>
               <div className="wallet-card-address">
                 <code>{MULTISIG_ADDRESS}</code>
@@ -282,12 +282,12 @@ export function Backing() {
             <div className="step-card">
               <div className="step-number">2</div>
               <h3 className="step-title">See the positions</h3>
-              <p className="step-description">Hyperliquid, Lighter, Pendle. All onchain, all visible.</p>
+              <p className="step-description">Hyperliquid, Lighter, Pendle. All on-chain, all visible.</p>
             </div>
             <div className="step-card">
               <div className="step-number">3</div>
               <h3 className="step-title">Verify the NAV</h3>
-              <p className="step-description">Net Asset Value computed onchain. No oracles. No trust assumptions.</p>
+              <p className="step-description">Net Asset Value computed on-chain. No oracles. No trust assumptions.</p>
             </div>
           </div>
 

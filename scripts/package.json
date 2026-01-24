@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Scripts to fetch protocol stats",
   "scripts": {
-    "fetch-stats": "node fetch-stats.js"
+    "fetch-stats": "node fetch-stats.js",
+    "referral-keeper": "node referral-keeper.js"
   },
   "dependencies": {
     "viem": "^2.43.5"

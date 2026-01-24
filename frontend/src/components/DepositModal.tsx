@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { X, Info } from 'lucide-react';
-import { useAccount } from 'wagmi';
+import { useState, useEffect, useRef } from 'react';
+import { X, Info, Share2, Download, Check } from 'lucide-react';
+import { useAccount, useWriteContract } from 'wagmi';
 import {
   useUserData,
   useVaultStats,
@@ -10,9 +10,13 @@ import {
   parseUsdc,
 } from '@/hooks/useVault';
 import { useProtocolStats } from '@/hooks/useProtocolStats';
+import { getReferralHandle, clearReferral } from '@/hooks/useReferral';
 import { formatUnits } from 'viem';
 import toast from 'react-hot-toast';
 import { ETHERSCAN_TX_URL } from '@/config/constants';
+import { CONTRACTS } from '@/config/wagmi';
+import { referralRegistryAbi } from '@/config/abis';
+import html2canvas from 'html2canvas';
 
 interface DepositModalProps {
   onClose: () => void;
@@ -21,6 +25,10 @@ interface DepositModalProps {
 export function DepositModal({ onClose }: DepositModalProps) {
   const [amount, setAmount] = useState('1000');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [depositedAmount, setDepositedAmount] = useState('0');
+  const [copied, setCopied] = useState(false);
+  const shareCardRef = useRef<HTMLDivElement>(null);
   const { address } = useAccount();
   const { usdcBalance, usdcAllowance, refetch } = useUserData(address);
   const { sharePrice } = useVaultStats();
@@ -39,6 +47,9 @@ export function DepositModal({ onClose }: DepositModalProps) {
     isSuccess: isDepositSuccess,
     error: depositError,
   } = useDeposit();
+
+  // For recording referrals after deposit
+  const { writeContract: recordReferral } = useWriteContract();
 
   const parsedAmount = parseUsdc(amount);
   const needsApproval = usdcAllowance !== undefined && parsedAmount > usdcAllowance;
@@ -60,7 +71,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
     if (isApproveSuccess && isProcessing) {
       toast.success(
         <span>
-          USDC approved!{' '}
+          USDC approved.{' '}
           <a href={ETHERSCAN_TX_URL(approveHash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
             View tx
           </a>
@@ -76,7 +87,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
     if (isDepositSuccess && isProcessing) {
       toast.success(
         <span>
-          Deposit successful!{' '}
+          Deposit confirmed.{' '}
           <a href={ETHERSCAN_TX_URL(depositHash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
             View tx
           </a>
@@ -84,14 +95,31 @@ export function DepositModal({ onClose }: DepositModalProps) {
       );
       refetch();
       setIsProcessing(false);
-      onClose();
+      setDepositedAmount(amount);
+      setShowSuccess(true);
+
+      // Record referral if one exists (best effort, don't block on failure)
+      const refHandle = getReferralHandle();
+      if (refHandle && address && CONTRACTS.referralRegistry) {
+        try {
+          recordReferral({
+            address: CONTRACTS.referralRegistry,
+            abi: referralRegistryAbi,
+            functionName: 'recordReferralByHandle',
+            args: [address, refHandle],
+          });
+          clearReferral(); // Clear after attempting to record
+        } catch (e) {
+          console.error('Failed to record referral:', e);
+        }
+      }
     }
   }, [isDepositSuccess]);
 
   // Handle errors
   useEffect(() => {
     if (approveError || depositError) {
-      toast.error('Transaction failed');
+      toast.error('Transaction did not complete. Review and retry.');
       setIsProcessing(false);
     }
   }, [approveError, depositError]);
@@ -112,6 +140,181 @@ export function DepositModal({ onClose }: DepositModalProps) {
       setAmount((Number(usdcBalance) / 1e6).toString());
     }
   };
+
+  // Share card functions
+  const tweetText = `$${Number(depositedAmount).toLocaleString()} deposited into @getlazy.
+
+Now I wait.
+
+No staking. No claiming. Just yield.
+
+getlazy.xyz?utm_source=share&utm_medium=twitter #PatientCapital`;
+
+  const handleDownload = async () => {
+    if (!shareCardRef.current) return;
+    try {
+      const canvas = await html2canvas(shareCardRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: null,
+      });
+      const link = document.createElement('a');
+      link.download = `lazy-deposit-${depositedAmount}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Failed to generate image:', error);
+    }
+  };
+
+  const handleTwitterShare = () => {
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+    window.open(url, '_blank', 'width=550,height=420');
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(tweetText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Success share card styles (inline for html2canvas)
+  const cardStyles = {
+    card: {
+      width: '500px',
+      height: '280px',
+      background: '#1a2332',
+      position: 'relative' as const,
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      overflow: 'hidden',
+      borderRadius: '12px',
+    },
+    grid: {
+      position: 'absolute' as const,
+      inset: 0,
+      backgroundImage: `
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)
+      `,
+      backgroundSize: '20px 20px',
+      pointerEvents: 'none' as const,
+    },
+    logo: {
+      position: 'absolute' as const,
+      top: '20px',
+      left: '24px',
+      fontSize: '16px',
+      fontWeight: 700,
+      color: '#FAFBFC',
+    },
+    content: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+      padding: '20px 24px',
+      textAlign: 'center' as const,
+    },
+    badge: {
+      display: 'inline-block',
+      padding: '6px 12px',
+      background: 'rgba(196, 160, 82, 0.15)',
+      border: '1px solid rgba(196, 160, 82, 0.3)',
+      borderRadius: '4px',
+      fontSize: '11px',
+      fontWeight: 600,
+      color: '#C4A052',
+      textTransform: 'uppercase' as const,
+      letterSpacing: '0.05em',
+      marginBottom: '16px',
+    },
+    amount: {
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+      fontSize: '42px',
+      fontWeight: 700,
+      color: '#C4A052',
+      lineHeight: 1,
+      marginBottom: '8px',
+    },
+    label: {
+      fontSize: '14px',
+      fontWeight: 400,
+      color: 'rgba(232, 230, 225, 0.6)',
+      marginBottom: '20px',
+    },
+    tagline: {
+      fontSize: '13px',
+      fontWeight: 500,
+      fontStyle: 'italic' as const,
+      color: 'rgba(232, 230, 225, 0.5)',
+    },
+    url: {
+      position: 'absolute' as const,
+      bottom: '16px',
+      right: '20px',
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+      fontSize: '10px',
+      fontWeight: 400,
+      color: 'rgba(232, 230, 225, 0.4)',
+    },
+  };
+
+  // Show success share card
+  if (showSuccess) {
+    return (
+      <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="modal" style={{ maxWidth: '560px' }}>
+          <div className="modal-header">
+            <h3 className="modal-title">Deposit Confirmed</h3>
+            <button className="modal-close" onClick={onClose}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <p style={{ color: 'var(--slate)', marginBottom: 'var(--space-md)', textAlign: 'center' }}>
+            Share your move with the patient capital club.
+          </p>
+
+          {/* Share Card Preview */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-lg)' }}>
+            <div ref={shareCardRef} style={cardStyles.card}>
+              <div style={cardStyles.grid} />
+              <div style={cardStyles.logo}>Lazy</div>
+              <div style={cardStyles.content}>
+                <div style={cardStyles.badge}>Patient Capital</div>
+                <div style={cardStyles.amount}>${Number(depositedAmount).toLocaleString()}</div>
+                <div style={cardStyles.label}>deposited</div>
+                <p style={cardStyles.tagline}>"Now I wait."</p>
+              </div>
+              <div style={cardStyles.url}>getlazy.xyz</div>
+            </div>
+          </div>
+
+          {/* Share Actions */}
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
+            <button className="btn btn-primary" onClick={handleTwitterShare} style={{ flex: 1 }}>
+              <Share2 size={16} />
+              Share on X
+            </button>
+            <button className="btn btn-secondary" onClick={handleDownload} style={{ flex: 1 }}>
+              <Download size={16} />
+              Download
+            </button>
+            <button className="btn btn-secondary" onClick={handleCopy} style={{ flex: 1 }}>
+              {copied ? <Check size={16} /> : <Share2 size={16} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+
+          <button className="btn btn-secondary w-full" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -163,7 +366,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
 
         <div className="modal-info">
           <Info size={20} />
-          <p>Your lazyUSD will grow in value as yield accrues. No action needed. It's automatic.</p>
+          <p>Your lazyUSD grows as yield accrues. No action required.</p>
         </div>
 
         <button
@@ -171,7 +374,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
           onClick={handleSubmit}
           disabled={!isValidAmount || isProcessing}
         >
-          {isProcessing ? 'Processing...' : needsApproval ? 'Approve & Deposit' : 'Confirm Deposit'}
+          {isProcessing ? 'Confirming...' : needsApproval ? 'Approve & Deposit' : 'Confirm Deposit'}
         </button>
 
         {hasInsufficientBalance && (

@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Wallet, TrendingUp, Clock, DollarSign } from 'lucide-react';
+import { Wallet, TrendingUp, Clock, DollarSign, Share2 } from 'lucide-react';
 import { useUserData, useVaultStats, useUserWithdrawals, formatUsdc, formatShares } from '@/hooks/useVault';
 import { formatUnits } from 'viem';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
+import { PortfolioShareCard } from '@/components/PortfolioShareCard';
+
+// Portfolio tracking - when user first deposited (simplified: use vault launch date as baseline)
+const VAULT_LAUNCH = new Date('2026-01-07T00:00:00Z');
 
 export function Portfolio() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const { address, isConnected } = useAccount();
   const { shareBalance, usdcBalance, usdcValue, totalDeposited, isLoading } = useUserData(address);
   const { sharePrice, totalAssets, cooldownPeriod } = useVaultStats();
@@ -23,6 +28,12 @@ export function Portfolio() {
     ? (profitLoss / Number(totalDeposited)) * 100
     : 0;
 
+  // Calculate days since vault launch (simplified hold period)
+  const holdDays = Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24)));
+
+  // Check if user has a position worth sharing
+  const hasPosition = usdcValue && Number(usdcValue) > 0;
+
   if (!isConnected) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -34,7 +45,7 @@ export function Portfolio() {
             Connect Your Wallet
           </h2>
           <p className="text-drift-white/70 mb-8 max-w-md mx-auto">
-            Connect your wallet to view your portfolio, deposits, and withdrawal requests.
+            Connect your wallet to view your position.
           </p>
           <ConnectButton />
         </div>
@@ -132,6 +143,14 @@ export function Portfolio() {
           >
             Request Withdrawal
           </button>
+          <button
+            onClick={() => setShowShare(true)}
+            disabled={!hasPosition}
+            className="flex items-center justify-center gap-2 bg-lazy-navy hover:bg-lazy-navy/80 disabled:opacity-50 disabled:cursor-not-allowed text-drift-white font-semibold py-3 px-6 rounded-xl border border-lazy-navy-light transition-colors"
+          >
+            <Share2 size={18} />
+            Share
+          </button>
         </div>
       </div>
 
@@ -163,6 +182,15 @@ export function Portfolio() {
       {/* Modals */}
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
       {showWithdraw && <WithdrawModal onClose={() => setShowWithdraw(false)} />}
+      {showShare && hasPosition && (
+        <PortfolioShareCard
+          totalValue={`$${formatUsdc(usdcValue!)}`}
+          earnings={formatUsdc(BigInt(Math.max(0, profitLoss)))}
+          earningsPercent={profitLossPercent.toFixed(2)}
+          holdDays={holdDays}
+          onClose={() => setShowShare(false)}
+        />
+      )}
     </div>
   );
 }

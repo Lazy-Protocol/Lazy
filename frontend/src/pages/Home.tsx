@@ -5,17 +5,10 @@ import { useVaultStats, useUserData, formatUsdc, formatShares } from '@/hooks/us
 import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
+import { TimeMachine } from '@/components/TimeMachine';
+import { AnimatedNumber } from '@/components/AnimatedNumber';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
-
-// Vault launch date (January 7, 2026)
-const LAUNCH_DATE = new Date('2026-01-07T00:00:00Z');
-
-function getDaysLive(): number {
-  const now = new Date();
-  const diffMs = now.getTime() - LAUNCH_DATE.getTime();
-  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-}
 
 export function Home() {
   const [showDeposit, setShowDeposit] = useState(false);
@@ -26,17 +19,24 @@ export function Home() {
   const { data: protocolStats } = useProtocolStats();
 
   // Use protocolStats (from GitHub) as primary source, fallback to contract data
-  const tvlDisplay = protocolStats?.formatted?.tvl
-    ? `$${Number(protocolStats.formatted.tvl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const tvlValue = protocolStats?.formatted?.tvl
+    ? Number(protocolStats.formatted.tvl)
     : totalAssets
-      ? `$${formatUsdc(totalAssets)}`
-      : '...';
+      ? Number(totalAssets) / 1e6
+      : 0;
 
-  const yieldDistributed = protocolStats?.formatted?.accumulatedYield
-    ? `$${Number(protocolStats.formatted.accumulatedYield).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const yieldValue = protocolStats?.formatted?.accumulatedYield
+    ? Number(protocolStats.formatted.accumulatedYield)
     : accumulatedYield !== undefined && accumulatedYield > 0n
-      ? `$${formatUsdc(accumulatedYield)}`
-      : '...';
+      ? Number(accumulatedYield) / 1e6
+      : 0;
+
+  const aprValue = protocolStats?.apr ? Number(protocolStats.apr) : 0;
+
+  // Legacy string display for vault cards
+  const tvlDisplay = tvlValue > 0
+    ? `$${tvlValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '...';
 
   const location = useLocation();
 
@@ -79,20 +79,36 @@ export function Home() {
         <div className="container">
           <div className="stats-grid">
             <div className="stat-item">
-              <div className="stat-value">{tvlDisplay}</div>
+              <div className="stat-value">
+                {tvlValue > 0 ? (
+                  <AnimatedNumber value={tvlValue} decimals={2} prefix="$" />
+                ) : '...'}
+              </div>
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
+              <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
+                {aprValue > 0 ? (
+                  <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
+                ) : '...'}
+              </div>
               <div className="stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{yieldDistributed}</div>
+              <div className="stat-value">
+                {yieldValue > 0 ? (
+                  <AnimatedNumber value={yieldValue} decimals={2} prefix="$" />
+                ) : '...'}
+              </div>
               <div className="stat-label">Yield Distributed</div>
             </div>
             <div className="stat-item">
-              <div className="stat-value">{getDaysLive()}</div>
-              <div className="stat-label">Days Live</div>
+              <div className="stat-value">
+                {protocolStats?.depositorCount ? (
+                  <AnimatedNumber value={protocolStats.depositorCount} decimals={0} />
+                ) : '...'}
+              </div>
+              <div className="stat-label">Depositors</div>
             </div>
           </div>
         </div>
@@ -273,6 +289,9 @@ export function Home() {
         </div>
       </section>
 
+      {/* Time Machine Calculator */}
+      <TimeMachine />
+
       {/* Transparency Section */}
       <section className="section" id="transparency">
         <div className="container">
@@ -286,9 +305,9 @@ export function Home() {
               <div className="step-number">
                 <Info size={24} />
               </div>
-              <h3 className="step-title">Onchain NAV</h3>
+              <h3 className="step-title">On-chain NAV</h3>
               <p className="step-description">
-                Net Asset Value computed transparently onchain. No offchain oracles, no trust assumptions.
+                Net Asset Value computed transparently on-chain. No off-chain oracles, no trust assumptions.
               </p>
             </div>
 
@@ -306,7 +325,7 @@ export function Home() {
               <div className="step-number">
                 <Activity size={24} />
               </div>
-              <h3 className="step-title">Onchain execution</h3>
+              <h3 className="step-title">On-chain execution</h3>
               <p className="step-description">
                 Positions held on Hyperliquid and Lighter. All trades, all movements. Public and auditable.
               </p>
@@ -355,7 +374,7 @@ export function Home() {
         <div className="container-narrow">
           <h2 className="section-title">Patience pays.</h2>
           <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
-            Your capital is ready to work. Are you ready to wait?
+            Your capital is ready. Patience is the only requirement.
           </p>
           <a href="#vaults" className="btn btn-gold">Start Earning</a>
         </div>
