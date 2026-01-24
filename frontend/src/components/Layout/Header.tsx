@@ -56,6 +56,18 @@ export function Header() {
           >
             How it works
           </Link>
+          <Link
+            to="/#time-machine"
+            className="nav-link"
+            onClick={(e) => {
+              if (location.pathname === '/') {
+                e.preventDefault();
+                document.getElementById('time-machine')?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+          >
+            Calculator
+          </Link>
           <Link to="/backing" className={`nav-link ${location.pathname === '/backing' ? 'active' : ''}`}>
             Backing
           </Link>
@@ -158,6 +170,19 @@ export function Header() {
             }}
           >
             How it works
+          </Link>
+          <Link
+            to="/#time-machine"
+            className="mobile-menu-link"
+            onClick={(e) => {
+              closeMenu();
+              if (location.pathname === '/') {
+                e.preventDefault();
+                document.getElementById('time-machine')?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+          >
+            Calculator
           </Link>
           <Link
             to="/backing"
