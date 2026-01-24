@@ -51,6 +51,9 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
     /// @notice Total fees distributed to KOLs all-time
     uint256 public totalDistributed;
 
+    /// @notice Keeper address for automated record updates
+    address public keeper;
+
     /// @notice Basis points denominator
     uint256 public constant BPS_DENOMINATOR = 10000;
 
@@ -78,6 +81,8 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
     event IntervalUpdated(uint256 oldInterval, uint256 newInterval);
     event ProtocolFeeUpdated(uint256 oldFee, uint256 newFee);
     event DepositorInitialized(address indexed depositor, uint256 shares, uint256 sharePrice);
+    event DepositorRecordUpdated(address indexed depositor, uint256 oldShares, uint256 newShares, uint256 newEntryPrice);
+    event KeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
 
     // ═══════════════════════════════════════════════════════════
     // CONSTRUCTOR
@@ -289,6 +294,76 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
     }
 
     // ═══════════════════════════════════════════════════════════
+    // KEEPER FUNCTIONS (for tracking additional deposits)
+    // ═══════════════════════════════════════════════════════════
+
+    /// @notice Update depositor record when they make additional deposits
+    /// @dev Called by keeper when vault Deposit events are detected for referred users
+    /// @param depositor Address of the depositor who made additional deposit
+    function updateDepositorRecord(address depositor) external {
+        require(msg.sender == keeper || msg.sender == owner(), "Not keeper");
+
+        // Skip if depositor has no referrer
+        if (registry.referrerOf(depositor) == address(0)) return;
+
+        DepositorRecord storage record = depositorRecords[depositor];
+
+        // Skip if not initialized
+        if (!record.initialized) return;
+
+        uint256 currentShares = _getDepositorShares(depositor);
+        uint256 currentPrice = _getSharePrice();
+
+        // Only update if shares increased (new deposit)
+        if (currentShares > record.shares) {
+            uint256 oldShares = record.shares;
+
+            // Calculate weighted average entry price
+            // oldValue = oldShares * oldEntryPrice
+            // newValue = newShares * currentPrice
+            // newEntryPrice = (oldValue + newValue) / totalShares
+            uint256 oldValue = record.shares * record.entrySharePrice;
+            uint256 newShares = currentShares - record.shares;
+            uint256 newValue = newShares * currentPrice;
+
+            record.entrySharePrice = (oldValue + newValue) / currentShares;
+            record.shares = currentShares;
+
+            emit DepositorRecordUpdated(depositor, oldShares, currentShares, record.entrySharePrice);
+        }
+    }
+
+    /// @notice Batch update depositor records
+    /// @param depositors Array of depositor addresses
+    function updateDepositorRecords(address[] calldata depositors) external {
+        require(msg.sender == keeper || msg.sender == owner(), "Not keeper");
+
+        for (uint256 i = 0; i < depositors.length; i++) {
+            address depositor = depositors[i];
+
+            if (registry.referrerOf(depositor) == address(0)) continue;
+
+            DepositorRecord storage record = depositorRecords[depositor];
+            if (!record.initialized) continue;
+
+            uint256 currentShares = _getDepositorShares(depositor);
+            uint256 currentPrice = _getSharePrice();
+
+            if (currentShares > record.shares) {
+                uint256 oldShares = record.shares;
+                uint256 oldValue = record.shares * record.entrySharePrice;
+                uint256 newShares = currentShares - record.shares;
+                uint256 newValue = newShares * currentPrice;
+
+                record.entrySharePrice = (oldValue + newValue) / currentShares;
+                record.shares = currentShares;
+
+                emit DepositorRecordUpdated(depositor, oldShares, currentShares, record.entrySharePrice);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // ADMIN FUNCTIONS
     // ═══════════════════════════════════════════════════════════
 
@@ -297,6 +372,12 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
         require(_treasury != address(0), "Invalid treasury");
         emit TreasuryUpdated(treasury, _treasury);
         treasury = _treasury;
+    }
+
+    /// @notice Update keeper address
+    function setKeeper(address _keeper) external onlyOwner {
+        emit KeeperUpdated(keeper, _keeper);
+        keeper = _keeper;
     }
 
     /// @notice Update vault address

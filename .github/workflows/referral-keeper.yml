@@ -1,0 +1,41 @@
+name: Referral Keeper
+
+on:
+  # Run every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      lookback_blocks:
+        description: 'Number of blocks to look back'
+        required: false
+        default: '7200'
+
+jobs:
+  update-depositor-records:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: ./scripts
+        run: npm install
+
+      - name: Run Referral Keeper
+        working-directory: ./scripts
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
+          KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
+          VAULT_ADDRESS: ${{ vars.VAULT_ADDRESS }}
+          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
+          FEE_DISTRIBUTOR_ADDRESS: ${{ vars.FEE_DISTRIBUTOR_ADDRESS }}
+          LOOKBACK_BLOCKS: ${{ github.event.inputs.lookback_blocks || '43200' }}
+        run: node referral-keeper.js

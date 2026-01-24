@@ -416,11 +416,15 @@ export const feeDistributorAbi = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'lastRecordedAssets',
+    name: 'depositorRecords',
     type: 'function',
     stateMutability: 'view',
     inputs: [{ name: 'depositor', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
+    outputs: [
+      { name: 'shares', type: 'uint256' },
+      { name: 'entrySharePrice', type: 'uint256' },
+      { name: 'initialized', type: 'bool' },
+    ],
   },
   {
     name: 'treasury',
@@ -429,13 +433,34 @@ export const feeDistributorAbi = [
     inputs: [],
     outputs: [{ name: '', type: 'address' }],
   },
-  // Write functions
   {
-    name: 'distribute',
+    name: 'keeper',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  // Write functions (paginated distribution)
+  {
+    name: 'distributeForKOL',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'kol', type: 'address' }],
+    outputs: [{ name: 'payout', type: 'uint256' }],
+  },
+  {
+    name: 'distributeBatch',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'kols', type: 'address[]' }],
+    outputs: [{ name: 'totalKolPayouts', type: 'uint256' }],
+  },
+  {
+    name: 'finalizeEpoch',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [],
-    outputs: [{ name: 'totalKolPayouts', type: 'uint256' }],
+    outputs: [],
   },
   // Events
   {
@@ -456,6 +481,16 @@ export const feeDistributorAbi = [
       { name: 'amount', type: 'uint256', indexed: false },
       { name: 'referralCount', type: 'uint256', indexed: false },
       { name: 'totalYield', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    name: 'DepositorRecordUpdated',
+    type: 'event',
+    inputs: [
+      { name: 'depositor', type: 'address', indexed: true },
+      { name: 'oldShares', type: 'uint256', indexed: false },
+      { name: 'newShares', type: 'uint256', indexed: false },
+      { name: 'newEntryPrice', type: 'uint256', indexed: false },
     ],
   },
 ] as const;
