@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Info, Share2, Download, Check } from 'lucide-react';
-import { useAccount } from 'wagmi';
+import { useAccount, useWriteContract } from 'wagmi';
 import {
   useUserData,
   useVaultStats,
@@ -10,9 +10,12 @@ import {
   parseUsdc,
 } from '@/hooks/useVault';
 import { useProtocolStats } from '@/hooks/useProtocolStats';
+import { getReferralHandle, clearReferral } from '@/hooks/useReferral';
 import { formatUnits } from 'viem';
 import toast from 'react-hot-toast';
 import { ETHERSCAN_TX_URL } from '@/config/constants';
+import { CONTRACTS } from '@/config/wagmi';
+import { referralRegistryAbi } from '@/config/abis';
 import html2canvas from 'html2canvas';
 
 interface DepositModalProps {
@@ -44,6 +47,9 @@ export function DepositModal({ onClose }: DepositModalProps) {
     isSuccess: isDepositSuccess,
     error: depositError,
   } = useDeposit();
+
+  // For recording referrals after deposit
+  const { writeContract: recordReferral } = useWriteContract();
 
   const parsedAmount = parseUsdc(amount);
   const needsApproval = usdcAllowance !== undefined && parsedAmount > usdcAllowance;
@@ -91,6 +97,22 @@ export function DepositModal({ onClose }: DepositModalProps) {
       setIsProcessing(false);
       setDepositedAmount(amount);
       setShowSuccess(true);
+
+      // Record referral if one exists (best effort, don't block on failure)
+      const refHandle = getReferralHandle();
+      if (refHandle && address && CONTRACTS.referralRegistry) {
+        try {
+          recordReferral({
+            address: CONTRACTS.referralRegistry,
+            abi: referralRegistryAbi,
+            functionName: 'recordReferralByHandle',
+            args: [address, refHandle],
+          });
+          clearReferral(); // Clear after attempting to record
+        } catch (e) {
+          console.error('Failed to record referral:', e);
+        }
+      }
     }
   }, [isDepositSuccess]);
 

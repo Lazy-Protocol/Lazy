@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Header } from './Header';
 import { Footer } from './Footer';
+import { useReferralCapture } from '@/hooks/useReferral';
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
@@ -18,6 +19,9 @@ function ScrollToTop() {
 }
 
 export function Layout() {
+  // Capture referral from URL params (e.g., ?ref=alice)
+  useReferralCapture();
+
   return (
     <div className="min-h-screen flex flex-col">
       <ScrollToTop />
