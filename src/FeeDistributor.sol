@@ -191,16 +191,26 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
 
             if (!record.initialized) continue;
 
+            // Get current share balance
+            uint256 currentShares = _getDepositorShares(depositor);
+
+            // Use minimum of recorded vs current shares
+            // - If sold/transferred: only count yield on remaining shares
+            // - If bought more: don't count new shares (prevents inflation attack)
+            uint256 effectiveShares = currentShares < record.shares
+                ? currentShares
+                : record.shares;
+
             // Calculate yield based on share price appreciation only
-            // This prevents manipulation via share transfers
-            if (currentSharePrice > record.entrySharePrice) {
+            if (currentSharePrice > record.entrySharePrice && effectiveShares > 0) {
                 uint256 priceGain = currentSharePrice - record.entrySharePrice;
-                // yield = shares * priceGain / 1e18 (to get USDC value)
-                uint256 yieldUsdc = (record.shares * priceGain) / 1e18;
+                // yield = effectiveShares * priceGain / 1e18 (to get USDC value)
+                uint256 yieldUsdc = (effectiveShares * priceGain) / 1e18;
                 totalYield += yieldUsdc;
             }
 
-            // Update entry price for next period
+            // Update record for next period
+            record.shares = currentShares;
             record.entrySharePrice = currentSharePrice;
         }
 
@@ -346,9 +356,15 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
 
             if (!record.initialized) continue;
 
-            if (currentSharePrice > record.entrySharePrice) {
+            // Use minimum of recorded vs current shares
+            uint256 currentShares = _getDepositorShares(depositor);
+            uint256 effectiveShares = currentShares < record.shares
+                ? currentShares
+                : record.shares;
+
+            if (currentSharePrice > record.entrySharePrice && effectiveShares > 0) {
                 uint256 priceGain = currentSharePrice - record.entrySharePrice;
-                uint256 yieldUsdc = (record.shares * priceGain) / 1e18;
+                uint256 yieldUsdc = (effectiveShares * priceGain) / 1e18;
                 totalYield += yieldUsdc;
             }
         }
@@ -376,13 +392,20 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
         uint256 currentSharePrice = _getSharePrice();
 
         for (uint256 i = 0; i < referrals.length && i < MAX_REFERRALS_PER_CALL; i++) {
-            DepositorRecord storage record = depositorRecords[referrals[i]];
+            address depositor = referrals[i];
+            DepositorRecord storage record = depositorRecords[depositor];
 
             if (!record.initialized) continue;
 
-            if (currentSharePrice > record.entrySharePrice) {
+            // Use minimum of recorded vs current shares
+            uint256 currentShares = _getDepositorShares(depositor);
+            uint256 effectiveShares = currentShares < record.shares
+                ? currentShares
+                : record.shares;
+
+            if (currentSharePrice > record.entrySharePrice && effectiveShares > 0) {
                 uint256 priceGain = currentSharePrice - record.entrySharePrice;
-                totalYield += (record.shares * priceGain) / 1e18;
+                totalYield += (effectiveShares * priceGain) / 1e18;
             }
         }
     }
