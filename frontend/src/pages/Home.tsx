@@ -10,6 +10,9 @@ import { AnimatedNumber } from '@/components/AnimatedNumber';
 import { Link } from 'react-router-dom';
 import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
 
+// Vault launch date for "Days Live" calculation
+const VAULT_LAUNCH = new Date('2026-01-07T00:00:00Z');
+
 export function Home() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -32,6 +35,9 @@ export function Home() {
       : 0;
 
   const aprValue = protocolStats?.apr ? Number(protocolStats.apr) : 0;
+
+  // Calculate days since vault launch
+  const daysLive = Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24)));
 
   // Legacy string display for vault cards
   const tvlDisplay = tvlValue > 0
@@ -104,11 +110,9 @@ export function Home() {
             </div>
             <div className="stat-item">
               <div className="stat-value">
-                {protocolStats?.depositorCount ? (
-                  <AnimatedNumber value={protocolStats.depositorCount} decimals={0} />
-                ) : '...'}
+                <AnimatedNumber value={daysLive} decimals={0} />
               </div>
-              <div className="stat-label">Depositors</div>
+              <div className="stat-label">Days Live</div>
             </div>
           </div>
         </div>
