@@ -13,6 +13,9 @@ out/
 # Dotenv file
 .env
 
+# GitHub token
+.github-token
+
 # Coverage
 coverage/
 lcov.info
