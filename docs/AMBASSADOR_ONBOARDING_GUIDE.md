@@ -32,7 +32,7 @@ No staking. No claiming. Just yield.
 
 ## How the Protocol Works
 
-This section explains the mechanics so you can accurately represent Lazy to your audience.
+This section covers how the protocol works so you can explain it clearly.
 
 ### The Deposit Process
 
@@ -50,14 +50,15 @@ User receives: ~9,960 lazyUSD shares
 
 ### How Yield Is Generated
 
-The vault employs two concurrent strategies:
+The vault employs a delta-neutral strategy across three yield sources:
 
-- **Basis trading** — Long spot assets (SOL, LIT), short perpetual futures on Hyperliquid and Lighter. This captures funding rates while remaining market-neutral.
-- **Pendle PT** — Fixed-yield principal tokens that lock in predictable returns at maturity.
+- **Basis trading** — Long spot assets (ETH, HYPE, SOL) on Hyperliquid, short perpetual futures on Lighter. This captures funding rate payments while remaining market-neutral.
+- **Pendle PT** — Fixed-yield principal tokens with short maturities (<2 months) that lock in predictable returns.
+- **Liquid staking** — A portion of spot holdings earn additional yield through liquid staking derivatives (stETH, weETH, mSOL, jitoSOL, stHYPE, etc.).
 
 All positions are visible on-chain. Users can verify backing at any time via the Backing page (getlazy.xyz/backing).
 
-Users hold lazyUSD; the vault handles execution and rebalancing. Your role as an ambassador is to clarify the *outcome* (yield), not the mechanics. For deeper technical details, direct users to getlazy.xyz/docs.
+Users hold lazyUSD; the vault handles execution and rebalancing. Your role as an ambassador is to communicate the outcome, not the mechanics. For deeper technical details, direct users to getlazy.xyz/docs.
 
 ### The Share Price Mechanism
 
@@ -82,13 +83,13 @@ The user's lazyUSD balance stays the same. The value of each lazyUSD increases.
 Withdrawals use a **queue system** with a **cooldown period**:
 
 1. **User requests withdrawal** — specifies how many lazyUSD shares to withdraw
-2. **Cooldown period** — currently 7 days (protects against bank-run scenarios)
+2. **Cooldown period** — typically 1-7 days (protects against bank-run scenarios)
 3. **Withdrawal is fulfilled** — user receives USDC at current share price
 
 **Why the cooldown?**
 - Allows the vault to unwind positions safely
 - Protects remaining depositors from forced liquidations
-- Standard practice for institutional-grade vaults
+- The wait means your money was working, not sitting idle
 
 ### Protocol Fees
 
@@ -102,12 +103,29 @@ Net to depositors: $8,000 (reflected in share price)
 
 The fee is only on **yield**, not on deposits. If the vault earns nothing, no fee is taken.
 
+### Trust Model
+
+Lazy is a **semi-custodial vault**. Here's what that means:
+
+**Enforced by smart contract (trustless):**
+- Your share balance and ownership percentage
+- Fair NAV calculation for all users
+- Withdrawal queue ordering (first-come, first-served)
+- Fee caps and collection rules
+
+**Requires trust in protocol operators:**
+- Multisig operators returning funds when needed for withdrawals
+- Accurate yield reporting
+- Regular withdrawal processing
+
+This is standard for yield-generating vaults that deploy capital to external venues. All positions are verifiable on-chain.
+
 ### Security
 
-- **Audited smart contracts** — Professional third-party audits
+- **Audited smart contracts** — Independent security review (reports at getlazy.xyz/security)
 - **Role-based access control** — Multi-sig for critical operations
-- **No user custody** — Users can always withdraw their funds
-- **Transparent on-chain** — All vault activity is publicly verifiable
+- **Formal verification** — Five core invariants proven with Halmos symbolic execution
+- **Transparent on-chain** — All vault activity and positions are publicly verifiable
 
 More details: getlazy.xyz/security
 
@@ -254,7 +272,7 @@ Your content should:
 
 **Use these phrases:**
 - "Earn yield on USDC with no active management"
-- "Deposit and let your money work for you"
+- "Deposit USDC. Receive lazyUSD. Watch the share price rise."
 - "Patient capital, rewarded"
 - "No staking, no claiming, just yield"
 
@@ -266,13 +284,16 @@ Your content should:
 - Degen language (moon, rocket, WAGMI, LFG, "ape in")
 - Any content that could mislead about risk
 
-**Why these rules exist:** Lazy Protocol operates with full transparency. Overpromising undermines trust. Our users are not looking for hype. They are looking for clarity.
+**Why these rules exist:** Overpromising undermines trust. Our users want clarity, not hype.
 
 ### Required Disclosures
 
 When promoting Lazy Protocol, include:
 - This is DeFi and carries smart contract risk
-- Past performance doesn't guarantee future results
+- The vault holds positions on external exchanges (counterparty risk)
+- Withdrawals are not instant; expect 1-7 day cooldown (liquidity risk)
+- Yield is variable and can be negative in adverse market conditions
+- Past performance does not guarantee future results
 - Your referral link disclosure (where required by platform)
 
 ### Content Review (Optional)
