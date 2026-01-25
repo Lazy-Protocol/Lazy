@@ -1,4 +1,4 @@
-# Partner Ambassador Guide
+# Ambassador Onboarding Guide
 
 ## Welcome to Lazy Protocol
 
@@ -30,9 +30,91 @@ No staking. No claiming. Just yield.
 
 ---
 
-## How It Works
+## How the Protocol Works
 
-### The Program
+This section explains the mechanics so you can accurately represent Lazy to your audience.
+
+### The Deposit Process
+
+1. **User connects wallet** to getlazy.xyz
+2. **User approves USDC** spending (one-time per wallet)
+3. **User deposits USDC** into the vault
+4. **User receives lazyUSD** — a share token representing their portion of the vault
+
+**Example:**
+```
+User deposits: 10,000 USDC
+Current share price: $1.004 per lazyUSD
+User receives: ~9,960 lazyUSD shares
+```
+
+### How Yield Is Generated
+
+The vault deploys USDC into battle-tested DeFi yield strategies:
+
+- **Lending protocols** — Supplying USDC to platforms like Aave, Compound
+- **Liquidity provision** — Providing liquidity to stablecoin pools
+- **Basis trading** — Delta-neutral strategies capturing funding rates
+
+The vault's strategy is managed by the protocol team. Users don't need to understand or interact with these strategies — they simply hold lazyUSD.
+
+### The Share Price Mechanism
+
+This is the key concept that makes Lazy "lazy":
+
+- **lazyUSD is a share token**, not a rebasing token
+- The **share price increases** as the vault earns yield
+- Users don't receive yield payments — their lazyUSD simply becomes worth more USDC over time
+
+**Example over 1 year:**
+```
+Day 1:   1 lazyUSD = $1.000 USDC
+Day 90:  1 lazyUSD = $1.025 USDC (+2.5%)
+Day 180: 1 lazyUSD = $1.051 USDC (+5.1%)
+Day 365: 1 lazyUSD = $1.104 USDC (+10.4%)
+```
+
+The user's lazyUSD balance stays the same. The value of each lazyUSD increases.
+
+### Withdrawals
+
+Withdrawals use a **queue system** with a **cooldown period**:
+
+1. **User requests withdrawal** — specifies how many lazyUSD shares to withdraw
+2. **Cooldown period** — currently 7 days (protects against bank-run scenarios)
+3. **Withdrawal is fulfilled** — user receives USDC at current share price
+
+**Why the cooldown?**
+- Allows the vault to unwind positions safely
+- Protects remaining depositors from forced liquidations
+- Standard practice for institutional-grade vaults
+
+### Protocol Fees
+
+The protocol takes a **20% performance fee** on yield generated:
+
+```
+Vault earns: $10,000 in yield
+Protocol fee: $10,000 × 20% = $2,000
+Net to depositors: $8,000 (reflected in share price)
+```
+
+The fee is only on **yield**, not on deposits. If the vault earns nothing, no fee is taken.
+
+### Security
+
+- **Audited smart contracts** — Professional third-party audits
+- **Role-based access control** — Multi-sig for critical operations
+- **No user custody** — Users can always withdraw their funds
+- **Transparent on-chain** — All vault activity is publicly verifiable
+
+More details: getlazy.xyz/security
+
+---
+
+## The Ambassador Program
+
+### How It Works
 
 1. You receive a **unique referral link** (e.g., `getlazy.xyz?ref=yourhandle`)
 2. When someone deposits using your link, they become your **referral**
