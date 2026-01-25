@@ -50,11 +50,12 @@ User receives: ~9,960 lazyUSD shares
 
 ### How Yield Is Generated
 
-The vault deploys USDC into battle-tested DeFi yield strategies:
+The vault deploys USDC into delta-neutral yield strategies:
 
-- **Lending protocols** — Supplying USDC to platforms like Aave, Compound
-- **Liquidity provision** — Providing liquidity to stablecoin pools
-- **Basis trading** — Delta-neutral strategies capturing funding rates
+- **Basis trading** — Long spot assets (SOL, LIT), short perpetual futures on Hyperliquid and Lighter. This captures funding rates while remaining market-neutral.
+- **Pendle PT** — Fixed-yield principal tokens that lock in predictable returns at maturity.
+
+All positions are visible on-chain. Users can verify backing at any time via the Backing page (getlazy.xyz/backing).
 
 The vault's strategy is managed by the protocol team. Users don't need to understand or interact with these strategies — they simply hold lazyUSD.
 
