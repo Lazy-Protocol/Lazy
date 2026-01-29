@@ -37,7 +37,7 @@ const MANUAL_ADJUSTMENTS = {
   hype: 0,          // HYPE now tracked automatically
   sol: 0,           // No untracked SOL
   usdc: 0,          // No untracked USDC
-  lit: 26281.91,    // Untracked LIT held elsewhere
+  lit: 26462.74,    // Untracked LIT held elsewhere
 };
 
 // Token addresses
