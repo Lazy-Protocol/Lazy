@@ -34,9 +34,10 @@ const HYPEREVM_RPC = 'https://rpc.hyperliquid.xyz/evm';
 // Manual adjustments for positions not yet trackable via APIs
 // These are added to the NAV calculation
 const MANUAL_ADJUSTMENTS = {
-  hype: 0,          // No untracked HYPE
-  sol: 1.3,         // Untracked SOL position
-  usdc: -40,        // Untracked USDC (negative = debt)
+  hype: 0,          // HYPE now tracked automatically
+  sol: 0,           // No untracked SOL
+  usdc: 0,          // No untracked USDC
+  lit: 26281.91,    // Untracked LIT held elsewhere
 };
 
 // Token addresses
@@ -459,6 +460,49 @@ async function fetchHyperliquidEquity(address) {
   } catch (e) {
     console.warn('Failed to fetch Hyperliquid equity:', e.message);
     return { equity: 0, positions: [] };
+  }
+}
+
+// Fetch Hyperliquid spot balances
+async function fetchHyperliquidSpot(address) {
+  try {
+    const response = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'spotClearinghouseState',
+        user: address,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn('Hyperliquid spot API error:', response.status);
+      return { balances: [], hypeBalance: 0 };
+    }
+
+    const data = await response.json();
+    const balances = data.balances || [];
+
+    // Find HYPE balance (token index for HYPE on Hyperliquid spot)
+    let hypeBalance = 0;
+    for (const bal of balances) {
+      const coin = bal.coin || bal.token;
+      if (coin === 'HYPE' || coin === 'PURR') {
+        // HYPE might be listed as PURR or HYPE
+        if (coin === 'HYPE') {
+          hypeBalance = parseFloat(bal.hold || bal.total || 0) + parseFloat(bal.available || 0);
+          if (bal.total) hypeBalance = parseFloat(bal.total);
+        }
+      }
+    }
+
+    return {
+      balances,
+      hypeBalance,
+    };
+  } catch (e) {
+    console.warn('Failed to fetch Hyperliquid spot:', e.message);
+    return { balances: [], hypeBalance: 0 };
   }
 }
 
@@ -955,6 +999,7 @@ async function calculateYield() {
     solanaData,
     jupiterVaultData,
     vaultData,
+    hyperliquidSpotData,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(MULTISIG_ADDRESS),
@@ -966,6 +1011,7 @@ async function calculateYield() {
     fetchSolanaData(OPERATOR_SOLANA_ADDRESS, usdcPrice),
     fetchJupiterBorrowVault(),
     fetchVaultData(),
+    fetchHyperliquidSpot(OPERATOR_ADDRESS),
   ]);
 
   // Calculate deposit/withdrawal deltas from vault state
@@ -1029,12 +1075,19 @@ async function calculateYield() {
   // Calculate total HYPE holdings (spot + PT equivalent)
   let totalHypeHoldings = 0;
 
-  // Spot HYPE
-  const spotHype = allSpotBalances
+  // Spot HYPE (HyperEVM wallets)
+  const spotHypeEvm = allSpotBalances
     .filter(b => b.symbol === 'HYPE')
     .reduce((sum, b) => sum + parseFloat(b.balance), 0);
-  totalHypeHoldings += spotHype;
-  console.log(`  Spot HYPE:        ${spotHype.toFixed(2)} HYPE`);
+  totalHypeHoldings += spotHypeEvm;
+  console.log(`  Spot HYPE (EVM):  ${spotHypeEvm.toFixed(2)} HYPE`);
+
+  // Spot HYPE (Hyperliquid L1 spot)
+  const spotHypeL1 = hyperliquidSpotData.hypeBalance || 0;
+  totalHypeHoldings += spotHypeL1;
+  if (spotHypeL1 > 0) {
+    console.log(`  Spot HYPE (HL):   ${spotHypeL1.toFixed(2)} HYPE`);
+  }
 
   // PT HYPE equivalent
   const ptHypeEquiv = pendleData.totalHypeEquivalent || 0;
@@ -1262,8 +1315,19 @@ async function calculateYield() {
   // Calculate LIT exposure with Hyperliquid hedge
   console.log('');
   console.log('LIT EXPOSURE ANALYSIS:');
-  const litSpot = lighterSpotData.litBalance;
-  console.log(`  Spot (Lighter):      ${litSpot.toFixed(4)} LIT`);
+  const litSpotLighter = lighterSpotData.litBalance;
+  console.log(`  Spot (Lighter):      ${litSpotLighter.toFixed(4)} LIT`);
+
+  // Manual LIT adjustment (untracked positions)
+  const manualLit = MANUAL_ADJUSTMENTS.lit || 0;
+  if (manualLit !== 0) {
+    console.log(`  Manual (untracked):  ${manualLit.toFixed(4)} LIT`);
+  }
+  const litSpot = litSpotLighter + manualLit;
+  if (manualLit !== 0) {
+    console.log(`  ─────────────────────────`);
+    console.log(`  Total holdings:      ${litSpot.toFixed(4)} LIT`);
+  }
 
   // Find Hyperliquid LIT short
   let hyperliquidLitShort = 0;
@@ -1513,7 +1577,8 @@ async function calculateYield() {
         stakeAccounts: solanaData.stakeAccounts,
       },
       hype: {
-        spotHype,
+        spotHypeEvm,
+        spotHypeL1,
         ptHypeEquivalent: ptHypeEquiv,
         totalHoldings: totalHypeHoldings,
         lighterShort: { size: lighterHypeShort, entryPrice: lighterHypeEntry },
