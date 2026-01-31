@@ -1,24 +1,24 @@
 {
-  "totalAssets": "553266706604",
-  "totalSupply": "550628236079843178487660",
-  "sharePrice": "1004791",
-  "accumulatedYield": "3170704065",
+  "totalAssets": "553566706604",
+  "totalSupply": "550687917619149440274764",
+  "sharePrice": "1005227",
+  "accumulatedYield": "3470704065",
   "pendingWithdrawalShares": "0",
   "totalDeposited": "551100793539",
   "formatted": {
-    "tvl": "553266.706604",
-    "totalSupply": "550628.23607984317848766",
-    "sharePrice": "1.004791",
-    "accumulatedYield": "3170.704065",
+    "tvl": "553566.706604",
+    "totalSupply": "550687.917619149440274764",
+    "sharePrice": "1.005227",
+    "accumulatedYield": "3470.704065",
     "totalDeposited": "551100.793539"
   },
   "depositorCount": 7,
   "depositCount": 9,
-  "apr": 8.2,
+  "apr": 8.99,
   "aprSource": "calculated",
   "aprPeriod": "7d",
-  "updatedAt": "2026-01-31T07:28:39.144Z",
+  "updatedAt": "2026-01-31T08:30:02.637Z",
   "vaultAddress": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
   "chainId": 1,
-  "lastYieldReportTime": "1769468699"
+  "lastYieldReportTime": "1769846375"
 }
