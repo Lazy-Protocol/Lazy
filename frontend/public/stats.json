@@ -3,7 +3,7 @@
   "totalSupply": "530827075111448938979719",
   "sharePrice": "1006244",
   "accumulatedYield": "4170704065",
-  "pendingWithdrawalShares": "0",
+  "pendingWithdrawalShares": "996731164086822977772",
   "totalDeposited": "551100793539",
   "formatted": {
     "tvl": "534141.826604",
@@ -14,10 +14,10 @@
   },
   "depositorCount": 7,
   "depositCount": 9,
-  "apr": 8.21,
+  "apr": 8.19,
   "aprSource": "calculated",
   "aprPeriod": "7d",
-  "updatedAt": "2026-02-06T17:40:43.387Z",
+  "updatedAt": "2026-02-06T18:51:10.156Z",
   "vaultAddress": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
   "chainId": 1,
   "lastYieldReportTime": "1770262019"
