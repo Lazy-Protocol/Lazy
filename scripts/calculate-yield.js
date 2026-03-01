@@ -1159,8 +1159,8 @@ async function calculateYield() {
   console.log('');
   console.log('HYPE EXPOSURE ANALYSIS:');
 
-  // Get current HYPE price
-  const hypeCurrentPrice = pendleData.positions[0]?.underlyingPrice || entryPrices['HYPE'] || 0;
+  // Get current HYPE price (resolved after finding short positions below)
+  let hypeCurrentPrice = pendleData.positions[0]?.underlyingPrice || entryPrices['HYPE'] || 0;
 
   // Calculate total HYPE holdings (spot + PT equivalent)
   let totalHypeHoldings = 0;
@@ -1209,6 +1209,11 @@ async function calculateYield() {
       if (szi < 0) { // Short position
         hyperliquidHypeShort = Math.abs(szi);
         hyperliquidHypeEntry = parseFloat(position.entryPx || pos.entryPx || 0);
+        // Derive current HYPE price from short position if not available from other sources
+        if (hypeCurrentPrice === 0 && hyperliquidHypeShort > 0 && hyperliquidHypeEntry > 0) {
+          const pnl = parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0);
+          hypeCurrentPrice = hyperliquidHypeEntry - (pnl / hyperliquidHypeShort);
+        }
       }
     }
   }
