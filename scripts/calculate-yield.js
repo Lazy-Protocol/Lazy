@@ -37,7 +37,7 @@ const MANUAL_ADJUSTMENTS = {
   hype: 0,          // HYPE now tracked automatically
   sol: 0,           // No untracked SOL
   usdc: 0,          // No untracked USDC
-  lit: 26462.74,    // Untracked LIT held elsewhere
+  lit: 0,           // Now tracked automatically via Lighter staking API
 };
 
 // Token addresses
@@ -326,6 +326,7 @@ const LIGHTER_MARKETS = {
   0: 'ETH',
   1: 'BTC',
   24: 'HYPE',
+  120: 'LIT',
 };
 
 async function fetchLighterEquity(address) {
@@ -428,6 +429,85 @@ async function fetchLighterSpotAssets() {
 }
 
 // ============================================
+// Lighter Staked LIT
+// ============================================
+
+async function fetchLighterStakedLIT() {
+  try {
+    // 1. Get staking pool index from system config
+    const configRes = await fetch('https://mainnet.zklighter.elliot.ai/api/v1/systemConfig');
+    if (!configRes.ok) {
+      console.warn('Lighter systemConfig API error:', configRes.status);
+      return { stakedLIT: 0, principalLIT: 0 };
+    }
+    const config = await configRes.json();
+    const stakingPoolIndex = config.staking_pool_index;
+
+    // 2. Get account shares
+    const accountRes = await fetch(
+      `https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=${LIGHTER_ACCOUNT_INDEX}`
+    );
+    if (!accountRes.ok) {
+      console.warn('Lighter account API error:', accountRes.status);
+      return { stakedLIT: 0, principalLIT: 0 };
+    }
+    const accountData = await accountRes.json();
+    const account = accountData.accounts?.[0];
+    if (!account) {
+      return { stakedLIT: 0, principalLIT: 0 };
+    }
+
+    // Find staking pool shares
+    const stakingShare = (account.shares || []).find(
+      s => s.public_pool_index === stakingPoolIndex
+    );
+    if (!stakingShare) {
+      return { stakedLIT: 0, principalLIT: 0 };
+    }
+
+    // 3. Get pool totals for pro-rata calculation
+    const poolRes = await fetch(
+      `https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=${stakingPoolIndex}`
+    );
+    if (!poolRes.ok) {
+      console.warn('Lighter staking pool API error:', poolRes.status);
+      // Fall back to principal amount
+      return {
+        stakedLIT: parseFloat(stakingShare.principal_amount || 0),
+        principalLIT: parseFloat(stakingShare.principal_amount || 0),
+      };
+    }
+    const poolData = await poolRes.json();
+    const pool = poolData.accounts?.[0];
+
+    const litAsset = (pool?.assets || []).find(a => a.symbol === 'LIT');
+    const totalPoolLIT = parseFloat(litAsset?.balance || 0);
+    const totalShares = pool?.pool_info?.total_shares || 0;
+
+    if (totalShares === 0) {
+      return {
+        stakedLIT: parseFloat(stakingShare.principal_amount || 0),
+        principalLIT: parseFloat(stakingShare.principal_amount || 0),
+      };
+    }
+
+    // Pro-rata: our_shares / total_shares * total_pool_LIT
+    const litPerShare = totalPoolLIT / totalShares;
+    const stakedLIT = stakingShare.shares_amount * litPerShare;
+
+    return {
+      stakedLIT,
+      principalLIT: parseFloat(stakingShare.principal_amount || 0),
+      shares: stakingShare.shares_amount,
+      pendingUnlocks: account.pending_unlocks || [],
+    };
+  } catch (e) {
+    console.warn('Failed to fetch Lighter staked LIT:', e.message);
+    return { stakedLIT: 0, principalLIT: 0 };
+  }
+}
+
+// ============================================
 // Hyperliquid L1 Positions
 // ============================================
 
@@ -485,6 +565,7 @@ async function fetchHyperliquidSpot(address) {
 
     // Find HYPE balance (token index for HYPE on Hyperliquid spot)
     let hypeBalance = 0;
+    let usdcBalance = 0;
     for (const bal of balances) {
       const coin = bal.coin || bal.token;
       if (coin === 'HYPE' || coin === 'PURR') {
@@ -494,15 +575,22 @@ async function fetchHyperliquidSpot(address) {
           if (bal.total) hypeBalance = parseFloat(bal.total);
         }
       }
+
+      // Check for USDC
+      if (coin === 'USDC' || bal.token === 'USDC') {
+        const amount = parseFloat(bal.hold || bal.total || 0) + parseFloat(bal.available || 0);
+        usdcBalance = parseFloat(bal.total) || amount;
+      }
     }
 
     return {
       balances,
       hypeBalance,
+      usdcBalance,
     };
   } catch (e) {
     console.warn('Failed to fetch Hyperliquid spot:', e.message);
-    return { balances: [], hypeBalance: 0 };
+    return { balances: [], hypeBalance: 0, usdcBalance: 0 };
   }
 }
 
@@ -995,6 +1083,7 @@ async function calculateYield() {
     pendleData,
     lighterData,
     lighterSpotData,
+    lighterStakedData,
     hyperliquidData,
     solanaData,
     jupiterVaultData,
@@ -1007,6 +1096,7 @@ async function calculateYield() {
     fetchPendlePositions(MULTISIG_ADDRESS, usdcPrice),
     fetchLighterEquity(MULTISIG_ADDRESS),
     fetchLighterSpotAssets(),
+    fetchLighterStakedLIT(),
     fetchHyperliquidEquity(OPERATOR_ADDRESS),
     fetchSolanaData(OPERATOR_SOLANA_ADDRESS, usdcPrice),
     fetchJupiterBorrowVault(),
@@ -1318,16 +1408,27 @@ async function calculateYield() {
   const litSpotLighter = lighterSpotData.litBalance;
   console.log(`  Spot (Lighter):      ${litSpotLighter.toFixed(4)} LIT`);
 
+  // Staked LIT on Lighter
+  const stakedLit = lighterStakedData.stakedLIT || 0;
+  if (stakedLit > 0) {
+    const principalLit = lighterStakedData.principalLIT || 0;
+    const stakingRewards = stakedLit - principalLit;
+    console.log(`  Staked (Lighter):    ${stakedLit.toFixed(4)} LIT (principal: ${principalLit.toFixed(2)}, rewards: ${stakingRewards >= 0 ? '+' : ''}${stakingRewards.toFixed(2)})`);
+  }
+
   // Manual LIT adjustment (untracked positions)
   const manualLit = MANUAL_ADJUSTMENTS.lit || 0;
   if (manualLit !== 0) {
     console.log(`  Manual (untracked):  ${manualLit.toFixed(4)} LIT`);
   }
-  const litSpot = litSpotLighter + manualLit;
-  if (manualLit !== 0) {
-    console.log(`  ─────────────────────────`);
-    console.log(`  Total holdings:      ${litSpot.toFixed(4)} LIT`);
-  }
+  const litSpot = litSpotLighter + stakedLit + manualLit;
+  console.log(`  ─────────────────────────`);
+  console.log(`  Total holdings:      ${litSpot.toFixed(4)} LIT`);
+
+  // Get LIT shorts from BOTH venues with their entry prices
+  const lighterLitPos = lighterData.positions.find(p => p.market === 'LIT');
+  const lighterLitShort = Math.abs(parseFloat(lighterLitPos?.size || 0));
+  const lighterLitEntry = parseFloat(lighterLitPos?.entryPrice || 0);
 
   // Find Hyperliquid LIT short
   let hyperliquidLitShort = 0;
@@ -1348,26 +1449,49 @@ async function calculateYield() {
     }
   }
 
-  let litValue = 0;
+  // If no Hyperliquid price, derive from Lighter
+  if (litCurrentPrice === 0 && lighterLitShort > 0 && lighterLitEntry > 0) {
+    const lighterPnl = parseFloat(lighterLitPos?.unrealizedPnl || 0);
+    litCurrentPrice = lighterLitEntry - (lighterPnl / lighterLitShort);
+  }
+
+  const totalLitShort = lighterLitShort + hyperliquidLitShort;
+  console.log(`  Shorts:`);
+  if (lighterLitShort > 0) {
+    console.log(`    Lighter:           ${lighterLitShort.toFixed(2)} LIT @ $${lighterLitEntry.toFixed(4)}`);
+  }
   if (hyperliquidLitShort > 0) {
-    console.log(`  Short (Hyperliquid): ${hyperliquidLitShort.toFixed(4)} LIT @ $${hyperliquidLitEntry.toFixed(4)}`);
-    console.log(`  ─────────────────────────`);
+    console.log(`    Hyperliquid:       ${hyperliquidLitShort.toFixed(2)} LIT @ $${hyperliquidLitEntry.toFixed(4)}`);
+  }
+  console.log(`  Total short:         ${totalLitShort.toFixed(2)} LIT`);
 
-    const hedgedLit = Math.min(litSpot, hyperliquidLitShort);
-    const unhedgedLit = litSpot - hyperliquidLitShort;
+  const netLitExposure = litSpot - totalLitShort;
+  let litValue = 0;
 
-    const hedgedValue = hedgedLit * hyperliquidLitEntry;
-    console.log(`  Hedged:              ${hedgedLit.toFixed(4)} × $${hyperliquidLitEntry.toFixed(4)} = $${hedgedValue.toFixed(2)}`);
+  console.log(`  ─────────────────────────`);
 
-    litValue = hedgedValue;
+  if (totalLitShort > 0) {
+    // Value hedged portions at their respective entry prices
+    const lighterHedgedValue = lighterLitShort * lighterLitEntry;
+    const hyperliquidHedgedValue = hyperliquidLitShort * hyperliquidLitEntry;
+    const totalHedgedValue = lighterHedgedValue + hyperliquidHedgedValue;
 
-    if (unhedgedLit > 0) {
-      const unhedgedValue = unhedgedLit * litCurrentPrice;
-      console.log(`  Unhedged (asset):    ${unhedgedLit.toFixed(4)} × $${litCurrentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
+    if (lighterLitShort > 0) {
+      console.log(`  Hedged via Lighter:      ${lighterLitShort.toFixed(2)} × $${lighterLitEntry.toFixed(4)} = $${lighterHedgedValue.toFixed(2)}`);
+    }
+    if (hyperliquidLitShort > 0) {
+      console.log(`  Hedged via Hyperliquid:  ${hyperliquidLitShort.toFixed(2)} × $${hyperliquidLitEntry.toFixed(4)} = $${hyperliquidHedgedValue.toFixed(2)}`);
+    }
+
+    litValue = totalHedgedValue;
+
+    if (netLitExposure > 0) {
+      const unhedgedValue = netLitExposure * litCurrentPrice;
+      console.log(`  Unhedged (asset):        ${netLitExposure.toFixed(2)} × $${litCurrentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
       litValue += unhedgedValue;
-    } else if (unhedgedLit < 0) {
-      const unhedgedValue = unhedgedLit * litCurrentPrice;
-      console.log(`  Unhedged (DEBT):     ${Math.abs(unhedgedLit).toFixed(4)} × $${litCurrentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
+    } else if (netLitExposure < 0) {
+      const unhedgedValue = netLitExposure * litCurrentPrice;
+      console.log(`  Unhedged (DEBT):         ${Math.abs(netLitExposure).toFixed(2)} × $${litCurrentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
       litValue += unhedgedValue;
     } else {
       console.log(`  Perfectly hedged!`);
@@ -1398,7 +1522,10 @@ async function calculateYield() {
 
   // Manual USDC adjustment (untracked positions, can be negative for debt)
   const manualUsdc = MANUAL_ADJUSTMENTS.usdc || 0;
-  const totalUsdcBalance = usdcBalance + lighterUsdcBalance + manualUsdc;
+  // Add Hyperliquid spot USDC
+  const hyperliquidUsdcBalance = hyperliquidSpotData.usdcBalance || 0;
+
+  const totalUsdcBalance = usdcBalance + lighterUsdcBalance + hyperliquidUsdcBalance + manualUsdc;
 
   // Subtract Jupiter vault USDC debt if borrowing
   const jupiterDebt = jupiterVaultData.usdcDebt || 0;
@@ -1417,6 +1544,9 @@ async function calculateYield() {
   console.log(`  USDC:             $${totalUsdcBalance.toFixed(2)}`);
   if (lighterUsdcBalance > 0) {
     console.log(`    (incl. Lighter spot: $${lighterUsdcBalance.toFixed(2)})`);
+  }
+  if (hyperliquidUsdcBalance > 0) {
+    console.log(`    (incl. Hyperliquid spot: $${hyperliquidUsdcBalance.toFixed(2)})`);
   }
   if (manualUsdc !== 0) {
     console.log(`    (incl. manual adj: $${manualUsdc.toFixed(2)})`);
@@ -1502,7 +1632,7 @@ async function calculateYield() {
     litValue,
     jupiterVaultSol: jupiterVaultData.solCollateral,
     netHypeExposure: netExposure,
-    netLitExposure: litSpot - hyperliquidLitShort,
+    netLitExposure: netLitExposure,
     // Cumulative flow tracking for cost socialization
     cumulativeDeposited: vaultData.totalDeposited,
     cumulativeWithdrawn: vaultData.totalWithdrawn,
@@ -1596,9 +1726,14 @@ async function calculateYield() {
         spotAssets: lighterSpotData.assets,
       },
       lit: {
-        spotBalance: litSpot,
+        spotBalance: litSpotLighter,
+        stakedBalance: stakedLit,
+        stakedPrincipal: lighterStakedData.principalLIT || 0,
+        totalBalance: litSpot,
+        lighterShort: { size: lighterLitShort, entryPrice: lighterLitEntry },
         hyperliquidShort: { size: hyperliquidLitShort, entryPrice: hyperliquidLitEntry },
-        netExposure: litSpot - hyperliquidLitShort,
+        totalShort: totalLitShort,
+        netExposure: netLitExposure,
         currentPrice: litCurrentPrice,
         totalValue: litValue,
       },
