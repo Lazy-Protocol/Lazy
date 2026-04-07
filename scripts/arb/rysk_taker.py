@@ -306,7 +306,11 @@ def random_listed_request(
     taker_address: str,
     underlying: Optional[str] = None,
 ) -> TakerRequest:
-    """Pick a random listed product and build a TakerRequest.
+    """Pick a random listed product (from the static snapshot) and build a TakerRequest.
+
+    LEGACY PATH. Prefer ``random_listed_request_from_inventory`` which
+    pulls from the live ``/api/inventory`` REST endpoint and never
+    misses listings the way the static snapshot does.
 
     Quantity is computed via INTEGER arithmetic to avoid float precision
     errors (e.g. `int(4.43 * 1e18)` returns 4429999999999999488, which the
@@ -349,4 +353,79 @@ def random_listed_request(
         taker=taker_address,
         usd=USDC_TESTNET,
         collateral_asset=USDC_TESTNET,
+    )
+
+
+def random_listed_request_from_inventory(
+    taker_address: str,
+    inventory,
+    underlying: Optional[str] = None,
+    is_put: Optional[bool] = True,
+) -> TakerRequest:
+    """Pick a random listed product from the live inventory and build a TakerRequest.
+
+    Replacement for ``random_listed_request`` that uses the
+    ``/api/inventory`` REST endpoint as the source of truth instead
+    of the static snapshot. The inventory always reflects the current
+    listed book, so this never misses strikes the static snapshot
+    forgot about.
+
+    Args:
+        taker_address: our wallet (lowercased on transit)
+        inventory: a populated ``RyskInventory`` instance
+        underlying: "WBTC" | "WETH" | "BTC" | "ETH" | etc, or None to
+            pick a random underlying that has at least one (strike,
+            expiry) listing matching the is_put filter. Aliased names
+            are resolved against ``NAME_ALIASES``.
+        is_put: True (default) for cash-secured puts, False for
+            covered calls, None for either direction. Testnet only
+            supports taker-sell so we leave is_taker_buy=False.
+
+    Raises ValueError if no listings match the filters.
+    """
+    candidates = inventory.listings(underlying=underlying, is_put=is_put)
+    if not candidates:
+        raise ValueError(
+            f"No listings in inventory for underlying={underlying!r} is_put={is_put}"
+        )
+    listing = random.choice(candidates)
+
+    # Find the original asset_name we expose to the rest of the codebase.
+    # Inventory uses canonical names (BTC, ETH); our taker code is built
+    # around the wrapped names (WBTC, WETH) for the addresses dict. Map
+    # back so existing downstream code continues to work for those two
+    # underlyings; otherwise pass the inventory name through.
+    inverse_alias = {"BTC": "WBTC", "ETH": "WETH"}
+    asset_name = inverse_alias.get(listing.underlying, listing.underlying)
+
+    # Pick the first product variant. For underlyings with multiple
+    # collateral options, the first entry is consistently the canonical
+    # cash-secured / covered variant in the snapshots we have.
+    if not listing.products:
+        raise ValueError(
+            f"Listing {listing.underlying} {listing.strike} has no products"
+        )
+    product = listing.products[0]
+
+    # Pick a quantity. For underlyings we know about, respect
+    # ASSET_SIZE_LIMITS. For new underlyings, default to 1.0 contract
+    # (100 hundredths) which has worked across all the assets we
+    # observed in the testnet snapshot.
+    min_h, max_h = ASSET_SIZE_LIMITS.get(asset_name, (100, 100))
+    hundredths = random.randint(min_h, max_h)
+    quantity_e18 = str(hundredths * QUANTITY_STEP_E18)
+    strike_e8 = str(int(listing.strike * 1e8))
+
+    return TakerRequest(
+        asset=product.asset,                    # already lowercase
+        asset_name=asset_name,
+        chain_id=84532,                          # Base Sepolia
+        expiry=listing.expiry_ts,
+        is_put=listing.is_put,
+        is_taker_buy=False,                      # testnet constraint
+        quantity_e18=quantity_e18,
+        strike_e8=strike_e8,
+        taker=taker_address,
+        usd=product.strike_asset,
+        collateral_asset=product.collateral_asset,
     )

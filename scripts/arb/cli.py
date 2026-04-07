@@ -17,6 +17,7 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 # Allow running as `python scripts/arb/cli.py` from project root
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -525,12 +526,19 @@ def cmd_rysk_taker_test(args):
     will receive these RFQs and respond. This verifies the end-to-end loop.
 
     Do NOT run this on mainnet - it will submit real RFQs.
+
+    By default this pulls listings from the live `/api/inventory`
+    endpoint. Pass `--use-snapshot` to fall back to the static
+    LISTED_PRODUCTS_SNAPSHOT in rysk_taker.py (older code path, kept
+    for offline use only).
     """
     import asyncio
     from scripts.arb.rysk_client import RyskMakerClient
+    from scripts.arb.rysk_inventory import RyskInventory, InventoryFetchError
     from scripts.arb.rysk_taker import (
         TakerClient,
         random_listed_request,
+        random_listed_request_from_inventory,
         LISTED_PRODUCTS_SNAPSHOT,
     )
 
@@ -545,8 +553,24 @@ def cmd_rysk_taker_test(args):
         print("Error: no taker address (set RYSK_WALLET or pass --taker)")
         sys.exit(1)
 
+    use_snapshot = getattr(args, "use_snapshot", False)
+    inventory: Optional[RyskInventory] = None
+    if not use_snapshot:
+        inventory = RyskInventory(env="testnet")
+        try:
+            listings = inventory.fetch()
+            print(f"Loaded {len(listings)} listings from /api/inventory")
+        except InventoryFetchError as e:
+            print(f"Inventory fetch failed ({e}), falling back to static snapshot")
+            inventory = None
+            use_snapshot = True
+
     print(f"Taker address: {taker_addr}")
-    print(f"Listed products: {sum(len(s) for a in LISTED_PRODUCTS_SNAPSHOT.values() for s in a.values())}")
+    if use_snapshot:
+        snap_count = sum(
+            len(s) for a in LISTED_PRODUCTS_SNAPSHOT.values() for s in a.values()
+        )
+        print(f"Listed products (snapshot): {snap_count}")
     print(f"Submitting {args.count} random RFQs, {args.interval}s between each")
     print()
 
@@ -554,12 +578,21 @@ def cmd_rysk_taker_test(args):
         client = TakerClient(taker_address=taker_addr)
 
         for i in range(args.count):
-            req = random_listed_request(
-                taker_address=taker_addr,
-                underlying=args.underlying,
-            )
+            if inventory is not None:
+                req = random_listed_request_from_inventory(
+                    taker_address=taker_addr,
+                    inventory=inventory,
+                    underlying=args.underlying,
+                    is_put=True,
+                )
+            else:
+                req = random_listed_request(
+                    taker_address=taker_addr,
+                    underlying=args.underlying,
+                )
+            direction = "put" if req.is_put else "call"
             print(f"[{i+1}/{args.count}] {req.asset_name} "
-                  f"${req.strike_float:.0f} put "
+                  f"${req.strike_float:.0f} {direction} "
                   f"exp={req.expiry} qty={req.quantity_float:.2f}")
 
             try:
@@ -590,34 +623,103 @@ def cmd_rysk_taker_test(args):
 
 
 def cmd_rysk_scan_products(args):
-    """Scan testnet for currently listed products (strikes/expiries)."""
-    import asyncio
-    from scripts.arb.rysk_client import RyskMakerClient
-    from scripts.arb.rysk_taker import (
-        TakerClient,
-        LISTED_PRODUCTS_SNAPSHOT,
-        EXPIRY_APR10, EXPIRY_APR17, EXPIRY_APR24,
-    )
+    """List currently listed products via the /api/inventory REST endpoint.
 
-    rysk = RyskMakerClient(env="testnet")
-    taker_addr = rysk.wallet
-    if not taker_addr:
-        print("Error: no RYSK_WALLET in .env")
+    Replaces the legacy WS-probe scanner. The endpoint returns the
+    full listing book in one call with no auth, so this is faster,
+    cheaper, and never misses listings the way the probe scanner did
+    (the probe used a fixed step size and a 1.5s timeout heuristic
+    that missed strikes outside the grid).
+    """
+    from scripts.arb.rysk_inventory import RyskInventory, InventoryFetchError
+
+    env = getattr(args, "env", "testnet")
+    inventory = RyskInventory(env=env)
+    try:
+        listings = inventory.fetch()
+    except InventoryFetchError as e:
+        print(f"Inventory fetch failed: {e}")
         sys.exit(1)
 
-    async def run():
-        client = TakerClient(taker_address=taker_addr)
-        expiries = [EXPIRY_APR10, EXPIRY_APR17, EXPIRY_APR24]
+    print(f"Loaded {len(listings)} listings from {inventory.url}")
+    print()
+    for underlying in inventory.underlyings():
+        spot = inventory.get_spot(underlying)
+        spot_str = f"${spot:.2f}" if spot else "n/a"
+        print(f"=== {underlying} (spot {spot_str}) ===")
+        for expiry in inventory.expiries(underlying):
+            from datetime import datetime, timezone
+            iso = datetime.fromtimestamp(expiry, tz=timezone.utc).strftime("%Y-%m-%d")
+            put_strikes = inventory.strikes(underlying, expiry, is_put=True)
+            call_strikes = inventory.strikes(underlying, expiry, is_put=False)
+            if put_strikes:
+                print(f"  {iso} ({expiry}) puts:  {put_strikes}")
+            if call_strikes:
+                print(f"  {iso} ({expiry}) calls: {call_strikes}")
+        print()
 
-        print("Scanning WETH puts ($100 step, $1000-$5000)...")
-        weth = await client.scan_products("WETH", expiries, (1000, 5000, 100))
-        print(f"  Found {len(weth)} listings: {weth}")
 
-        print("\nScanning WBTC puts ($2000 step, $20000-$120000)...")
-        btc = await client.scan_products("WBTC", expiries, (20000, 120000, 2000))
-        print(f"  Found {len(btc)} listings: {btc}")
+def cmd_rysk_inventory(args):
+    """Inspect the Rysk inventory snapshot.
 
-    asyncio.run(run())
+    Same data source as ``rysk-scan-products`` but with more output
+    options: --json for raw, --underlying to filter, --putstrue/false
+    to filter direction, --details to print delta/IV/index per entry.
+    """
+    from scripts.arb.rysk_inventory import RyskInventory, InventoryFetchError
+
+    env = getattr(args, "env", "testnet")
+    inventory = RyskInventory(env=env)
+    try:
+        listings = inventory.fetch()
+    except InventoryFetchError as e:
+        print(f"Inventory fetch failed: {e}")
+        sys.exit(1)
+
+    is_put = None
+    if getattr(args, "puts_only", False):
+        is_put = True
+    elif getattr(args, "calls_only", False):
+        is_put = False
+
+    filtered = inventory.listings(
+        underlying=getattr(args, "underlying", None),
+        is_put=is_put,
+    )
+
+    if getattr(args, "json", False):
+        from dataclasses import asdict
+        print(json.dumps([asdict(l) for l in filtered], indent=2, default=str))
+        return
+
+    print(f"Source: {inventory.url}")
+    print(f"Listings: {len(filtered)} (of {len(listings)} total)")
+    print()
+    if getattr(args, "details", False):
+        header = (
+            f"{'underlying':<11}{'expiry':<11}{'strike':>10}  "
+            f"{'P/C':<4}{'delta':>8}  {'bidIv':>6} {'askIv':>6}  "
+            f"{'index':>10}  {'apy%':>8}"
+        )
+        print(header)
+        print("-" * len(header))
+        for l in filtered:
+            from datetime import datetime, timezone
+            iso = datetime.fromtimestamp(l.expiry_ts, tz=timezone.utc).strftime("%y-%m-%d")
+            pc = "P" if l.is_put else "C"
+            print(
+                f"{l.underlying:<11}{iso:<11}{l.strike:>10.2f}  "
+                f"{pc:<4}{l.delta:>8.4f}  {l.bid_iv:>6.2f} {l.ask_iv:>6.2f}  "
+                f"{l.index:>10.2f}  {l.apy:>8.2f}"
+            )
+    else:
+        for underlying in inventory.underlyings():
+            ul_listings = [l for l in filtered if l.underlying == underlying]
+            if not ul_listings:
+                continue
+            spot = inventory.get_spot(underlying)
+            spot_str = f"${spot:.2f}" if spot else "n/a"
+            print(f"  {underlying:<8} spot={spot_str:<14} listings={len(ul_listings)}")
 
 
 def cmd_rysk_listen(args):
@@ -1030,13 +1132,31 @@ def main():
     p_rtt.add_argument("--interval", type=float, default=5.0, help="Seconds between RFQs")
     p_rtt.add_argument("--wait", type=float, default=8.0,
                        help="Seconds to wait for quote responses per RFQ")
-    p_rtt.add_argument("--underlying", default=None, choices=["WETH", "WBTC"],
-                       help="Fix the underlying (default: random)")
+    p_rtt.add_argument("--underlying", default=None,
+                       help="Fix the underlying (default: random across inventory)")
     p_rtt.add_argument("--taker", default=None, help="Taker address (default: RYSK_WALLET)")
+    p_rtt.add_argument("--use-snapshot", action="store_true",
+                       help="Use the static LISTED_PRODUCTS_SNAPSHOT instead of live /api/inventory")
 
-    # rysk-scan-products
+    # rysk-scan-products (REST inventory dump grouped by underlying/expiry)
     p_rsp = sub.add_parser("rysk-scan-products",
-                           help="Scan testnet for currently listed products")
+                           help="List currently listed products via /api/inventory")
+    p_rsp.add_argument("--env", default="testnet", choices=["testnet", "mainnet"])
+
+    # rysk-inventory (filtered/detailed inventory inspection)
+    p_rinv = sub.add_parser("rysk-inventory",
+                            help="Inspect Rysk /api/inventory with filters and detail flags")
+    p_rinv.add_argument("--env", default="testnet", choices=["testnet", "mainnet"])
+    p_rinv.add_argument("--underlying", default=None,
+                        help="Filter to a single underlying (BTC, ETH, HYPE, ...)")
+    p_rinv.add_argument("--puts-only", action="store_true",
+                        help="Only show puts")
+    p_rinv.add_argument("--calls-only", action="store_true",
+                        help="Only show calls")
+    p_rinv.add_argument("--details", action="store_true",
+                        help="Print delta/IV/index per listing instead of summary")
+    p_rinv.add_argument("--json", action="store_true",
+                        help="Print raw JSON of all (filtered) listings")
 
     # rysk-listen
     p_rl = sub.add_parser("rysk-listen", help="Start Rysk maker listener")
@@ -1127,6 +1247,7 @@ def main():
         "rysk-listen": cmd_rysk_listen,
         "rysk-taker-test": cmd_rysk_taker_test,
         "rysk-scan-products": cmd_rysk_scan_products,
+        "rysk-inventory": cmd_rysk_inventory,
     }
 
     commands[args.command](args)
