@@ -42,6 +42,19 @@ brand/assets/
 # DefiLlama adapters (separate repo)
 defillama-adapters/
 
+# Proprietary strategy files
+docs/OPTIONS_ARB_STRATEGY.md
+scripts/derive-puts.py
+scripts/backtest-rysk-puts.js
+scripts/backtest-rysk-puts-replay.py
+
+# Python build artifacts (committing scripts/arb locally until it moves to a private submodule)
+__pycache__/
+*.pyc
+
+# Rysk Go CLI binary (downloaded, not source)
+/ryskV12
+
 # Claude Code config
 .claude/
 
