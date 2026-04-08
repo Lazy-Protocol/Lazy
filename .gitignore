@@ -45,11 +45,13 @@ defillama-yield-server/
 
 # Proprietary strategy files
 docs/OPTIONS_ARB_STRATEGY.md
+docs/ARB_RUNBOOK.md
+scripts/arb/
 scripts/derive-puts.py
 scripts/backtest-rysk-puts.js
 scripts/backtest-rysk-puts-replay.py
 
-# Python build artifacts (committing scripts/arb locally until it moves to a private submodule)
+# Python build artifacts
 __pycache__/
 *.pyc
 
