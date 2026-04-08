@@ -41,6 +41,7 @@ brand/assets/
 
 # DefiLlama adapters (separate repo)
 defillama-adapters/
+defillama-yield-server/
 
 # Proprietary strategy files
 docs/OPTIONS_ARB_STRATEGY.md

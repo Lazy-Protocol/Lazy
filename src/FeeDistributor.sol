@@ -54,6 +54,12 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
     /// @notice Keeper address for automated record updates
     address public keeper;
 
+    /// @notice Current distribution epoch (incremented each finalize)
+    uint256 public currentEpoch;
+
+    /// @notice Tracks which epoch each KOL was last distributed in
+    mapping(address => uint256) public kolLastDistributedEpoch;
+
     /// @notice Basis points denominator
     uint256 public constant BPS_DENOMINATOR = 10000;
 
@@ -148,13 +154,15 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
     }
 
     /// @notice Finalize distribution epoch and sweep remaining to treasury
-    /// @dev Call after all KOLs have been distributed to
+    /// @dev Call after all KOLs have been distributed to. Restricted to keeper/owner.
     function finalizeEpoch() external nonReentrant {
+        require(msg.sender == keeper || msg.sender == owner(), "Not authorized");
         require(
             block.timestamp >= lastDistribution + distributionInterval,
             "Too soon"
         );
 
+        currentEpoch++;
         lastDistribution = block.timestamp;
 
         // Remaining balance goes to treasury
@@ -163,13 +171,16 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
             usdc.safeTransfer(treasury, remaining);
         }
 
-        uint256 epoch = block.timestamp / distributionInterval;
-        emit FeesDistributed(epoch, remaining, 0, remaining);
+        emit FeesDistributed(currentEpoch, remaining, 0, remaining);
     }
 
     /// @notice Calculate and pay a single KOL
     /// @dev Uses share-price-based yield calculation to prevent transfer attacks
     function _calculateAndPayKOL(address kol) internal returns (uint256 payout) {
+        // Prevent paying the same KOL twice in one epoch
+        if (kolLastDistributedEpoch[kol] == currentEpoch) return 0;
+        kolLastDistributedEpoch[kol] = currentEpoch;
+
         (
             ,
             uint16 feeShareBps,
@@ -244,7 +255,7 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
         (bool success, bytes memory data) = vault.staticcall(
             abi.encodeWithSignature("sharePrice()")
         );
-        if (!success || data.length == 0) return 0;
+        if (!success || data.length < 32) return 0;
         return abi.decode(data, (uint256));
     }
 
@@ -253,7 +264,7 @@ contract FeeDistributor is Ownable, ReentrancyGuard {
         (bool success, bytes memory data) = vault.staticcall(
             abi.encodeWithSignature("balanceOf(address)", depositor)
         );
-        if (!success || data.length == 0) return 0;
+        if (!success || data.length < 32) return 0;
         return abi.decode(data, (uint256));
     }
 
