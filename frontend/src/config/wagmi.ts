@@ -1,5 +1,6 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { mainnet } from 'wagmi/chains';
+import { http, fallback } from 'viem';
 
 // Deployed contract addresses (Ethereum Mainnet)
 export const CONTRACTS = {
@@ -15,5 +16,13 @@ export const config = getDefaultConfig({
   appName: 'Lazy Protocol',
   projectId: 'dbbf6d65778741aaa414531b7670d4a2',
   chains: [mainnet],
+  transports: {
+    [mainnet.id]: fallback([
+      http('https://ethereum-rpc.publicnode.com'),
+      http('https://rpc.mevblocker.io'),
+      http('https://eth.merkle.io'),
+      http('https://eth.llamarpc.com'),
+    ]),
+  },
   ssr: false,
 });
