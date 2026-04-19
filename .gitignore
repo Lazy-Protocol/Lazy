@@ -46,7 +46,7 @@ defillama-yield-server/
 # Proprietary strategy files
 docs/OPTIONS_ARB_STRATEGY.md
 docs/ARB_RUNBOOK.md
-scripts/arb/
+# scripts/arb/ is now a private submodule (Lazy-Protocol/lazy-options-arb)
 scripts/derive-puts.py
 scripts/backtest-rysk-puts.js
 scripts/backtest-rysk-puts-replay.py
