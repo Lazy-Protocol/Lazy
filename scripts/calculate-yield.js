@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
+import { execFileSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +30,8 @@ if (existsSync(envPath)) {
 const MULTISIG_ADDRESS = '0x0FBCe7F3678467f7F7313fcB2C9D1603431Ad666';
 const OPERATOR_ADDRESS = '0xF466ad87c98f50473Cf4Fe32CdF8db652F9E36D6';
 const OPERATOR_SOLANA_ADDRESS = '1AxbVeo57DHrMghgWDL5d25j394LDPdwMLEtHHYTkgU';
+const RYSK_MM_ADDRESS = '0x59F4a7a9A33CB62940969CE26e33962f256c1C72';
+const RYSK_MARGIN_POOL_ADDRESS = '0x691a5fc3a81a144e36c6C4fBCa1fC82843c80d0d';
 const VAULT_ADDRESS = '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805';
 
 
@@ -144,7 +147,14 @@ const vaultAbi = [
 function buildEntryPrices(lighterPositions) {
   const prices = {};
   for (const pos of lighterPositions) {
-    prices[pos.market] = parseFloat(pos.entryPrice);
+    if (pos.side === 'short') {
+      prices[pos.market] = parseFloat(pos.entryPrice);
+    }
+  }
+  for (const pos of lighterPositions) {
+    if (prices[pos.market] === undefined) {
+      prices[pos.market] = parseFloat(pos.entryPrice);
+    }
   }
   return prices;
 }
@@ -158,6 +168,8 @@ function calculateHedgedExposure({ symbol, totalHoldings, shorts, longs = [], cu
   const totalLong = longs.reduce((sum, l) => sum + l.size, 0);
   const netShort = totalShort - totalLong;
   const netExposure = totalHoldings - netShort;
+  const netEntryValue = shorts.reduce((sum, s) => sum + s.size * s.entryPrice, 0)
+    - longs.reduce((sum, l) => sum + l.size * l.entryPrice, 0);
   let totalValue = 0;
 
   console.log(`  Shorts:`);
@@ -181,32 +193,26 @@ function calculateHedgedExposure({ symbol, totalHoldings, shorts, longs = [], cu
 
   console.log(`  ─────────────────────────`);
 
-  if (netShort > 0) {
-    // Value the hedged spot at the short entry prices (pro-rata if multiple shorts)
-    // Perp longs reduce the net short but their value is in their own collateral/PnL
-    const netShortValue = shorts.reduce((sum, s) => sum + s.size * s.entryPrice, 0)
-      - longs.reduce((sum, l) => sum + l.size * l.entryPrice, 0);
-    const hedgedSpot = Math.min(totalHoldings, netShort);
-    const hedgedValue = hedgedSpot / netShort * netShortValue;
-    console.log(`  Hedged:${' '.repeat(Math.max(0, 14 - symbol.length))}${hedgedSpot.toFixed(2)} × avg $${(netShortValue / netShort).toFixed(4)} = $${hedgedValue.toFixed(2)}`);
-    totalValue += hedgedValue;
+  if (netEntryValue !== 0) {
+    console.log(`  Entry component:   $${netEntryValue.toFixed(2)}`);
+    totalValue += netEntryValue;
+  }
 
-    if (netExposure > 0) {
-      const unhedgedValue = netExposure * currentPrice;
-      console.log(`  Unhedged (asset):${' '.repeat(Math.max(0, 8 - symbol.length))}${netExposure.toFixed(2)} × $${currentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
-      totalValue += unhedgedValue;
-    } else if (netExposure < 0) {
-      const unhedgedValue = netExposure * currentPrice;
-      console.log(`  Unhedged (DEBT):${' '.repeat(Math.max(0, 9 - symbol.length))}${Math.abs(netExposure).toFixed(2)} × $${currentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
-      totalValue += unhedgedValue;
-    } else {
-      console.log(`  Perfectly hedged!`);
-    }
+  if (netExposure > 0 && currentPrice > 0) {
+    const unhedgedValue = netExposure * currentPrice;
+    console.log(`  Unhedged (asset):${' '.repeat(Math.max(0, 8 - symbol.length))}${netExposure.toFixed(2)} × $${currentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
+    totalValue += unhedgedValue;
+  } else if (netExposure < 0 && currentPrice > 0) {
+    const unhedgedValue = netExposure * currentPrice;
+    console.log(`  Unhedged (DEBT):${' '.repeat(Math.max(0, 9 - symbol.length))}${Math.abs(netExposure).toFixed(2)} × $${currentPrice.toFixed(4)} = $${unhedgedValue.toFixed(2)}`);
+    totalValue += unhedgedValue;
+  } else if (netExposure === 0 && netEntryValue !== 0) {
+    console.log(`  Perfectly hedged!`);
   } else if (totalHoldings > 0 && currentPrice > 0) {
     totalValue = totalHoldings * currentPrice;
     console.log(`  No hedge - current:  ${totalHoldings.toFixed(4)} × $${currentPrice.toFixed(2)} = $${totalValue.toFixed(2)}`);
-  } else if (totalHoldings > 0) {
-    console.log(`  No hedge - no price available`);
+  } else if (netExposure !== 0) {
+    console.log(`  Unhedged exposure present but no current price available`);
   }
 
   console.log(`  ─────────────────────────`);
@@ -234,12 +240,30 @@ function findHyperliquidShort(positions, coin) {
   return { size: 0, entryPrice: 0, unrealizedPnl: 0 };
 }
 
+// Helper: extract long position for a coin from Hyperliquid positions array
+function findHyperliquidLong(positions, coin) {
+  for (const pos of positions) {
+    const position = pos.position || pos;
+    const c = position.coin || pos.coin;
+    if (c === coin) {
+      const szi = parseFloat(position.szi || pos.szi || 0);
+      if (szi > 0) {
+        return {
+          size: Math.abs(szi),
+          entryPrice: parseFloat(position.entryPx || pos.entryPx || 0),
+          unrealizedPnl: parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0),
+        };
+      }
+    }
+  }
+  return { size: 0, entryPrice: 0, unrealizedPnl: 0 };
+}
+
 // Helper: extract short position for a market from Lighter positions array
 function findLighterShort(positions, market) {
-  const pos = positions.find(p => p.market === market);
+  const pos = positions.find(p => p.market === market && p.side === 'short');
   if (!pos) return { size: 0, entryPrice: 0, unrealizedPnl: 0 };
   const size = parseFloat(pos.size || 0);
-  if (pos.side !== 'short' && size >= 0) return { size: 0, entryPrice: 0, unrealizedPnl: 0 };
   return {
     size: Math.abs(size),
     entryPrice: parseFloat(pos.entryPrice || 0),
@@ -249,10 +273,9 @@ function findLighterShort(positions, market) {
 
 // Helper: extract long position for a market from Lighter positions array
 function findLighterLong(positions, market) {
-  const pos = positions.find(p => p.market === market);
+  const pos = positions.find(p => p.market === market && p.side === 'long');
   if (!pos) return { size: 0, entryPrice: 0, unrealizedPnl: 0 };
   const size = parseFloat(pos.size || 0);
-  if (pos.side !== 'long' && size <= 0) return { size: 0, entryPrice: 0, unrealizedPnl: 0 };
   return {
     size: Math.abs(size),
     entryPrice: parseFloat(pos.entryPrice || 0),
@@ -266,6 +289,18 @@ function derivePriceFromShort(short) {
     return short.entryPrice - (short.unrealizedPnl / short.size);
   }
   return 0;
+}
+
+// Helper: derive current price from a long position's entry and PnL
+function derivePriceFromLong(long) {
+  if (long.size > 0 && long.entryPrice > 0) {
+    return long.entryPrice + (long.unrealizedPnl / long.size);
+  }
+  return 0;
+}
+
+function firstPositive(...values) {
+  return values.find(v => Number.isFinite(v) && v > 0) || 0;
 }
 
 // ============================================
@@ -450,51 +485,86 @@ const LIGHTER_MARKETS = {
   120: 'LIT',
 };
 
-async function fetchLighterEquity(address) {
+async function fetchLighterEquity(addresses, options = {}) {
   try {
-    // Fetch account data (collateral)
-    const accountResponse = await fetch(
-      `https://mainnet.zklighter.elliot.ai/api/v1/accountsByL1Address?l1_address=${address}`
-    );
-
+    const includeDefaultAccount = options.includeDefaultAccount !== false;
+    const addressList = Array.isArray(addresses) ? addresses : [addresses];
     let totalCollateral = 0;
-    let accountIndex = LIGHTER_ACCOUNT_INDEX;
+    const accountIndexes = new Set(includeDefaultAccount ? [String(LIGHTER_ACCOUNT_INDEX)] : []);
 
-    if (accountResponse.ok) {
+    for (const address of addressList) {
+      const accountResponse = await fetch(
+        `https://mainnet.zklighter.elliot.ai/api/v1/accountsByL1Address?l1_address=${address}`
+      );
+      if (!accountResponse.ok) continue;
+
       const accountData = await accountResponse.json();
       const subAccounts = accountData.sub_accounts || [];
 
       for (const account of subAccounts) {
         totalCollateral += parseFloat(account.collateral || 0);
         if (account.index) {
-          accountIndex = account.index;
+          accountIndexes.add(String(account.index));
         }
       }
     }
 
-    // Fetch positions with unrealized PnL from explorer API
-    const positionsResponse = await fetch(
-      `https://explorer.elliot.ai/api/accounts/${accountIndex}/positions`
+    let unrealizedPnl = 0;
+    const aggregatedPositions = new Map();
+
+    // Fetch positions with unrealized PnL from every Lighter subaccount.
+    const positionResponses = await Promise.all(
+      [...accountIndexes].map(async (accountIndex) => {
+        try {
+          const response = await fetch(
+            `https://explorer.elliot.ai/api/accounts/${accountIndex}/positions`
+          );
+          if (!response.ok) return null;
+          return await response.json();
+        } catch {
+          return null;
+        }
+      })
     );
 
-    let unrealizedPnl = 0;
-    const positions = [];
-
-    if (positionsResponse.ok) {
-      const positionsData = await positionsResponse.json();
+    for (const positionsData of positionResponses) {
+      if (!positionsData) continue;
 
       for (const [marketIdx, position] of Object.entries(positionsData.positions || {})) {
+        const market = LIGHTER_MARKETS[marketIdx] || `Market ${marketIdx}`;
         const pnl = parseFloat(position.pnl || 0);
+        const rawSize = parseFloat(position.size || 0);
+        const side = position.side;
+        const signedSize = side === 'short' ? -Math.abs(rawSize) : Math.abs(rawSize);
+        const entryPrice = parseFloat(position.entry_price || 0);
+
         unrealizedPnl += pnl;
 
-        positions.push({
-          market: LIGHTER_MARKETS[marketIdx] || `Market ${marketIdx}`,
-          side: position.side,
-          size: position.size,
-          entryPrice: position.entry_price,
-          unrealizedPnl: pnl,
-        });
+        const key = `${market}:${side}`;
+        const existing = aggregatedPositions.get(key) || {
+          market,
+          side,
+          size: 0,
+          weightedNotional: 0,
+          unrealizedPnl: 0,
+        };
+        existing.size += Math.abs(signedSize);
+        existing.weightedNotional += Math.abs(signedSize) * entryPrice;
+        existing.unrealizedPnl += pnl;
+        aggregatedPositions.set(key, existing);
       }
+    }
+
+    const positions = [];
+    for (const agg of aggregatedPositions.values()) {
+      if (agg.size <= 0) continue;
+      positions.push({
+        market: agg.market,
+        side: agg.side,
+        size: agg.size,
+        entryPrice: agg.weightedNotional / agg.size,
+        unrealizedPnl: agg.unrealizedPnl,
+      });
     }
 
     // Total equity = collateral + unrealized PnL
@@ -820,6 +890,95 @@ async function fetchRyskPositions(address) {
   }
 }
 
+function fetchRyskMarginPoolBalances(address) {
+  try {
+    const py = `
+import json
+import os
+import io
+import contextlib
+import time
+from scripts.arb.v2.rysk_client import RyskMakerClient
+
+account = ${JSON.stringify(address)}
+client = RyskMakerClient(env=os.environ.get("RYSK_ENV", "mainnet"))
+responses = []
+
+def _on_response(data):
+    responses.append(data)
+
+def _decimals_for(asset: str) -> int:
+    addr = (asset or "").lower()
+    if addr == ${JSON.stringify(USDT0_ADDRESS.toLowerCase())}:
+        return 6
+    if addr == ${JSON.stringify(HYPEREVM_USDC.toLowerCase())}:
+        return 6
+    if addr == ${JSON.stringify(WHYPE_ADDRESS.toLowerCase())}:
+        return 18
+    return 18
+
+try:
+    client.on_response(_on_response)
+    with contextlib.redirect_stdout(io.StringIO()):
+        client.start(subscribe_assets=[])
+    client.get_balances(account)
+    time.sleep(2.5)
+    entries = []
+    for resp in responses:
+        if isinstance(resp, dict) and resp.get("id") == "balances":
+            entries = resp.get("result", []) or []
+            break
+    out = {}
+    for e in entries:
+        asset = (e.get("assetAddress") or "").lower()
+        raw = int(e.get("balance", "0"))
+        dec = _decimals_for(asset)
+        bal = raw / (10 ** dec)
+        if asset == ${JSON.stringify(USDT0_ADDRESS.toLowerCase())}:
+            out["USDT0"] = bal
+        elif asset == ${JSON.stringify(HYPEREVM_USDC.toLowerCase())}:
+            out["USDC"] = bal
+        elif asset == ${JSON.stringify(WHYPE_ADDRESS.toLowerCase())}:
+            out["WHYPE"] = bal
+    print(json.dumps(out))
+finally:
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            client.stop()
+    except Exception:
+        pass
+`;
+    const stdout = execFileSync('/Users/onomeokajevo/AYP/.venv/bin/python3', ['-c', py], {
+      cwd: join(__dirname, '..'),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const jsonText = extractJsonObject(stdout);
+    const parsed = jsonText ? JSON.parse(jsonText) : {};
+    return {
+      usdt0: num(parsed.USDT0),
+      usdc: num(parsed.USDC),
+      whype: num(parsed.WHYPE),
+    };
+  } catch (e) {
+    console.warn(`Failed to fetch Rysk MarginPool balances for ${address}:`, e.message);
+    return { usdt0: 0, usdc: 0, whype: 0 };
+  }
+}
+
+function calculateRyskIntrinsicLiability(positions, currentHypePrice) {
+  if (!currentHypePrice || currentHypePrice <= 0) return 0;
+  return positions.reduce((sum, pos) => {
+    if (pos.type === 'PUT') {
+      return sum + Math.max(pos.strike - currentHypePrice, 0) * pos.contracts;
+    }
+    if (pos.type === 'CALL') {
+      return sum + Math.max(currentHypePrice - pos.strike, 0) * pos.contracts;
+    }
+    return sum;
+  }, 0);
+}
+
 // ============================================
 // HyperLend (Aave V3 fork on HyperEVM)
 // ============================================
@@ -848,13 +1007,13 @@ const hyperlendPoolAbi = [
 const HYPERLEND_HTOKENS = {
   WHYPE: { address: '0x0D745EAA9E70bb8B6e2a0317f85F1d536616bD34', decimals: 18, underlying: WHYPE_ADDRESS },
   USDT0: { address: '0x10982ad645D5A112606534d8567418Cf64c14cB5', decimals: 6, underlying: USDT0_ADDRESS },
-  USDC:  { address: '0x744E4f26ee30213989216E1632D9BE3547C4885b', decimals: 6, underlying: HYPEREVM_USDC },
+  USDC: { address: '0x744E4f26ee30213989216E1632D9BE3547C4885b', decimals: 6, underlying: HYPEREVM_USDC },
 };
 
 const HYPERLEND_DEBT_TOKENS = {
   WHYPE: { address: '0x747d0d4Ba0a2083651513cd008deb95075683e82', decimals: 18 },
   USDT0: { address: '0x1EF897622D62335e7FC88Fb0605FbBa28eC0b01d', decimals: 6 },
-  USDC:  { address: '0xD612513cB3b2C52abCD6d4b338374C09AdA4657d', decimals: 6 },
+  USDC: { address: '0xD612513cB3b2C52abCD6d4b338374C09AdA4657d', decimals: 6 },
 };
 
 async function fetchHyperLendPositions(address) {
@@ -941,6 +1100,12 @@ const DERIVE_API = 'https://api.lyra.finance';
 const DERIVE_WALLET = process.env.DERIVE_WALLET;
 const DERIVE_SESSION_KEY = process.env.DERIVE_SESSION_KEY;
 const DERIVE_SUBACCOUNT_ID = process.env.DERIVE_SUBACCOUNT_ID ? parseInt(process.env.DERIVE_SUBACCOUNT_ID) : null;
+// Operator wallet's Derive subaccount. Holds collateral + positions that the
+// vault session key can read but the main subaccount fetch ignores. Optional;
+// when unset the operator side is excluded from NAV.
+const DERIVE_OPERATOR_SUBACCOUNT_ID = process.env.DERIVE_OPERATOR_SUBACCOUNT_ID
+  ? parseInt(process.env.DERIVE_OPERATOR_SUBACCOUNT_ID)
+  : null;
 
 async function deriveAuthHeaders() {
   if (!DERIVE_WALLET || !DERIVE_SESSION_KEY) return null;
@@ -955,87 +1120,150 @@ async function deriveAuthHeaders() {
   };
 }
 
+async function fetchDerivePrivate(method, body, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const headers = await deriveAuthHeaders();
+      if (!headers) throw new Error('Derive auth headers unavailable');
+      const response = await fetch(`${DERIVE_API}/private/${method}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        throw new Error(`${method} HTTP ${response.status}`);
+      }
+      const json = await response.json();
+      if (json.error) {
+        throw new Error(`${method}: ${JSON.stringify(json.error)}`);
+      }
+      return json.result || {};
+    } catch (e) {
+      lastError = e;
+      if (attempt < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 300 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
+async function fetchDeriveSubaccount(subaccountId) {
+  const params = { subaccount_id: subaccountId };
+  const subaccount = await fetchDerivePrivate('get_subaccount', params);
+  const collaterals = await fetchDerivePrivate('get_collaterals', params);
+  const positionsData = await fetchDerivePrivate('get_positions', params);
+  const ordersData = await fetchDerivePrivate('get_open_orders', params);
+  return { subaccount, collaterals, positionsData, ordersData };
+}
+
 async function fetchDerivePositions() {
   if (!DERIVE_WALLET || !DERIVE_SESSION_KEY || !DERIVE_SUBACCOUNT_ID) {
-    return { usdcBalance: 0, positions: [], openOrders: [] };
+    throw new Error('Derive credentials missing; refusing to calculate NAV without Derive account value');
+  }
+
+  const subaccountIds = [DERIVE_SUBACCOUNT_ID];
+  if (DERIVE_OPERATOR_SUBACCOUNT_ID && DERIVE_OPERATOR_SUBACCOUNT_ID !== DERIVE_SUBACCOUNT_ID) {
+    subaccountIds.push(DERIVE_OPERATOR_SUBACCOUNT_ID);
   }
 
   try {
-    const headers = await deriveAuthHeaders();
-    if (!headers) return { usdcBalance: 0, positions: [], openOrders: [] };
-
-    const [collateralsRes, positionsRes, ordersRes] = await Promise.all([
-      fetch(`${DERIVE_API}/private/get_collaterals`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ subaccount_id: DERIVE_SUBACCOUNT_ID }),
-      }),
-      fetch(`${DERIVE_API}/private/get_positions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ subaccount_id: DERIVE_SUBACCOUNT_ID }),
-      }),
-      fetch(`${DERIVE_API}/private/get_open_orders`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ subaccount_id: DERIVE_SUBACCOUNT_ID }),
-      }),
-    ]);
-
-    const collaterals = (await collateralsRes.json()).result || {};
-    const positionsData = (await positionsRes.json()).result || {};
-    const ordersData = (await ordersRes.json()).result || {};
-
-    // Parse USDC balance from collaterals
+    const fetched = await Promise.all(subaccountIds.map(fetchDeriveSubaccount));
+    // Aggregate USDC across subaccounts (additive).
     let usdcBalance = 0;
-    const collateralList = collaterals.collaterals || [];
-    if (Array.isArray(collateralList)) {
-      for (const c of collateralList) {
-        if (c.asset_name === 'USDC') {
-          usdcBalance += parseFloat(c.amount || 0);
+    // Aggregate positions/orders by concatenation; downstream callers iterate them.
+    const positions = [];
+    const openOrders = [];
+    // Aggregate scalar subaccount metrics. accountValue, positionsValue, etc. are
+    // additive across subaccounts that the vault is liable for.
+    let accountValue = 0;
+    let positionsValue = 0;
+    let collateralValue = 0;
+    let initialMargin = 0;
+    let maintenanceMargin = 0;
+    let openOrdersMargin = 0;
+
+    for (const { subaccount, collaterals, positionsData, ordersData } of fetched) {
+
+      const collateralList = collaterals.collaterals || [];
+      if (Array.isArray(collateralList)) {
+        for (const c of collateralList) {
+          if (c.asset_name === 'USDC') {
+            usdcBalance += parseFloat(c.amount || 0);
+          }
         }
       }
-    }
 
-    // Parse option positions (non-zero amounts only)
-    const positions = [];
-    const positionList = positionsData.positions || [];
-    if (Array.isArray(positionList)) {
-      for (const p of positionList) {
-        const amount = parseFloat(p.amount || 0);
-        if (amount === 0) continue;
-        positions.push({
-          instrument: p.instrument_name,
-          amount,
-          averagePrice: parseFloat(p.average_price || 0),
-          markPrice: parseFloat(p.mark_price || 0),
-          unrealizedPnl: parseFloat(p.unrealized_pnl || 0),
-          indexPrice: parseFloat(p.index_price || 0),
-          delta: parseFloat(p.delta || 0),
-        });
+      const positionList = positionsData.positions || [];
+      if (Array.isArray(positionList)) {
+        for (const p of positionList) {
+          const amount = parseFloat(p.amount || 0);
+          if (amount === 0) continue;
+          positions.push({
+            instrument: p.instrument_name,
+            amount,
+            averagePrice: parseFloat(p.average_price || 0),
+            markPrice: parseFloat(p.mark_price || 0),
+            unrealizedPnl: parseFloat(p.unrealized_pnl || 0),
+            indexPrice: parseFloat(p.index_price || 0),
+            delta: parseFloat(p.delta || 0),
+          });
+        }
       }
-    }
 
-    // Parse open orders
-    const openOrders = [];
-    const orderList = ordersData.orders || [];
-    if (Array.isArray(orderList)) {
-      for (const o of orderList) {
-        openOrders.push({
-          instrument: o.instrument_name,
-          direction: o.direction,
-          amount: parseFloat(o.amount || 0),
-          filledAmount: parseFloat(o.filled_amount || 0),
-          limitPrice: parseFloat(o.limit_price || 0),
-          status: o.order_status,
-        });
+      const orderList = ordersData.orders || [];
+      if (Array.isArray(orderList)) {
+        for (const o of orderList) {
+          openOrders.push({
+            instrument: o.instrument_name,
+            direction: o.direction,
+            amount: parseFloat(o.amount || 0),
+            filledAmount: parseFloat(o.filled_amount || 0),
+            limitPrice: parseFloat(o.limit_price || 0),
+            status: o.order_status,
+          });
+        }
       }
+
+      accountValue += parseFloat(subaccount.subaccount_value || 0);
+      positionsValue += parseFloat(subaccount.positions_value || 0);
+      collateralValue += parseFloat(subaccount.collaterals_value || 0);
+      initialMargin += parseFloat(subaccount.initial_margin || 0);
+      maintenanceMargin += parseFloat(subaccount.maintenance_margin || 0);
+      openOrdersMargin += parseFloat(subaccount.open_orders_margin || 0);
     }
 
-    return { usdcBalance, positions, openOrders };
+    // Manual fallback value = USDC collateral minus current mark cost to close shorts,
+    // plus the mark value of any long positions. USDC includes premiums already
+    // received; open shorts are still liabilities.
+    const openShortMarkCost = positions
+      .filter(p => p.amount < 0)
+      .reduce((sum, p) => sum + Math.abs(p.amount) * p.markPrice, 0);
+    const openLongMarkValue = positions
+      .filter(p => p.amount > 0)
+      .reduce((sum, p) => sum + p.amount * p.markPrice, 0);
+    const manualPortfolioValue = usdcBalance - openShortMarkCost + openLongMarkValue;
+    const portfolioValue = accountValue || manualPortfolioValue;
+
+    return {
+      usdcBalance,
+      portfolioValue,
+      accountValue,
+      manualPortfolioValue,
+      openShortMarkCost,
+      openLongMarkValue,
+      positionsValue,
+      collateralValue,
+      initialMargin,
+      maintenanceMargin,
+      openOrdersMargin,
+      positions,
+      openOrders,
+      subaccountIds,
+    };
   } catch (e) {
-    console.warn('Failed to fetch Derive positions:', e.message);
-    return { usdcBalance: 0, positions: [], openOrders: [] };
+    throw new Error(`Failed to fetch Derive positions: ${e.message}`);
   }
 }
 
@@ -1337,6 +1565,22 @@ async function fetchVaultData() {
 const NAV_HISTORY_PATH = join(__dirname, '..', 'data', 'nav-history.json');
 const YIELD_SNAPSHOTS_PATH = join(__dirname, '..', 'data', 'yield-snapshots.json');
 
+function num(value, defaultValue = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function extractJsonObject(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+    return null;
+  }
+  return text.slice(firstBrace, lastBrace + 1);
+}
+
 function loadNavHistory() {
   try {
     if (existsSync(NAV_HISTORY_PATH)) {
@@ -1414,8 +1658,10 @@ async function calculateYield() {
     multisigEthBalances,
     multisigHyperBalances,
     operatorHyperBalances,
+    ryskMmHyperBalances,
     pendleData,
     lighterData,
+    lighterOperatorData,
     lighterSpotData,
     lighterStakedData,
     hyperliquidData,
@@ -1423,14 +1669,19 @@ async function calculateYield() {
     vaultData,
     hyperliquidSpotData,
     ryskData,
+    ryskMmVaultData,
+    ryskOperatorMarginPool,
+    ryskMmMarginPool,
     hyperLendData,
     deriveData,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(OPERATOR_ADDRESS),
+    fetchHyperEvmBalances(RYSK_MM_ADDRESS),
     fetchPendlePositions(MULTISIG_ADDRESS, usdcPrice),
-    fetchLighterEquity(MULTISIG_ADDRESS),
+    fetchLighterEquity(MULTISIG_ADDRESS, { includeDefaultAccount: true }),
+    fetchLighterEquity(OPERATOR_ADDRESS, { includeDefaultAccount: false }),
     fetchLighterSpotAssets(),
     fetchLighterStakedLIT(),
     fetchHyperliquidEquity(OPERATOR_ADDRESS),
@@ -1438,6 +1689,9 @@ async function calculateYield() {
     fetchVaultData(),
     fetchHyperliquidSpot(OPERATOR_ADDRESS),
     fetchRyskPositions(OPERATOR_ADDRESS),
+    fetchRyskPositions(RYSK_MM_ADDRESS),
+    fetchRyskMarginPoolBalances(OPERATOR_ADDRESS),
+    fetchRyskMarginPoolBalances(RYSK_MM_ADDRESS),
     fetchHyperLendPositions(OPERATOR_ADDRESS),
     fetchDerivePositions(),
   ]);
@@ -1466,6 +1720,7 @@ async function calculateYield() {
     ...multisigEthBalances,
     ...multisigHyperBalances,
     ...operatorHyperBalances,
+    ...ryskMmHyperBalances,
   ];
 
   for (const bal of allSpotBalances) {
@@ -1494,6 +1749,36 @@ async function calculateYield() {
   }
   console.log(`  SPOT TOTAL: $${spotTotalUsd.toFixed(2)}`);
 
+  const ryskMmStableBalance = ryskMmHyperBalances
+    .filter(b => STABLECOINS.includes(b.symbol))
+    .reduce((sum, b) => sum + parseFloat(b.balance), 0);
+  const ryskMmHypeBalance = ryskMmHyperBalances
+    .filter(b => b.symbol === 'HYPE' || b.symbol === 'WHYPE')
+    .reduce((sum, b) => sum + parseFloat(b.balance), 0);
+  const ryskMmOtherTrackedValue = ryskMmHyperBalances
+    .filter(b => !STABLECOINS.includes(b.symbol) && b.symbol !== 'HYPE' && b.symbol !== 'WHYPE')
+    .reduce((sum, b) => {
+      if (entryPrices[b.symbol]) {
+        return sum + (parseFloat(b.balance) * entryPrices[b.symbol]);
+      }
+      return sum;
+    }, 0);
+
+  if (ryskMmHyperBalances.length > 0) {
+    console.log('');
+    console.log('RYSK MM WALLET:');
+    console.log(`  Address:           ${RYSK_MM_ADDRESS}`);
+    if (ryskMmStableBalance > 0) {
+      console.log(`  Stable balances:   $${ryskMmStableBalance.toFixed(2)}`);
+    }
+    if (ryskMmHypeBalance > 0) {
+      console.log(`  HYPE / WHYPE:      ${ryskMmHypeBalance.toFixed(4)} HYPE`);
+    }
+    if (ryskMmOtherTrackedValue > 0) {
+      console.log(`  Other tracked val: $${ryskMmOtherTrackedValue.toFixed(2)}`);
+    }
+  }
+
   // 4. Calculate HYPE exposure and hedged/unhedged portions
   console.log('');
   console.log('HYPE EXPOSURE ANALYSIS:');
@@ -1512,7 +1797,9 @@ async function calculateYield() {
   console.log(`  PT HYPE equiv:    ${ptHypeEquiv.toFixed(2)} HYPE`);
 
   // WHYPE locked in Rysk covered calls (still our spot HYPE, hedged by perp short)
-  const ryskWhype = ryskData.totalCollateralWhype || 0;
+  const ryskOperatorWhype = (ryskData.totalCollateralWhype || 0) + (ryskOperatorMarginPool.whype || 0);
+  const ryskMmWhype = (ryskMmVaultData.totalCollateralWhype || 0) + (ryskMmMarginPool.whype || 0);
+  const ryskWhype = ryskOperatorWhype + ryskMmWhype;
   if (ryskWhype > 0) {
     console.log(`  Rysk (locked):    ${ryskWhype.toFixed(2)} HYPE`);
   }
@@ -1530,7 +1817,13 @@ async function calculateYield() {
   const lighterHypeShort = findLighterShort(lighterData.positions, 'HYPE');
   const lighterHypeLong = findLighterLong(lighterData.positions, 'HYPE');
   const hlHypeShort = findHyperliquidShort(hyperliquidData.positions, 'HYPE');
-  let hypeCurrentPrice = pendleData.positions[0]?.underlyingPrice || entryPrices['HYPE'] || derivePriceFromShort(hlHypeShort);
+  let hypeCurrentPrice = firstPositive(
+    pendleData.positions[0]?.underlyingPrice,
+    derivePriceFromShort(hlHypeShort),
+    derivePriceFromShort(lighterHypeShort),
+    derivePriceFromLong(lighterHypeLong),
+    entryPrices['HYPE'],
+  );
 
   const hypeExposure = calculateHedgedExposure({
     symbol: 'HYPE',
@@ -1555,6 +1848,19 @@ async function calculateYield() {
   if (lighterData.positions.length > 0) {
     console.log('  Positions:');
     for (const pos of lighterData.positions) {
+      const pnlSign = pos.unrealizedPnl >= 0 ? '+' : '';
+      console.log(`    ${pos.market} ${pos.side.toUpperCase()}: ${pos.size} @ $${pos.entryPrice} (${pnlSign}$${pos.unrealizedPnl.toFixed(2)})`);
+    }
+  }
+
+  console.log('');
+  console.log('LIGHTER OPERATOR TRADING (standalone, not delta-neutral):');
+  console.log(`  Collateral:      $${lighterOperatorData.collateral.toFixed(2)}`);
+  console.log(`  Unrealized PnL:  $${lighterOperatorData.unrealizedPnl.toFixed(2)} (counted in equity)`);
+  console.log(`  Equity:          $${lighterOperatorData.equity.toFixed(2)}`);
+  if (lighterOperatorData.positions.length > 0) {
+    console.log('  Positions:');
+    for (const pos of lighterOperatorData.positions) {
       const pnlSign = pos.unrealizedPnl >= 0 ? '+' : '';
       console.log(`    ${pos.market} ${pos.side.toUpperCase()}: ${pos.size} @ $${pos.entryPrice} (${pnlSign}$${pos.unrealizedPnl.toFixed(2)})`);
     }
@@ -1593,6 +1899,71 @@ async function calculateYield() {
       }
     }
   }
+
+  // Calculate ETH exposure. This catches unhedged/overhedged perp PnL that
+  // cannot be safely ignored under the collateral-only perp treatment.
+  console.log('');
+  console.log('ETH EXPOSURE ANALYSIS:');
+  const ethSpot = allSpotBalances
+    .filter(b => b.symbol === 'ETH')
+    .reduce((sum, b) => sum + parseFloat(b.balance), 0);
+  console.log(`  Spot ETH:          ${ethSpot.toFixed(4)} ETH`);
+
+  const lighterEthShort = findLighterShort(lighterData.positions, 'ETH');
+  const lighterEthLong = findLighterLong(lighterData.positions, 'ETH');
+  const hlEthShort = findHyperliquidShort(hyperliquidData.positions, 'ETH');
+  const hlEthLong = findHyperliquidLong(hyperliquidData.positions, 'ETH');
+  const currentEthPrice = firstPositive(
+    derivePriceFromShort(hlEthShort),
+    derivePriceFromLong(hlEthLong),
+    derivePriceFromShort(lighterEthShort),
+    derivePriceFromLong(lighterEthLong),
+    entryPrices['ETH'],
+  );
+
+  const ethExposure = calculateHedgedExposure({
+    symbol: 'ETH',
+    totalHoldings: ethSpot,
+    shorts: [
+      { venue: 'Lighter', ...lighterEthShort },
+      { venue: 'Hyperliquid', ...hlEthShort },
+    ],
+    longs: [
+      { venue: 'Lighter', ...lighterEthLong },
+      { venue: 'Hyperliquid', ...hlEthLong },
+    ],
+    currentPrice: currentEthPrice,
+  });
+  const ethValue = ethExposure.totalValue;
+
+  // BTC has no spot leg in the vault, but Lighter BTC perp PnL still affects NAV.
+  console.log('');
+  console.log('BTC PERP EXPOSURE ANALYSIS:');
+  const lighterBtcShort = findLighterShort(lighterData.positions, 'BTC');
+  const lighterBtcLong = findLighterLong(lighterData.positions, 'BTC');
+  const hlBtcShort = findHyperliquidShort(hyperliquidData.positions, 'BTC');
+  const hlBtcLong = findHyperliquidLong(hyperliquidData.positions, 'BTC');
+  const currentBtcPrice = firstPositive(
+    derivePriceFromShort(hlBtcShort),
+    derivePriceFromLong(hlBtcLong),
+    derivePriceFromShort(lighterBtcShort),
+    derivePriceFromLong(lighterBtcLong),
+    entryPrices['BTC'],
+  );
+  const btcExposure = calculateHedgedExposure({
+    symbol: 'BTC',
+    totalHoldings: 0,
+    shorts: [
+      { venue: 'Lighter', ...lighterBtcShort },
+      { venue: 'Hyperliquid', ...hlBtcShort },
+    ],
+    longs: [
+      { venue: 'Lighter', ...lighterBtcLong },
+      { venue: 'Hyperliquid', ...hlBtcLong },
+    ],
+    currentPrice: currentBtcPrice,
+  });
+  const btcValue = btcExposure.totalValue;
 
   // Calculate SOL exposure with Hyperliquid hedge
   console.log('');
@@ -1659,22 +2030,52 @@ async function calculateYield() {
   // Rysk Finance (options)
   console.log('');
   console.log('RYSK (Options on HyperEVM):');
-  if (ryskData.positions.length > 0) {
-    if (ryskData.totalCollateralUsdt0 > 0) {
-      console.log(`  USDT0 collateral:  $${ryskData.totalCollateralUsdt0.toFixed(2)}`);
+  console.log(`  MarginPool:        ${RYSK_MARGIN_POOL_ADDRESS}`);
+  const totalRyskVaults = (ryskData.positions.length || 0) + (ryskMmVaultData.positions.length || 0);
+  const operatorRyskUsdt0 = (ryskData.totalCollateralUsdt0 || 0) + (ryskOperatorMarginPool.usdt0 || 0);
+  const operatorRyskUsdc = (ryskData.totalCollateralUsdc || 0) + (ryskOperatorMarginPool.usdc || 0);
+  const operatorRyskWhype = (ryskData.totalCollateralWhype || 0) + (ryskOperatorMarginPool.whype || 0);
+  const mmRyskUsdt0 = (ryskMmVaultData.totalCollateralUsdt0 || 0) + (ryskMmMarginPool.usdt0 || 0);
+  const mmRyskUsdc = (ryskMmVaultData.totalCollateralUsdc || 0) + (ryskMmMarginPool.usdc || 0);
+  const mmRyskWhype = (ryskMmVaultData.totalCollateralWhype || 0) + (ryskMmMarginPool.whype || 0);
+  const totalRyskStableCollateral = operatorRyskUsdt0 + operatorRyskUsdc + mmRyskUsdt0 + mmRyskUsdc;
+  const totalRyskUsdt0 = operatorRyskUsdt0 + mmRyskUsdt0;
+  const totalRyskUsdc = operatorRyskUsdc + mmRyskUsdc;
+  const totalRyskWhype = operatorRyskWhype + mmRyskWhype;
+  const allRyskOptionPositions = [
+    ...ryskData.positions,
+    ...ryskMmVaultData.positions,
+  ];
+  const ryskOptionIntrinsicLiability = calculateRyskIntrinsicLiability(allRyskOptionPositions, hypeCurrentPrice);
+
+  if (totalRyskVaults > 0 || totalRyskStableCollateral > 0 || totalRyskWhype > 0) {
+    if (totalRyskUsdt0 > 0) {
+      console.log(`  USDT0 collateral:  $${totalRyskUsdt0.toFixed(2)}`);
     }
-    if (ryskData.totalCollateralUsdc > 0) {
-      console.log(`  USDC collateral:   $${ryskData.totalCollateralUsdc.toFixed(2)}`);
+    if (totalRyskUsdc > 0) {
+      console.log(`  USDC collateral:   $${totalRyskUsdc.toFixed(2)}`);
     }
-    if (ryskData.totalCollateralWhype > 0) {
-      console.log(`  WHYPE collateral:  ${ryskData.totalCollateralWhype.toFixed(4)} HYPE`);
+    if (totalRyskWhype > 0) {
+      console.log(`  WHYPE collateral:  ${totalRyskWhype.toFixed(4)} HYPE`);
     }
-    console.log(`  Positions (${ryskData.positions.length} vaults):`);
+    console.log(`  Short intrinsic:   -$${ryskOptionIntrinsicLiability.toFixed(2)}`);
+    console.log(`  Operator vaults:   ${ryskData.vaultCount}`);
+    console.log(`  MM wallet vaults:  ${ryskMmVaultData.vaultCount}`);
+    if (operatorRyskUsdt0 > 0 || operatorRyskUsdc > 0 || ryskOperatorMarginPool.whype > 0) {
+      console.log(`  Operator MarginPool: USDT0=$${ryskOperatorMarginPool.usdt0.toFixed(2)} USDC=$${ryskOperatorMarginPool.usdc.toFixed(2)} WHYPE=${ryskOperatorMarginPool.whype.toFixed(4)}`);
+    }
+    if (mmRyskUsdt0 > 0 || mmRyskUsdc > 0 || ryskMmMarginPool.whype > 0) {
+      console.log(`  MM MarginPool:      USDT0=$${ryskMmMarginPool.usdt0.toFixed(2)} USDC=$${ryskMmMarginPool.usdc.toFixed(2)} WHYPE=${ryskMmMarginPool.whype.toFixed(4)}`);
+    }
+    console.log(`  Positions (${totalRyskVaults} vaults):`);
     for (const pos of ryskData.positions) {
       console.log(`    ${pos.type} $${pos.strike.toFixed(0)} exp ${pos.expiry}: ${pos.contracts.toFixed(1)} contracts (${pos.collateral.toFixed(2)} ${pos.collateralSymbol})`);
     }
+    for (const pos of ryskMmVaultData.positions) {
+      console.log(`    [MM] ${pos.type} $${pos.strike.toFixed(0)} exp ${pos.expiry}: ${pos.contracts.toFixed(1)} contracts (${pos.collateral.toFixed(2)} ${pos.collateralSymbol})`);
+    }
   } else {
-    console.log(`  No Rysk positions (${ryskData.vaultCount} vaults checked)`);
+    console.log(`  No Rysk positions (${ryskData.vaultCount + ryskMmVaultData.vaultCount} vaults checked)`);
   }
 
   // HyperLend (Aave V3 fork)
@@ -1699,7 +2100,14 @@ async function calculateYield() {
   console.log('');
   console.log('DERIVE (Options):');
   if (deriveData.usdcBalance > 0 || deriveData.positions.length > 0 || deriveData.openOrders.length > 0) {
-    console.log(`  USDC balance:      $${deriveData.usdcBalance.toFixed(2)}`);
+    console.log(`  USDC balance:      $${deriveData.usdcBalance.toFixed(2)} (max at expiry)`);
+    console.log(`  Portfolio value:   $${deriveData.portfolioValue.toFixed(2)} (Derive subaccount value)`);
+    if (deriveData.accountValue > 0 && Math.abs(deriveData.accountValue - deriveData.manualPortfolioValue) > 0.01) {
+      console.log(`  Manual check:      $${deriveData.manualPortfolioValue.toFixed(2)} (USDC - shorts + longs)`);
+    }
+    if (deriveData.initialMargin > 0 || deriveData.maintenanceMargin > 0 || deriveData.openOrdersMargin !== 0) {
+      console.log(`  Margin:           IM $${deriveData.initialMargin.toFixed(2)} / MM $${deriveData.maintenanceMargin.toFixed(2)} / orders $${Math.abs(deriveData.openOrdersMargin).toFixed(2)}`);
+    }
     if (deriveData.positions.length > 0) {
       console.log(`  Open positions:`);
       for (const pos of deriveData.positions) {
@@ -1719,11 +2127,7 @@ async function calculateYield() {
   }
 
   // 6. Calculate total NAV
-  const ethSpot = allSpotBalances
-    .filter(b => b.symbol === 'ETH')
-    .reduce((sum, b) => sum + parseFloat(b.balance), 0);
   const ethEntryPrice = entryPrices['ETH'] || 0;
-  const ethValue = ethSpot * ethEntryPrice;
 
   const usdcBalance = allSpotBalances
     .filter(b => STABLECOINS.includes(b.symbol))
@@ -1738,7 +2142,7 @@ async function calculateYield() {
   const totalUsdcBalance = usdcBalance + lighterUsdcBalance + hyperliquidUsdcBalance;
 
   // Rysk stable collateral (USDT0 + USDC at $1). WHYPE is counted in HYPE exposure above.
-  const ryskStableCollateral = ryskData.totalCollateral;
+  const ryskStableCollateral = totalRyskStableCollateral - ryskOptionIntrinsicLiability;
 
   // HyperLend: WHYPE is counted in HYPE exposure. Only add non-WHYPE supplies here.
   const hyperLendStableValue = (hyperLendData.supplies['USDT0'] || 0) + (hyperLendData.supplies['USDC'] || 0);
@@ -1746,10 +2150,10 @@ async function calculateYield() {
   const hyperLendDebtValue = Object.values(hyperLendData.debts).reduce((sum, v) => sum + v, 0);
   const hyperLendNonHypeValue = hyperLendStableValue - hyperLendDebtValue;
 
-  // Derive.xyz: USDC collateral at $1
-  const deriveUsdcBalance = deriveData.usdcBalance;
+  // Derive.xyz: use portfolio value (USDC minus current mark cost of open shorts)
+  const deriveUsdcBalance = deriveData.portfolioValue;
 
-  const totalNav = totalHypeValue + ethValue + totalUsdcBalance + lighterData.collateral + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance;
+  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance;
 
   console.log('');
   console.log('='.repeat(60));
@@ -1757,7 +2161,10 @@ async function calculateYield() {
   console.log(`  HYPE (hedged):    $${totalHypeValue.toFixed(2)}`);
   console.log(`  SOL (hedged):     $${solValue.toFixed(2)}`);
   console.log(`  LIT (hedged):     $${litValue.toFixed(2)}`);
-  console.log(`  ETH (at entry):   $${ethValue.toFixed(2)}`);
+  console.log(`  ETH exposure:     $${ethValue.toFixed(2)}`);
+  if (Math.abs(btcValue) > 0.01) {
+    console.log(`  BTC perp PnL:     $${btcValue.toFixed(2)}`);
+  }
   console.log(`  USDC:             $${totalUsdcBalance.toFixed(2)}`);
   if (lighterUsdcBalance > 0) {
     console.log(`    (incl. Lighter spot: $${lighterUsdcBalance.toFixed(2)})`);
@@ -1766,6 +2173,9 @@ async function calculateYield() {
     console.log(`    (incl. Hyperliquid spot: $${hyperliquidUsdcBalance.toFixed(2)})`);
   }
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
+  if (lighterOperatorData.equity !== 0) {
+    console.log(`  Lighter operator: $${lighterOperatorData.equity.toFixed(2)}`);
+  }
   if (hyperliquidCollateral > 0) {
     console.log(`  Hyperliquid col:  $${hyperliquidCollateral.toFixed(2)}`);
   }
@@ -1810,19 +2220,6 @@ async function calculateYield() {
   const grossYield = totalNav - vaultData.totalAssets;
   const unreportedYield = grossYield - entryExitCosts;
 
-  // Calculate unrealized options premium from open Derive positions.
-  // Short positions have collected premium (avg_price * abs(amount)) that could
-  // be lost at settlement if the option goes ITM. Conservative approach: exclude
-  // this premium from safe-to-report yield until positions expire.
-  let deriveOpenPremium = 0;
-  for (const pos of deriveData.positions) {
-    if (pos.amount < 0) {
-      // SHORT position: premium collected = abs(amount) * averagePrice
-      deriveOpenPremium += Math.abs(pos.amount) * pos.averagePrice;
-    }
-  }
-  const conservativeYield = unreportedYield - deriveOpenPremium;
-
   console.log('');
   console.log('='.repeat(60));
   console.log('YIELD CALCULATION:');
@@ -1832,11 +2229,7 @@ async function calculateYield() {
   console.log(`  Entry/exit costs:     -$${entryExitCosts.toFixed(2)}`);
   console.log(`  ─────────────────────────`);
   console.log(`  NET UNREPORTED YIELD: $${unreportedYield.toFixed(2)}`);
-  if (deriveOpenPremium > 0) {
-    console.log(`  ─────────────────────────`);
-    console.log(`  Open options premium: -$${deriveOpenPremium.toFixed(2)} (excluded until expiry)`);
-    console.log(`  SAFE TO REPORT:       $${conservativeYield.toFixed(2)}`);
-  }
+  console.log(`  SAFE TO REPORT:       $${unreportedYield.toFixed(2)}`);
   console.log('='.repeat(60));
 
   // 9. Calculate PPS-based yield (using history loaded earlier)
@@ -1863,8 +2256,10 @@ async function calculateYield() {
     totalSupply: vaultData.totalSupply,
     hypeValue: totalHypeValue,
     ethValue,
+    btcValue,
     usdcBalance,
     lighterCollateral: lighterData.collateral,
+    lighterOperatorEquity: lighterOperatorData.equity,
     hyperliquidEquity: hyperliquidData.equity,
     solValue,
     litValue,
@@ -1889,13 +2284,10 @@ async function calculateYield() {
   saveNavHistory(history);
 
   // 11. Output for reporting
-  const reportableYield = deriveOpenPremium > 0 ? conservativeYield : unreportedYield;
+  const reportableYield = unreportedYield;
   console.log('');
   console.log('='.repeat(60));
   console.log('TO REPORT THIS YIELD:');
-  if (deriveOpenPremium > 0) {
-    console.log(`  (Conservative: excludes $${deriveOpenPremium.toFixed(2)} open options premium)`);
-  }
   console.log(`  cast send ${VAULT_ADDRESS} "reportYieldAndCollectFees(int256)" ${Math.round(reportableYield * 1e6)} --rpc-url ${ETH_RPC} --private-key <KEY>`);
   console.log('='.repeat(60));
 
@@ -1905,8 +2297,7 @@ async function calculateYield() {
     grossYield,
     entryExitCosts,
     unreportedYield,
-    deriveOpenPremium,
-    conservativeYield: reportableYield,
+    reportableYield,
     sharePrice: vaultData.sharePrice,
     totalSupply: vaultData.totalSupply,
     accumulatedYield: vaultData.accumulatedYield,
@@ -1920,8 +2311,10 @@ async function calculateYield() {
     breakdown: {
       hype: totalHypeValue,
       eth: ethValue,
+      btc: btcValue,
       usdc: totalUsdcBalance,
       lighterCollateral: lighterData.collateral,
+      lighterOperator: lighterOperatorData.equity,
       hyperliquidEquity: hyperliquidData.equity,
       sol: solValue,
       lit: litValue,
@@ -1934,6 +2327,13 @@ async function calculateYield() {
       ethereum: {
         eth: { amount: ethSpot, entryPrice: ethEntryPrice, value: ethValue },
         usdc: usdcBalance,
+      },
+      ryskMm: {
+        address: RYSK_MM_ADDRESS,
+        balances: ryskMmHyperBalances,
+        stableValue: ryskMmStableBalance,
+        hypeBalance: ryskMmHypeBalance,
+        otherTrackedValue: ryskMmOtherTrackedValue,
       },
       lighterSpot: {
         usdc: lighterUsdcBalance,
@@ -1959,11 +2359,36 @@ async function calculateYield() {
         currentPrice: hypeCurrentPrice,
         totalValue: totalHypeValue,
       },
+      eth: {
+        spotEth: ethSpot,
+        lighterShort: { size: lighterEthShort.size, entryPrice: lighterEthShort.entryPrice },
+        hyperliquidShort: { size: hlEthShort.size, entryPrice: hlEthShort.entryPrice },
+        lighterLong: { size: lighterEthLong.size, entryPrice: lighterEthLong.entryPrice },
+        hyperliquidLong: { size: hlEthLong.size, entryPrice: hlEthLong.entryPrice },
+        netExposure: ethExposure.netExposure,
+        currentPrice: currentEthPrice,
+        totalValue: ethValue,
+      },
+      btc: {
+        lighterShort: { size: lighterBtcShort.size, entryPrice: lighterBtcShort.entryPrice },
+        hyperliquidShort: { size: hlBtcShort.size, entryPrice: hlBtcShort.entryPrice },
+        lighterLong: { size: lighterBtcLong.size, entryPrice: lighterBtcLong.entryPrice },
+        hyperliquidLong: { size: hlBtcLong.size, entryPrice: hlBtcLong.entryPrice },
+        netExposure: btcExposure.netExposure,
+        currentPrice: currentBtcPrice,
+        totalValue: btcValue,
+      },
       lighter: {
         collateral: lighterData.collateral,
         unrealizedPnl: lighterData.unrealizedPnl,
         equity: lighterData.equity,
         positions: lighterData.positions,
+        operatorTrading: {
+          collateral: lighterOperatorData.collateral,
+          unrealizedPnl: lighterOperatorData.unrealizedPnl,
+          equity: lighterOperatorData.equity,
+          positions: lighterOperatorData.positions,
+        },
         spotAssets: lighterSpotData.assets,
       },
       lit: {
@@ -2001,8 +2426,17 @@ async function calculateYield() {
         totalCollateralUsdt0: ryskData.totalCollateralUsdt0,
         totalCollateralUsdc: ryskData.totalCollateralUsdc,
         totalCollateralWhype: ryskData.totalCollateralWhype,
+        operatorMarginPool: ryskOperatorMarginPool,
         positions: ryskData.positions,
         vaultCount: ryskData.vaultCount,
+        mmTotalCollateralUsdt0: ryskMmVaultData.totalCollateralUsdt0,
+        mmTotalCollateralUsdc: ryskMmVaultData.totalCollateralUsdc,
+        mmTotalCollateralWhype: ryskMmVaultData.totalCollateralWhype,
+        mmMarginPool: ryskMmMarginPool,
+        mmPositions: ryskMmVaultData.positions,
+        mmVaultCount: ryskMmVaultData.vaultCount,
+        combinedStableCollateral: ryskStableCollateral,
+        shortIntrinsicLiability: ryskOptionIntrinsicLiability,
       },
       hyperLend: {
         supplies: hyperLendData.supplies,
@@ -2013,6 +2447,16 @@ async function calculateYield() {
       },
       derive: {
         usdcBalance: deriveData.usdcBalance,
+        portfolioValue: deriveData.portfolioValue,
+        accountValue: deriveData.accountValue,
+        manualPortfolioValue: deriveData.manualPortfolioValue,
+        openShortMarkCost: deriveData.openShortMarkCost,
+        openLongMarkValue: deriveData.openLongMarkValue,
+        positionsValue: deriveData.positionsValue,
+        collateralValue: deriveData.collateralValue,
+        initialMargin: deriveData.initialMargin,
+        maintenanceMargin: deriveData.maintenanceMargin,
+        openOrdersMargin: deriveData.openOrdersMargin,
         positions: deriveData.positions,
         openOrders: deriveData.openOrders,
       },
@@ -2030,7 +2474,7 @@ async function main() {
   if (answer === 'y' || answer === 'yes') {
     const snapshot = {
       timestamp: new Date().toISOString(),
-      yieldReported: result.unreportedYield,
+      yieldReported: result.reportableYield,
       nav: result.nav,
       sharePrice: result.sharePrice,
       totalSupply: result.totalSupply,
