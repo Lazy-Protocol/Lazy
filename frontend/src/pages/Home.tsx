@@ -95,17 +95,31 @@ export function Home() {
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
-                {aprValue > 0 ? (
-                  <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
-                ) : '...'}
-              </div>
-              <div className="stat-label">{aprLabel}</div>
-              {apr30dValue !== null && (
-                <div className="stat-submetric">
-                  <span>30d</span>
-                  <strong>{apr30dValue.toFixed(1)}%</strong>
+              {apr30dValue !== null ? (
+                <div className="stat-apr-comparison">
+                  <div className="stat-apr-window">
+                    <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
+                      {aprValue > 0 ? (
+                        <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
+                      ) : '...'}
+                    </div>
+                    <div className="stat-label">{aprLabel}</div>
+                  </div>
+                  <div className="stat-apr-divider" />
+                  <div className="stat-apr-window">
+                    <div className="stat-apr-secondary-value">{apr30dValue.toFixed(1)}%</div>
+                    <div className="stat-label">30d APR</div>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
+                    {aprValue > 0 ? (
+                      <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
+                    ) : '...'}
+                  </div>
+                  <div className="stat-label">{aprLabel}</div>
+                </>
               )}
             </div>
             <div className="stat-item">
