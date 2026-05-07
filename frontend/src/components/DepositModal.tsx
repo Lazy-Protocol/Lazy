@@ -33,6 +33,8 @@ export function DepositModal({ onClose }: DepositModalProps) {
   const { usdcBalance, usdcAllowance, refetch } = useUserData(address);
   const { sharePrice } = useVaultStats();
   const { data: protocolStats } = useProtocolStats();
+  const apr30dValue = typeof protocolStats?.apr30d === 'number' ? Number(protocolStats.apr30d) : null;
+  const aprLabel = protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR';
 
   const {
     approve,
@@ -359,9 +361,15 @@ getlazy.xyz?utm_source=share&utm_medium=twitter #PatientCapital`;
             <span className="conversion-value">1 lazyUSD = {exchangeRate} USDC</span>
           </div>
           <div className="conversion-row">
-            <span className="conversion-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</span>
+            <span className="conversion-label">{aprLabel}</span>
             <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</span>
           </div>
+          {apr30dValue !== null && (
+            <div className="conversion-row">
+              <span className="conversion-label">30d APR</span>
+              <span className="conversion-value" style={{ color: 'var(--earn-green)' }}>{apr30dValue.toFixed(1)}%</span>
+            </div>
+          )}
         </div>
 
         <div className="modal-info">

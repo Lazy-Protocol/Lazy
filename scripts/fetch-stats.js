@@ -6,6 +6,20 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Load .env file if present (no dotenv dependency)
+const envPath = join(__dirname, '..', '.env');
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim();
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
 // Contract configuration
 const VAULT_ADDRESS = process.env.VAULT_ADDRESS || '0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805';
 const RPC_URL = process.env.ETH_RPC_URL || 'https://eth.llamarpc.com';
@@ -75,6 +89,17 @@ async function fetchStats() {
   console.log('Fetching protocol stats...');
   console.log('Vault:', VAULT_ADDRESS);
   console.log('RPC:', RPC_URL);
+
+  const outputDir = join(__dirname, '..', 'frontend', 'public');
+  const outputPath = join(outputDir, 'stats.json');
+  let previousStats = null;
+  if (existsSync(outputPath)) {
+    try {
+      previousStats = JSON.parse(readFileSync(outputPath, 'utf-8'));
+    } catch (e) {
+      console.warn('Could not parse previous stats for fallback:', e.message);
+    }
+  }
 
   const client = createPublicClient({
     chain: mainnet,
@@ -148,20 +173,42 @@ async function fetchStats() {
       );
     } catch (logError) {
       console.warn('Warning: Could not fetch deposit logs:', logError.message);
-      console.warn('Depositor count will be 0. Consider using an RPC that supports historical logs.');
+      if (previousStats) {
+        uniqueDepositors = new Set(Array.from({ length: Number(previousStats.depositorCount || 0) }, (_, i) => `fallback-${i}`));
+        totalDeposited = BigInt(previousStats.totalDeposited || 0);
+        depositLogs = Array.from({ length: Number(previousStats.depositCount || 0) }, () => ({}));
+        console.warn('Using previous depositor/deposit totals from existing stats.json.');
+      } else {
+        console.warn('Depositor count will be 0. Consider using an RPC that supports historical logs.');
+      }
     }
 
     // ============================================
-    // PPS History & 7-Day Rolling APR
+    // PPS History & Rolling APRs
     // ============================================
 
     const ppsHistoryPath = join(__dirname, '..', 'frontend', 'public', 'pps-history.json');
+    const navHistoryPath = join(__dirname, '..', 'data', 'nav-history.json');
+    const yieldSnapshotsPath = join(__dirname, '..', 'data', 'yield-snapshots.json');
     let ppsHistory = [];
+
+    const addPpsObservation = (observations, timestamp, pps) => {
+      const parsedTimestamp = Date.parse(timestamp);
+      const parsedPps = Number(pps);
+      if (!Number.isFinite(parsedTimestamp) || !Number.isFinite(parsedPps) || parsedPps <= 0) return;
+      observations.push({
+        date: new Date(parsedTimestamp).toISOString().split('T')[0],
+        pps: parsedPps,
+        timestamp: parsedTimestamp,
+      });
+    };
 
     // Load existing PPS history
     if (existsSync(ppsHistoryPath)) {
       try {
-        ppsHistory = JSON.parse(readFileSync(ppsHistoryPath, 'utf-8'));
+        for (const entry of JSON.parse(readFileSync(ppsHistoryPath, 'utf-8'))) {
+          addPpsObservation(ppsHistory, entry.timestamp || `${entry.date}T00:00:00.000Z`, entry.pps);
+        }
       } catch (e) {
         console.warn('Could not parse PPS history, starting fresh');
         ppsHistory = [];
@@ -172,54 +219,83 @@ async function fetchStats() {
     const today = new Date().toISOString().split('T')[0];
     const currentPPS = Number(formatUnits(sharePrice, 6));
 
-    // Add or update today's PPS entry
-    const existingIndex = ppsHistory.findIndex(entry => entry.date === today);
-    if (existingIndex >= 0) {
-      ppsHistory[existingIndex].pps = currentPPS;
-      ppsHistory[existingIndex].timestamp = Date.now();
-    } else {
-      ppsHistory.push({
-        date: today,
-        pps: currentPPS,
-        timestamp: Date.now(),
-      });
+    if (existsSync(navHistoryPath)) {
+      try {
+        const navHistory = JSON.parse(readFileSync(navHistoryPath, 'utf-8'));
+        for (const entry of navHistory.entries || []) {
+          addPpsObservation(ppsHistory, entry.timestamp, entry.sharePrice);
+        }
+      } catch (e) {
+        console.warn('Could not parse NAV history for PPS backfill:', e.message);
+      }
     }
 
-    // Keep only last 30 days of history
-    ppsHistory = ppsHistory
+    if (existsSync(yieldSnapshotsPath)) {
+      try {
+        const yieldSnapshots = JSON.parse(readFileSync(yieldSnapshotsPath, 'utf-8'));
+        for (const snapshot of yieldSnapshots.snapshots || []) {
+          addPpsObservation(ppsHistory, snapshot.timestamp, snapshot.sharePrice);
+        }
+      } catch (e) {
+        console.warn('Could not parse yield snapshots for PPS backfill:', e.message);
+      }
+    }
+
+    addPpsObservation(ppsHistory, new Date().toISOString(), currentPPS);
+
+    // Keep enough history for 7d and 30d rolling comparisons.
+    const latestByDate = new Map();
+    for (const entry of ppsHistory.sort((a, b) => Number(a.timestamp) - Number(b.timestamp))) {
+      latestByDate.set(entry.date, entry);
+    }
+    ppsHistory = [...latestByDate.values()]
       .sort((a, b) => new Date(a.date) - new Date(b.date))
-      .slice(-30);
+      .slice(-90);
 
     // Save updated history
     writeFileSync(ppsHistoryPath, JSON.stringify(ppsHistory, null, 2));
+
+    const clampApr = (value) => Math.max(0, Math.min(100, value));
+    const roundApr = (value) => Math.round(value * 100) / 100;
+    const calculateRollingApr = (windowDays) => {
+      const targetTimestamp = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+      const maxAgeDays = windowDays + Math.max(2, windowDays * 0.2);
+      const minAgeDays = Math.max(1, windowDays - Math.max(2, windowDays * 0.2));
+      const candidate = [...ppsHistory]
+        .filter((entry) => Number(entry.pps) > 0)
+        .sort((a, b) => Math.abs(Number(a.timestamp) - targetTimestamp) - Math.abs(Number(b.timestamp) - targetTimestamp))[0];
+
+      if (!candidate) return null;
+
+      const daysDiff = (Date.now() - Number(candidate.timestamp)) / (1000 * 60 * 60 * 24);
+      if (daysDiff < minAgeDays || daysDiff > maxAgeDays) return null;
+
+      const ppsGain = (currentPPS - Number(candidate.pps)) / Number(candidate.pps);
+      return clampApr(ppsGain * (365 / daysDiff) * 100);
+    };
 
     // Calculate APR using 7-day rolling window (or inception if < 7 days)
     let apr = STATIC_APR;
     let aprSource = 'static';
     let aprPeriod = 'static';
+    let apr7d = null;
+    let apr30d = null;
+    let apr30dSource = 'unavailable';
 
     const INITIAL_PPS = 1000000n;
 
     if (sharePrice > INITIAL_PPS && lastYieldReportTime > 0n) {
-      // Try 7-day rolling APR first
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+      apr7d = calculateRollingApr(7);
+      apr30d = calculateRollingApr(30);
 
-      // Find PPS from ~7 days ago (closest available)
-      const oldEntry = ppsHistory.find(entry => entry.date <= sevenDaysAgoStr);
+      if (apr7d !== null) {
+        apr = apr7d;
+        aprSource = 'calculated';
+        aprPeriod = '7d';
+      }
 
-      if (oldEntry && ppsHistory.length >= 7) {
-        // Use 7-day rolling APR
-        const oldPPS = oldEntry.pps;
-        const daysDiff = (Date.now() - oldEntry.timestamp) / (1000 * 60 * 60 * 24);
-
-        if (oldPPS > 0 && daysDiff >= 6) {
-          const ppsGain = (currentPPS - oldPPS) / oldPPS;
-          apr = ppsGain * (365 / daysDiff) * 100;
-          aprSource = 'calculated';
-          aprPeriod = '7d';
-        }
+      if (apr30d !== null) {
+        apr30dSource = 'calculated';
       }
 
       // Fall back to inception-to-date if we don't have 7 days
@@ -236,8 +312,7 @@ async function fetchStats() {
         }
       }
 
-      // Cap APR at reasonable bounds (0-100%)
-      apr = Math.max(0, Math.min(100, apr));
+      apr = clampApr(apr);
     }
 
     const stats = {
@@ -263,9 +338,12 @@ async function fetchStats() {
       depositCount: depositLogs.length,
 
       // APR
-      apr: Math.round(apr * 100) / 100, // Round to 2 decimal places
+      apr: roundApr(apr), // Backwards-compatible primary APR.
       aprSource, // 'static' or 'calculated'
       aprPeriod, // '7d', 'inception', or 'static'
+      apr7d: apr7d === null ? null : roundApr(apr7d),
+      apr30d: apr30d === null ? null : roundApr(apr30d),
+      apr30dSource,
 
       // Metadata
       updatedAt: new Date().toISOString(),
@@ -279,17 +357,15 @@ async function fetchStats() {
     console.log('  Share Price:', stats.formatted.sharePrice);
     console.log('  Accumulated Yield:', stats.formatted.accumulatedYield, 'USDC');
     console.log('  APR:', stats.apr + '%', `(${stats.aprPeriod} ${stats.aprSource})`);
+    console.log('  30d APR:', stats.apr30d === null ? 'unavailable' : stats.apr30d + '%');
     console.log('  PPS History:', ppsHistory.length, 'days');
     console.log('  Unique Depositors:', stats.depositorCount);
     console.log('  Total Deposits:', stats.depositCount);
 
-    // Write to frontend public directory
-    const outputDir = join(__dirname, '..', 'frontend', 'public');
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }
 
-    const outputPath = join(outputDir, 'stats.json');
     writeFileSync(outputPath, JSON.stringify(stats, null, 2));
     console.log('\nStats written to:', outputPath);
 

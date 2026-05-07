@@ -35,6 +35,8 @@ export function Home() {
       : 0;
 
   const aprValue = protocolStats?.apr ? Number(protocolStats.apr) : 0;
+  const apr30dValue = typeof protocolStats?.apr30d === 'number' ? Number(protocolStats.apr30d) : null;
+  const aprLabel = protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR';
 
   // Calculate days since vault launch
   const daysLive = Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24)));
@@ -93,12 +95,32 @@ export function Home() {
               <div className="stat-label">Total Value Locked</div>
             </div>
             <div className="stat-item">
-              <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
-                {aprValue > 0 ? (
-                  <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
-                ) : '...'}
-              </div>
-              <div className="stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
+              {apr30dValue !== null ? (
+                <div className="stat-apr-comparison">
+                  <div className="stat-apr-window">
+                    <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
+                      {aprValue > 0 ? (
+                        <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
+                      ) : '...'}
+                    </div>
+                    <div className="stat-label">{aprLabel}</div>
+                  </div>
+                  <div className="stat-apr-divider" />
+                  <div className="stat-apr-window">
+                    <div className="stat-apr-secondary-value">{apr30dValue.toFixed(1)}%</div>
+                    <div className="stat-label">30d APR</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className={`stat-value ${aprValue > 0 ? 'positive' : ''}`}>
+                    {aprValue > 0 ? (
+                      <AnimatedNumber value={aprValue} decimals={1} suffix="%" />
+                    ) : '...'}
+                  </div>
+                  <div className="stat-label">{aprLabel}</div>
+                </>
+              )}
             </div>
             <div className="stat-item">
               <div className="stat-value">
@@ -139,8 +161,14 @@ export function Home() {
 
             <div className="vault-stats">
               <div>
-                <div className="vault-stat-label">{protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR'}</div>
+                <div className="vault-stat-label">{aprLabel}</div>
                 <div className="vault-stat-value positive">{protocolStats?.apr ? `${protocolStats.apr}%` : '...'}</div>
+                {apr30dValue !== null && (
+                  <div className="vault-stat-submetric">
+                    <span>30d</span>
+                    <strong>{apr30dValue.toFixed(1)}%</strong>
+                  </div>
+                )}
               </div>
               <div>
                 <div className="vault-stat-label">TVL</div>
