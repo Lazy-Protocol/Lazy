@@ -19,13 +19,17 @@ interface ProtocolStats {
   apr: number;
   aprSource: 'static' | 'calculated';
   aprPeriod: '7d' | 'inception' | 'static';
+  apr7d?: number | null;
+  apr30d?: number | null;
+  apr30dSource?: 'calculated' | 'unavailable';
   updatedAt: string;
   vaultAddress: string;
   chainId: number;
   lastYieldReportTime: string;
 }
 
-const STATS_URL = 'https://raw.githubusercontent.com/Lazy-Protocol/lazy/main/frontend/public/stats.json';
+const REMOTE_STATS_URL = 'https://raw.githubusercontent.com/Lazy-Protocol/lazy/main/frontend/public/stats.json';
+const STATS_URL = import.meta.env.DEV ? '/stats.json' : REMOTE_STATS_URL;
 
 export function useProtocolStats() {
   return useQuery<ProtocolStats>({

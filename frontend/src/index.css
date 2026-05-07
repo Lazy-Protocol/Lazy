@@ -325,6 +325,25 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   color: var(--slate);
 }
 
+.stat-submetric {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  color: var(--slate);
+  letter-spacing: 0;
+}
+
+.stat-submetric strong {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--drift-white);
+  font-variant-numeric: tabular-nums;
+}
+
 .stat-item {
   text-align: center;
 }
@@ -449,6 +468,24 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
 }
 
 .vault-stat-value.positive { color: var(--earn-green); }
+
+.vault-stat-submetric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--slate);
+  letter-spacing: 0;
+}
+
+.vault-stat-submetric strong {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--lazy-navy);
+  font-variant-numeric: tabular-nums;
+}
 
 .vault-user-section {
   background: var(--drift-white);
