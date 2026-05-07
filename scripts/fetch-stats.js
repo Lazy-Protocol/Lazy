@@ -193,7 +193,7 @@ async function fetchStats() {
     let ppsHistory = [];
 
     const addPpsObservation = (observations, timestamp, pps) => {
-      const parsedTimestamp = Date.parse(timestamp);
+      const parsedTimestamp = typeof timestamp === 'number' ? timestamp : Date.parse(timestamp);
       const parsedPps = Number(pps);
       if (!Number.isFinite(parsedTimestamp) || !Number.isFinite(parsedPps) || parsedPps <= 0) return;
       observations.push({
