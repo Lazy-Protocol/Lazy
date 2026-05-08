@@ -3,36 +3,31 @@ import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Wallet, TrendingUp, Clock, DollarSign, Share2 } from 'lucide-react';
 import { useUserData, useVaultStats, useUserWithdrawals, formatUsdc, formatShares } from '@/hooks/useVault';
+import { useWalletYield } from '@/hooks/useWalletYield';
 import { formatUnits } from 'viem';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
 import { PortfolioShareCard } from '@/components/PortfolioShareCard';
-
-// Portfolio tracking - when user first deposited (simplified: use vault launch date as baseline)
-const VAULT_LAUNCH = new Date('2026-01-07T00:00:00Z');
 
 export function Portfolio() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const { address, isConnected } = useAccount();
-  const { shareBalance, usdcBalance, usdcValue, totalDeposited, isLoading } = useUserData(address);
+  const { shareBalance, usdcBalance, isLoading } = useUserData(address);
   const { sharePrice, totalAssets, cooldownPeriod } = useVaultStats();
   const { queueDepth, userPendingCount } = useUserWithdrawals(address);
-
-  // Calculate profit/loss
-  const profitLoss = usdcValue && totalDeposited
-    ? Number(usdcValue) - Number(totalDeposited)
-    : 0;
-  const profitLossPercent = totalDeposited && Number(totalDeposited) > 0
-    ? (profitLoss / Number(totalDeposited)) * 100
-    : 0;
-
-  // Calculate days since vault launch (simplified hold period)
-  const holdDays = Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24)));
+  const {
+    currentValue,
+    totalYield,
+    profitLossPercent,
+    realizedApr,
+    daysHeld,
+    isLoading: yieldLoading
+  } = useWalletYield(address);
 
   // Check if user has a position worth sharing
-  const hasPosition = usdcValue && Number(usdcValue) > 0;
+  const hasPosition = currentValue > 0n;
 
   if (!isConnected) {
     return (
@@ -68,11 +63,16 @@ export function Portfolio() {
             <span className="text-drift-white/70">Total Value</span>
           </div>
           <div className="text-2xl font-bold text-drift-white">
-            ${isLoading ? '...' : usdcValue ? formatUsdc(usdcValue) : '0.00'}
+            ${(isLoading || yieldLoading) ? '...' : formatUsdc(currentValue)}
           </div>
-          <div className={`text-sm mt-1 ${profitLoss >= 0 ? 'text-success' : 'text-error'}`}>
-            {profitLoss >= 0 ? '+' : ''}{formatUsdc(BigInt(Math.abs(profitLoss)))} ({profitLossPercent.toFixed(2)}%)
+          <div className={`text-sm mt-1 ${totalYield >= 0 ? 'text-success' : 'text-error'}`}>
+            {totalYield >= 0 ? '+' : ''}${Math.abs(totalYield).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({profitLossPercent.toFixed(2)}%)
           </div>
+          {realizedApr !== null && daysHeld !== null && daysHeld >= 1 && (
+            <div className="text-xs text-drift-white/50 mt-1">
+              {realizedApr.toFixed(1)}% APR · {Math.floor(daysHeld)} days
+            </div>
+          )}
         </div>
 
         {/* Share Balance */}
@@ -184,10 +184,10 @@ export function Portfolio() {
       {showWithdraw && <WithdrawModal onClose={() => setShowWithdraw(false)} />}
       {showShare && hasPosition && (
         <PortfolioShareCard
-          totalValue={`$${formatUsdc(usdcValue!)}`}
-          earnings={formatUsdc(BigInt(Math.max(0, profitLoss)))}
+          totalValue={`$${formatUsdc(currentValue)}`}
+          earnings={Math.abs(totalYield).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           earningsPercent={profitLossPercent.toFixed(2)}
-          holdDays={holdDays}
+          holdDays={daysHeld !== null ? Math.floor(daysHeld) : 0}
           onClose={() => setShowShare(false)}
         />
       )}

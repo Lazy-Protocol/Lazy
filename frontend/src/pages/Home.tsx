@@ -5,6 +5,7 @@ import { useVaultStats, useUserData, formatUsdc, formatShares } from '@/hooks/us
 import { useProtocolStats } from '@/hooks/useProtocolStats';
 import { DepositModal } from '@/components/DepositModal';
 import { WithdrawModal } from '@/components/WithdrawModal';
+import { VaultCertificate } from '@/components/VaultCertificate';
 import { TimeMachine } from '@/components/TimeMachine';
 import { AnimatedNumber } from '@/components/AnimatedNumber';
 import { Link } from 'react-router-dom';
@@ -16,6 +17,7 @@ const VAULT_LAUNCH = new Date('2026-01-07T00:00:00Z');
 export function Home() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showCertificate, setShowCertificate] = useState(false);
   const { address, isConnected } = useAccount();
   const { totalAssets, accumulatedYield } = useVaultStats();
   const { shareBalance, usdcValue, totalDeposited } = useUserData(address);
@@ -198,6 +200,11 @@ export function Home() {
                   'No deposits yet'
                 )}
               </div>
+              {isConnected && shareBalance && shareBalance > 0n && (
+                <button className="vault-cert-trigger" onClick={() => setShowCertificate(true)}>
+                  View certificate <ArrowRight size={12} />
+                </button>
+              )}
             </div>
 
             <div className="vault-actions">
@@ -415,6 +422,14 @@ export function Home() {
       {/* Modals */}
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
       {showWithdraw && <WithdrawModal onClose={() => setShowWithdraw(false)} />}
+      {showCertificate && (
+        <VaultCertificate
+          address={address}
+          shareBalance={shareBalance}
+          usdcValue={usdcValue}
+          onClose={() => setShowCertificate(false)}
+        />
+      )}
     </>
   );
 }
