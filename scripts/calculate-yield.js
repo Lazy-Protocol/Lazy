@@ -53,11 +53,12 @@ const TOKENS = {
     USDC: { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', decimals: 6 },
     WHYPE: { address: '0x5555555555555555555555555555555555555555', decimals: 18 },
     USDT0: { address: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb', decimals: 6 },
+    USDH: { address: '0x111111a1a0667d36bd57c0a9f569b98057111111', decimals: 6 },
   },
 };
 
 // Stablecoin symbols (always valued at $1)
-const STABLECOINS = ['USDC', 'USDT', 'USDT0', 'DAI'];
+const STABLECOINS = ['USDC', 'USDT', 'USDT0', 'USDH', 'DAI'];
 
 
 // ============================================
@@ -706,6 +707,7 @@ async function fetchLighterStakedLIT() {
 const RYSK_CONTROLLER = '0x84d84e481B49B8Bc5a55f17AaF8181c21A29B212';
 const USDT0_ADDRESS = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb';
 const HYPEREVM_USDC = '0xb88339CB7199b77E23DB6E890353E22632Ba630f';
+const USDH_ADDRESS = '0x111111a1a0667d36bd57c0a9f569b98057111111';
 const WHYPE_ADDRESS = '0x5555555555555555555555555555555555555555';
 
 const gammaControllerAbi = [
@@ -823,12 +825,14 @@ async function fetchRyskPositions(address) {
     const positions = [];
     let totalCollateralUsdt0 = 0;
     let totalCollateralUsdc = 0;
+    let totalCollateralUsdh = 0;
     let totalCollateralWhype = 0;
 
     const collateralDecimals = (addr) => {
       const lower = addr.toLowerCase();
       if (lower === USDT0_ADDRESS.toLowerCase()) return 6;
       if (lower === HYPEREVM_USDC.toLowerCase()) return 6;
+      if (lower === USDH_ADDRESS.toLowerCase()) return 6;
       if (lower === WHYPE_ADDRESS.toLowerCase()) return 18;
       return 18; // default
     };
@@ -837,6 +841,7 @@ async function fetchRyskPositions(address) {
       const lower = addr.toLowerCase();
       if (lower === USDT0_ADDRESS.toLowerCase()) return 'USDT0';
       if (lower === HYPEREVM_USDC.toLowerCase()) return 'USDC';
+      if (lower === USDH_ADDRESS.toLowerCase()) return 'USDH';
       if (lower === WHYPE_ADDRESS.toLowerCase()) return 'WHYPE';
       return 'UNKNOWN';
     };
@@ -863,6 +868,7 @@ async function fetchRyskPositions(address) {
 
       if (symbol === 'USDT0') totalCollateralUsdt0 += collateralAmount;
       else if (symbol === 'USDC') totalCollateralUsdc += collateralAmount;
+      else if (symbol === 'USDH') totalCollateralUsdh += collateralAmount;
       else if (symbol === 'WHYPE') totalCollateralWhype += collateralAmount;
 
       positions.push({
@@ -879,14 +885,15 @@ async function fetchRyskPositions(address) {
     return {
       totalCollateralUsdt0,
       totalCollateralUsdc,
+      totalCollateralUsdh,
       totalCollateralWhype,
-      totalCollateral: totalCollateralUsdt0 + totalCollateralUsdc, // USD-denominated portion
+      totalCollateral: totalCollateralUsdt0 + totalCollateralUsdc + totalCollateralUsdh, // USD-denominated portion
       positions,
       vaultCount: count,
     };
   } catch (e) {
     console.warn('Failed to fetch Rysk positions:', e.message);
-    return { totalCollateralUsdt0: 0, totalCollateralUsdc: 0, totalCollateralWhype: 0, totalCollateral: 0, positions: [], vaultCount: 0 };
+    return { totalCollateralUsdt0: 0, totalCollateralUsdc: 0, totalCollateralUsdh: 0, totalCollateralWhype: 0, totalCollateral: 0, positions: [], vaultCount: 0 };
   }
 }
 
@@ -913,6 +920,8 @@ def _decimals_for(asset: str) -> int:
         return 6
     if addr == ${JSON.stringify(HYPEREVM_USDC.toLowerCase())}:
         return 6
+    if addr == ${JSON.stringify(USDH_ADDRESS.toLowerCase())}:
+        return 6
     if addr == ${JSON.stringify(WHYPE_ADDRESS.toLowerCase())}:
         return 18
     return 18
@@ -938,6 +947,8 @@ try:
             out["USDT0"] = bal
         elif asset == ${JSON.stringify(HYPEREVM_USDC.toLowerCase())}:
             out["USDC"] = bal
+        elif asset == ${JSON.stringify(USDH_ADDRESS.toLowerCase())}:
+            out["USDH"] = bal
         elif asset == ${JSON.stringify(WHYPE_ADDRESS.toLowerCase())}:
             out["WHYPE"] = bal
     print(json.dumps(out))
@@ -958,11 +969,12 @@ finally:
     return {
       usdt0: num(parsed.USDT0),
       usdc: num(parsed.USDC),
+      usdh: num(parsed.USDH),
       whype: num(parsed.WHYPE),
     };
   } catch (e) {
     console.warn(`Failed to fetch Rysk MarginPool balances for ${address}:`, e.message);
-    return { usdt0: 0, usdc: 0, whype: 0 };
+    return { usdt0: 0, usdc: 0, usdh: 0, whype: 0 };
   }
 }
 
@@ -2034,13 +2046,16 @@ async function calculateYield() {
   const totalRyskVaults = (ryskData.positions.length || 0) + (ryskMmVaultData.positions.length || 0);
   const operatorRyskUsdt0 = (ryskData.totalCollateralUsdt0 || 0) + (ryskOperatorMarginPool.usdt0 || 0);
   const operatorRyskUsdc = (ryskData.totalCollateralUsdc || 0) + (ryskOperatorMarginPool.usdc || 0);
+  const operatorRyskUsdh = (ryskData.totalCollateralUsdh || 0) + (ryskOperatorMarginPool.usdh || 0);
   const operatorRyskWhype = (ryskData.totalCollateralWhype || 0) + (ryskOperatorMarginPool.whype || 0);
   const mmRyskUsdt0 = (ryskMmVaultData.totalCollateralUsdt0 || 0) + (ryskMmMarginPool.usdt0 || 0);
   const mmRyskUsdc = (ryskMmVaultData.totalCollateralUsdc || 0) + (ryskMmMarginPool.usdc || 0);
+  const mmRyskUsdh = (ryskMmVaultData.totalCollateralUsdh || 0) + (ryskMmMarginPool.usdh || 0);
   const mmRyskWhype = (ryskMmVaultData.totalCollateralWhype || 0) + (ryskMmMarginPool.whype || 0);
-  const totalRyskStableCollateral = operatorRyskUsdt0 + operatorRyskUsdc + mmRyskUsdt0 + mmRyskUsdc;
+  const totalRyskStableCollateral = operatorRyskUsdt0 + operatorRyskUsdc + operatorRyskUsdh + mmRyskUsdt0 + mmRyskUsdc + mmRyskUsdh;
   const totalRyskUsdt0 = operatorRyskUsdt0 + mmRyskUsdt0;
   const totalRyskUsdc = operatorRyskUsdc + mmRyskUsdc;
+  const totalRyskUsdh = operatorRyskUsdh + mmRyskUsdh;
   const totalRyskWhype = operatorRyskWhype + mmRyskWhype;
   const allRyskOptionPositions = [
     ...ryskData.positions,
@@ -2055,17 +2070,20 @@ async function calculateYield() {
     if (totalRyskUsdc > 0) {
       console.log(`  USDC collateral:   $${totalRyskUsdc.toFixed(2)}`);
     }
+    if (totalRyskUsdh > 0) {
+      console.log(`  USDH collateral:   $${totalRyskUsdh.toFixed(2)}`);
+    }
     if (totalRyskWhype > 0) {
       console.log(`  WHYPE collateral:  ${totalRyskWhype.toFixed(4)} HYPE`);
     }
     console.log(`  Short intrinsic:   -$${ryskOptionIntrinsicLiability.toFixed(2)}`);
     console.log(`  Operator vaults:   ${ryskData.vaultCount}`);
     console.log(`  MM wallet vaults:  ${ryskMmVaultData.vaultCount}`);
-    if (operatorRyskUsdt0 > 0 || operatorRyskUsdc > 0 || ryskOperatorMarginPool.whype > 0) {
-      console.log(`  Operator MarginPool: USDT0=$${ryskOperatorMarginPool.usdt0.toFixed(2)} USDC=$${ryskOperatorMarginPool.usdc.toFixed(2)} WHYPE=${ryskOperatorMarginPool.whype.toFixed(4)}`);
+    if (operatorRyskUsdt0 > 0 || operatorRyskUsdc > 0 || operatorRyskUsdh > 0 || ryskOperatorMarginPool.whype > 0) {
+      console.log(`  Operator MarginPool: USDT0=$${ryskOperatorMarginPool.usdt0.toFixed(2)} USDC=$${ryskOperatorMarginPool.usdc.toFixed(2)} USDH=$${ryskOperatorMarginPool.usdh.toFixed(2)} WHYPE=${ryskOperatorMarginPool.whype.toFixed(4)}`);
     }
-    if (mmRyskUsdt0 > 0 || mmRyskUsdc > 0 || ryskMmMarginPool.whype > 0) {
-      console.log(`  MM MarginPool:      USDT0=$${ryskMmMarginPool.usdt0.toFixed(2)} USDC=$${ryskMmMarginPool.usdc.toFixed(2)} WHYPE=${ryskMmMarginPool.whype.toFixed(4)}`);
+    if (mmRyskUsdt0 > 0 || mmRyskUsdc > 0 || mmRyskUsdh > 0 || ryskMmMarginPool.whype > 0) {
+      console.log(`  MM MarginPool:      USDT0=$${ryskMmMarginPool.usdt0.toFixed(2)} USDC=$${ryskMmMarginPool.usdc.toFixed(2)} USDH=$${ryskMmMarginPool.usdh.toFixed(2)} WHYPE=${ryskMmMarginPool.whype.toFixed(4)}`);
     }
     console.log(`  Positions (${totalRyskVaults} vaults):`);
     for (const pos of ryskData.positions) {
@@ -2141,7 +2159,7 @@ async function calculateYield() {
 
   const totalUsdcBalance = usdcBalance + lighterUsdcBalance + hyperliquidUsdcBalance;
 
-  // Rysk stable collateral (USDT0 + USDC at $1). WHYPE is counted in HYPE exposure above.
+  // Rysk stable collateral (USDT0 + USDC + USDH at $1). WHYPE is counted in HYPE exposure above.
   const ryskStableCollateral = totalRyskStableCollateral - ryskOptionIntrinsicLiability;
 
   // HyperLend: WHYPE is counted in HYPE exposure. Only add non-WHYPE supplies here.
@@ -2425,12 +2443,14 @@ async function calculateYield() {
       rysk: {
         totalCollateralUsdt0: ryskData.totalCollateralUsdt0,
         totalCollateralUsdc: ryskData.totalCollateralUsdc,
+        totalCollateralUsdh: ryskData.totalCollateralUsdh,
         totalCollateralWhype: ryskData.totalCollateralWhype,
         operatorMarginPool: ryskOperatorMarginPool,
         positions: ryskData.positions,
         vaultCount: ryskData.vaultCount,
         mmTotalCollateralUsdt0: ryskMmVaultData.totalCollateralUsdt0,
         mmTotalCollateralUsdc: ryskMmVaultData.totalCollateralUsdc,
+        mmTotalCollateralUsdh: ryskMmVaultData.totalCollateralUsdh,
         mmTotalCollateralWhype: ryskMmVaultData.totalCollateralWhype,
         mmMarginPool: ryskMmMarginPool,
         mmPositions: ryskMmVaultData.positions,
