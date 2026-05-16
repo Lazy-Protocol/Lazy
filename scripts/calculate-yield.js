@@ -2363,15 +2363,12 @@ async function calculateYield() {
   console.log(`  SAFE TO REPORT:       $${unreportedYield.toFixed(2)}`);
   console.log('='.repeat(60));
   console.log('');
-  console.log('FORWARD EXPIRY OUTCOMES (option book only, holding all positions to expiry):');
-  console.log(`  Open Derive short MTM cost (in subaccount):  -$${deriveOpenShortMarkCost.toFixed(2)}`);
-  console.log(`  Open Rysk long mark (recovers part of above): +$${ryskLongMarkValue.toFixed(2)}`);
-  console.log(`  Net unrealized buffer at risk:               $${otmExpiryBuffer.toFixed(2)}`);
-  console.log(`    upper bound: all positions expire OTM → buffer recovered to NAV`);
-  console.log(`    lower bound: calendar pairs go ITM after Rysk expires → perp must bridge`);
+  console.log('FORWARD RANGE (option book held to expiry):');
+  console.log(`  Derive short MTM cost:    -$${deriveOpenShortMarkCost.toFixed(2)}  (paid if shorts settle at current mark)`);
+  console.log(`  Rysk long mark (offset):  +$${ryskLongMarkValue.toFixed(2)}  (recovered if longs settle at current mark)`);
   console.log(`  ─────────────────────────`);
-  console.log(`  BEST-CASE FWD GAP:    $${otmExpiryGap.toFixed(2)}  (assumes all-OTM expiry, no perp churn)`);
-  console.log(`  WORST-CASE FWD GAP:   ~$${unreportedYield.toFixed(2)}  (assumes drag fully realizes, no recovery)`);
+  console.log(`  Current gap (now):        $${unreportedYield.toFixed(2)}`);
+  console.log(`  Upper bound (all OTM):    $${otmExpiryGap.toFixed(2)}  (Derive shorts decay to 0, perp churn = 0)`);
   console.log('='.repeat(60));
 
   // 9. Calculate PPS-based yield (using history loaded earlier)
