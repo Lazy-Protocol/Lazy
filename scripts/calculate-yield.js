@@ -1,7 +1,7 @@
 import { createPublicClient, http, formatUnits, createWalletClient } from 'viem';
 import { mainnet } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, createReadStream } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
@@ -978,6 +978,98 @@ finally:
   }
 }
 
+// ============================================
+// Rysk LONG valuation (mark-based, via Derive)
+// ============================================
+// Symmetric counterpart to the existing short-side intrinsic-liability deduction.
+// Active Rysk longs (oTokens we hold) are not visible on-chain from `fetchRyskPositions`
+// because that reads vault shorts. We use the v3 trade ledger as source of truth and
+// value each leg at the matching Derive instrument's mark price (fair-value reference).
+const RYSK_LONG_ACTIVE_PHASES = new Set(['spread_active', 'gap', 'hedging', 'gamma_active']);
+const DERIVE_TICKER_URL = 'https://api.lyra.finance/public/get_ticker';
+
+async function loadActiveRyskLongs() {
+  const ledgerPath = join(__dirname, '..', 'data', 'v3', 'trades.jsonl');
+  if (!existsSync(ledgerPath)) return [];
+  const latest = new Map();
+  const rl = createInterface({ input: createReadStream(ledgerPath, { encoding: 'utf-8' }), crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    const tid = r.trade_id;
+    if (!tid) continue;
+    const prev = latest.get(tid);
+    if (!prev || (r.updated_at || '') >= (prev.updated_at || '')) latest.set(tid, r);
+  }
+  const groups = new Map();
+  const nowMs = Date.now();
+  for (const r of latest.values()) {
+    if (!RYSK_LONG_ACTIVE_PHASES.has(r.phase)) continue;
+    if (r.rysk_direction !== 'we_bought') continue;
+    const expMs = new Date(r.expiry).getTime();
+    if (!Number.isFinite(expMs)) continue;
+    // Skip past-Rysk-expiry legs; their payout flows through MarginPool / wallet balances
+    // already counted elsewhere. Crediting mark here would double-count or use a stale price.
+    if (expMs <= nowMs) continue;
+    const key = `${r.underlying}|${r.option_type}|${r.strike}|${expMs}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        underlying: r.underlying,
+        optionType: r.option_type,
+        strike: parseFloat(r.strike),
+        expiryMs: expMs,
+        size: 0,
+        premiumPaid: 0,
+      });
+    }
+    const g = groups.get(key);
+    g.size += parseFloat(r.rysk_size);
+    g.premiumPaid += parseFloat(r.rysk_premium) * parseFloat(r.rysk_size);
+  }
+  return [...groups.values()];
+}
+
+function deriveInstrumentName(underlying, expiryMs, strike, isPut) {
+  const yyyymmdd = new Date(expiryMs).toISOString().slice(0, 10).replace(/-/g, '');
+  let s = strike.toString();
+  if (s.includes('.')) s = s.replace(/\.?0+$/, '');
+  return `${underlying}-${yyyymmdd}-${s}-${isPut ? 'P' : 'C'}`;
+}
+
+async function fetchDeriveMark(instrument) {
+  try {
+    const resp = await fetch(DERIVE_TICKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (yield-calc)' },
+      body: JSON.stringify({ instrument_name: instrument }),
+    });
+    if (!resp.ok) return null;
+    const body = await resp.json();
+    const t = body?.result;
+    if (!t) return null;
+    for (const k of ['mark_price', 'best_ask_price', 'best_bid_price']) {
+      const v = parseFloat(t[k] || '0');
+      if (v > 0) return v;
+    }
+  } catch {}
+  return null;
+}
+
+async function fetchRyskLongMarkValue() {
+  const groups = await loadActiveRyskLongs();
+  if (groups.length === 0) return { totalValue: 0, positions: [], unmatched: 0 };
+  for (const g of groups) {
+    const inst = deriveInstrumentName(g.underlying, g.expiryMs, g.strike, g.optionType === 'PUT');
+    g.instrument = inst;
+    g.mark = await fetchDeriveMark(inst);
+    g.value = g.mark != null ? g.mark * g.size : 0;
+  }
+  const totalValue = groups.reduce((s, g) => s + g.value, 0);
+  const unmatched = groups.filter((g) => g.mark == null).length;
+  return { totalValue, positions: groups, unmatched };
+}
+
 function calculateRyskIntrinsicLiability(positions, currentHypePrice) {
   if (!currentHypePrice || currentHypePrice <= 0) return 0;
   return positions.reduce((sum, pos) => {
@@ -1686,6 +1778,7 @@ async function calculateYield() {
     ryskMmMarginPool,
     hyperLendData,
     deriveData,
+    ryskLongMarkData,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(MULTISIG_ADDRESS),
@@ -1706,6 +1799,7 @@ async function calculateYield() {
     fetchRyskMarginPoolBalances(RYSK_MM_ADDRESS),
     fetchHyperLendPositions(OPERATOR_ADDRESS),
     fetchDerivePositions(),
+    fetchRyskLongMarkValue(),
   ]);
 
   // Calculate deposit/withdrawal deltas from vault state
@@ -2171,7 +2265,12 @@ async function calculateYield() {
   // Derive.xyz: use portfolio value (USDC minus current mark cost of open shorts)
   const deriveUsdcBalance = deriveData.portfolioValue;
 
-  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance;
+  // Rysk longs (live legs, valued at matching Derive contract mark).
+  // Symmetric counterpart to deriveUsdcBalance's already-baked short MTM; without this credit,
+  // every ITM excursion shows up as one-sided drawdown in NAV.
+  const ryskLongMarkValue = ryskLongMarkData?.totalValue || 0;
+
+  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
 
   console.log('');
   console.log('='.repeat(60));
@@ -2206,6 +2305,12 @@ async function calculateYield() {
   if (deriveUsdcBalance > 0) {
     console.log(`  Derive (USDC):    $${deriveUsdcBalance.toFixed(2)}`);
   }
+  if (ryskLongMarkValue !== 0) {
+    console.log(`  Rysk longs (mark):$${ryskLongMarkValue.toFixed(2)}`);
+    if (ryskLongMarkData?.unmatched) {
+      console.log(`    (${ryskLongMarkData.unmatched} legs had no Derive mark and were valued at $0)`);
+    }
+  }
   console.log(`  ─────────────────────────`);
   console.log(`  TOTAL NAV:        $${totalNav.toFixed(2)}`);
   console.log('='.repeat(60));
@@ -2238,6 +2343,14 @@ async function calculateYield() {
   const grossYield = totalNav - vaultData.totalAssets;
   const unreportedYield = grossYield - entryExitCosts;
 
+  // Forward "all-OTM" upper bound: assume every open Derive short expires worthless
+  // (we keep full subaccount cash) and every Rysk long expires worthless (mark → 0).
+  // Delta vs the honest-MTM NAV is the unrealized buffer sitting in the option book.
+  const deriveOpenShortMarkCost = (deriveData.usdcBalance || 0) - (deriveData.portfolioValue || 0);
+  const otmExpiryBuffer = deriveOpenShortMarkCost - ryskLongMarkValue;
+  const otmExpiryNav = totalNav + otmExpiryBuffer;
+  const otmExpiryGap = otmExpiryNav - vaultData.totalAssets - entryExitCosts;
+
   console.log('');
   console.log('='.repeat(60));
   console.log('YIELD CALCULATION:');
@@ -2246,8 +2359,19 @@ async function calculateYield() {
   console.log(`  Gross yield:          $${grossYield.toFixed(2)}`);
   console.log(`  Entry/exit costs:     -$${entryExitCosts.toFixed(2)}`);
   console.log(`  ─────────────────────────`);
-  console.log(`  NET UNREPORTED YIELD: $${unreportedYield.toFixed(2)}`);
+  console.log(`  NET UNREPORTED YIELD: $${unreportedYield.toFixed(2)}  (honest MTM, conservative)`);
   console.log(`  SAFE TO REPORT:       $${unreportedYield.toFixed(2)}`);
+  console.log('='.repeat(60));
+  console.log('');
+  console.log('FORWARD EXPIRY OUTCOMES (option book only, holding all positions to expiry):');
+  console.log(`  Open Derive short MTM cost (in subaccount):  -$${deriveOpenShortMarkCost.toFixed(2)}`);
+  console.log(`  Open Rysk long mark (recovers part of above): +$${ryskLongMarkValue.toFixed(2)}`);
+  console.log(`  Net unrealized buffer at risk:               $${otmExpiryBuffer.toFixed(2)}`);
+  console.log(`    upper bound: all positions expire OTM → buffer recovered to NAV`);
+  console.log(`    lower bound: calendar pairs go ITM after Rysk expires → perp must bridge`);
+  console.log(`  ─────────────────────────`);
+  console.log(`  BEST-CASE FWD GAP:    $${otmExpiryGap.toFixed(2)}  (assumes all-OTM expiry, no perp churn)`);
+  console.log(`  WORST-CASE FWD GAP:   ~$${unreportedYield.toFixed(2)}  (assumes drag fully realizes, no recovery)`);
   console.log('='.repeat(60));
 
   // 9. Calculate PPS-based yield (using history loaded earlier)
