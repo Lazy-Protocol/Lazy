@@ -235,30 +235,34 @@ export function Home() {
             <p className="section-subtitle">Three steps. Zero maintenance.</p>
           </div>
 
-          <div className="steps-grid">
-          <div className="step-card">
-            <div className="step-number">1</div>
-            <h3 className="step-title">Deposit</h3>
-            <p className="step-description">
-              Commit your capital. Receive lazyUSD representing your position.
-            </p>
-          </div>
+          <ol className="hiw-register">
+            <li className="hiw-row">
+              <span className="hiw-roman">i.</span>
+              <span className="hiw-head">Deposit.</span>
+              <p className="hiw-body">
+                Commit your capital. Receive lazyUSD representing your position.
+              </p>
+            </li>
+            <li className="hiw-row">
+              <span className="hiw-roman">ii.</span>
+              <span className="hiw-head">Wait.</span>
+              <p className="hiw-body">
+                Your lazyUSD grows in value over time. Patience is the strategy.
+              </p>
+            </li>
+            <li className="hiw-row">
+              <span className="hiw-roman">iii.</span>
+              <span className="hiw-head">Collect.</span>
+              <p className="hiw-body">
+                Request a withdrawal. USDC and accrued yield arrive within 7 days.
+              </p>
+            </li>
+          </ol>
 
-          <div className="step-card">
-            <div className="step-number">2</div>
-            <h3 className="step-title">Wait</h3>
-            <p className="step-description">
-              Your lazyUSD grows in value over time. Patience is the strategy.
-            </p>
-          </div>
-
-          <div className="step-card">
-            <div className="step-number">3</div>
-            <h3 className="step-title">Collect</h3>
-            <p className="step-description">
-              Request a withdrawal. USDC and accrued yield arrive within 7 days.
-            </p>
-          </div>
+          <div className="hiw-foot">
+            <Link to="/docs" className="hiw-link">
+              Read the full docs <ArrowRight size={14} />
+            </Link>
           </div>
         </div>
       </section>
