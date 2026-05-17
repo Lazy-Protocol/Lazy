@@ -51,6 +51,20 @@ scripts/derive-puts.py
 scripts/backtest-rysk-puts.js
 scripts/backtest-rysk-puts-replay.py
 
+# Arb strategy specs, plans, audits. These belong in the private arb repo.
+docs/KNOWN_BUGS.md
+docs/GAP_*.md
+docs/PATH_*.md
+docs/PERP_*.md
+docs/PORTFOLIO_TARGET_*.md
+docs/INVENTORY_POOL_*.md
+docs/IV_INTERPOLATION_*.md
+docs/HYPE_GAP_*.md
+docs/PROACTIVE_INVENTORY_*.md
+docs/YIELD_STATEMENT_*.md
+docs/GAMMA_LIVE_*.md
+docs/audits/
+
 # Python build artifacts
 __pycache__/
 *.pyc
