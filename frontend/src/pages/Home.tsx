@@ -9,7 +9,7 @@ import { VaultCertificate } from '@/components/VaultCertificate';
 import { TimeMachine } from '@/components/TimeMachine';
 import { AnimatedNumber } from '@/components/AnimatedNumber';
 import { Link } from 'react-router-dom';
-import { Shield, Clock, FileText, Info, Eye, Activity, ArrowRight } from 'lucide-react';
+import { Shield, Clock, Eye, Activity, ArrowRight } from 'lucide-react';
 
 // Vault launch date for "Days Live" calculation
 const VAULT_LAUNCH = new Date('2026-01-07T00:00:00Z');
@@ -23,22 +23,27 @@ export function Home() {
   const { shareBalance, usdcValue, totalDeposited } = useUserData(address);
   const { data: protocolStats } = useProtocolStats();
 
-  // Use protocolStats (from GitHub) as primary source, fallback to contract data
-  const tvlValue = protocolStats?.formatted?.tvl
-    ? Number(protocolStats.formatted.tvl)
-    : totalAssets
-      ? Number(totalAssets) / 1e6
+  // Prefer live on-chain values. Fall back to the GitHub-published stats.json only
+  // while the wagmi reads are loading, so stale stats.json never overrides fresh chain data.
+  const tvlValue = totalAssets !== undefined
+    ? Number(totalAssets) / 1e6
+    : protocolStats?.formatted?.tvl
+      ? Number(protocolStats.formatted.tvl)
       : 0;
 
-  const yieldValue = protocolStats?.formatted?.accumulatedYield
-    ? Number(protocolStats.formatted.accumulatedYield)
-    : accumulatedYield !== undefined && accumulatedYield > 0n
-      ? Number(accumulatedYield) / 1e6
+  const yieldValue = accumulatedYield !== undefined && accumulatedYield > 0n
+    ? Number(accumulatedYield) / 1e6
+    : protocolStats?.formatted?.accumulatedYield
+      ? Number(protocolStats.formatted.accumulatedYield)
       : 0;
 
   const aprValue = protocolStats?.apr ? Number(protocolStats.apr) : 0;
   const apr30dValue = typeof protocolStats?.apr30d === 'number' ? Number(protocolStats.apr30d) : null;
-  const aprLabel = protocolStats?.aprPeriod === '7d' ? '7d APR' : 'APR';
+  const aprLabel = protocolStats?.aprSource === 'static'
+    ? 'Target APR'
+    : protocolStats?.aprPeriod === '7d'
+      ? '7d Realised APR'
+      : 'Realised APR';
 
   // Calculate days since vault launch
   const daysLive = Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24)));
@@ -72,14 +77,15 @@ export function Home() {
       {/* Hero Section */}
       <section className="hero">
         <div className="container">
-          <h1 className="hero-title">Be lazy.</h1>
+          <h1 className="hero-title">Be <em>lazy.</em></h1>
           <p className="hero-subtitle">
-            Patient capital, rewarded.<br />
-            No staking. No claiming. Just yield.
+            Patient capital, rewarded. The vault manages positions so you don't have to.
           </p>
           <div className="hero-cta-group">
-            <a href="#vaults" className="btn btn-primary">View Vaults</a>
-            <a href="#how-it-works" className="btn btn-secondary">How it works</a>
+            <button className="btn btn-primary" onClick={() => setShowDeposit(true)}>
+              Deposit
+            </button>
+            <Link to="/docs" className="btn btn-secondary">Read the docs</Link>
           </div>
         </div>
       </section>
@@ -130,7 +136,7 @@ export function Home() {
                   <AnimatedNumber value={yieldValue} decimals={2} prefix="$" />
                 ) : '...'}
               </div>
-              <div className="stat-label">Yield Distributed</div>
+              <div className="stat-label">Yield earned to date</div>
             </div>
             <div className="stat-item">
               <div className="stat-value">
@@ -146,7 +152,7 @@ export function Home() {
       <section className="section" id="vaults">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">Vaults</h2>
+            <h2 className="section-title">The <em>vault.</em></h2>
             <p className="section-subtitle">Patient capital starts here.</p>
           </div>
 
@@ -217,86 +223,15 @@ export function Home() {
             </div>
           </div>
 
-          {/* lazyETH Vault (Coming Soon) */}
-          <div className="vault-card" style={{ opacity: 0.6 }}>
-            <div className="vault-header">
-              <div className="vault-icon vault-icon-eth">Ξ</div>
-              <div>
-                <h3 className="vault-title">lazyETH</h3>
-                <p className="vault-subtitle">ETH Savings Vault</p>
-              </div>
-            </div>
-
-            <div className="vault-stats">
-              <div>
-                <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value">...</div>
-              </div>
-              <div>
-                <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">...</div>
-              </div>
-            </div>
-
-            <div className="vault-user-section">
-              <div className="vault-user-label">Status</div>
-              <div className="vault-user-balance" style={{ fontFamily: 'var(--font-primary)', fontSize: '1rem' }}>
-                Coming soon
-              </div>
-              <div className="vault-user-subtext">Launching Q2 2026</div>
-            </div>
-
-            <div className="vault-actions">
-              <button className="btn btn-secondary btn-sm" style={{ gridColumn: 'span 2' }} disabled>
-                Notify me
-              </button>
-            </div>
-          </div>
-
-          {/* lazyHYPE Vault (Coming Soon) */}
-          <div className="vault-card" style={{ opacity: 0.6 }}>
-            <div className="vault-header">
-              <div className="vault-icon vault-icon-hype">H</div>
-              <div>
-                <h3 className="vault-title">lazyHYPE</h3>
-                <p className="vault-subtitle">HYPE Savings Vault</p>
-              </div>
-            </div>
-
-            <div className="vault-stats">
-              <div>
-                <div className="vault-stat-label">APY</div>
-                <div className="vault-stat-value">...</div>
-              </div>
-              <div>
-                <div className="vault-stat-label">TVL</div>
-                <div className="vault-stat-value">...</div>
-              </div>
-            </div>
-
-            <div className="vault-user-section">
-              <div className="vault-user-label">Status</div>
-              <div className="vault-user-balance" style={{ fontFamily: 'var(--font-primary)', fontSize: '1rem' }}>
-                Coming soon
-              </div>
-              <div className="vault-user-subtext">Launching Q2 2026</div>
-            </div>
-
-            <div className="vault-actions">
-              <button className="btn btn-secondary btn-sm" style={{ gridColumn: 'span 2' }} disabled>
-                Notify me
-              </button>
-            </div>
-          </div>
           </div>
         </div>
       </section>
 
       {/* How It Works */}
-      <section className="section" id="how-it-works" style={{ background: 'white' }}>
+      <section className="section" id="how-it-works">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">How it works</h2>
+            <h2 className="section-title">How it <em>works.</em></h2>
             <p className="section-subtitle">Three steps. Zero maintenance.</p>
           </div>
 
@@ -305,7 +240,7 @@ export function Home() {
             <div className="step-number">1</div>
             <h3 className="step-title">Deposit</h3>
             <p className="step-description">
-              Commit your capital. Receive lazyUSD representing your share.
+              Commit your capital. Receive lazyUSD representing your position.
             </p>
           </div>
 
@@ -321,7 +256,7 @@ export function Home() {
             <div className="step-number">3</div>
             <h3 className="step-title">Collect</h3>
             <p className="step-description">
-              When you're ready, claim your capital, plus everything it earned.
+              Request a withdrawal. USDC and accrued yield arrive within 7 days.
             </p>
           </div>
           </div>
@@ -331,51 +266,17 @@ export function Home() {
       {/* Time Machine Calculator */}
       <TimeMachine />
 
-      {/* Transparency Section */}
-      <section className="section" id="transparency">
-        <div className="container">
-          <div className="section-header">
-            <h2 className="section-title">No black boxes.</h2>
-            <p className="section-subtitle">Trust, but verify.</p>
-          </div>
-
-          <div className="steps-grid">
-            <div className="step-card">
-              <div className="step-number">
-                <Info size={24} />
-              </div>
-              <h3 className="step-title">On-chain NAV</h3>
-              <p className="step-description">
-                Net Asset Value computed transparently on-chain. No off-chain oracles, no trust assumptions.
-              </p>
-            </div>
-
-            <div className="step-card">
-              <div className="step-number">
-                <Eye size={24} />
-              </div>
-              <h3 className="step-title">Visible positions</h3>
-              <p className="step-description">
-                Every asset, every position. Fully verifiable. See exactly where your capital is working.
-              </p>
-            </div>
-
-            <div className="step-card">
-              <div className="step-number">
-                <Activity size={24} />
-              </div>
-              <h3 className="step-title">On-chain execution</h3>
-              <p className="step-description">
-                Positions held on Hyperliquid and Lighter. All trades, all movements. Public and auditable.
-              </p>
-            </div>
-          </div>
-
-          <div style={{ textAlign: 'center', marginTop: 'var(--space-xl)' }}>
-            <Link to="/backing" className="btn btn-secondary">
-              View Backing Details <ArrowRight size={16} />
-            </Link>
-          </div>
+      {/* Transparency line (compressed; full story on /backing) */}
+      <section className="section" id="transparency" style={{ textAlign: 'center' }}>
+        <div className="container-narrow">
+          <h2 className="section-title">No black <em>boxes.</em></h2>
+          <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
+            Every position the vault holds is visible on chain. The receipt is published
+            on the backing page, refreshed when the operator publishes a snapshot.
+          </p>
+          <Link to="/backing" className="btn btn-secondary">
+            View backing <ArrowRight size={16} />
+          </Link>
         </div>
       </section>
 
@@ -386,22 +287,22 @@ export function Home() {
           <div className="security-text">
             <h3>Built by paranoid engineers.</h3>
             <p>
-              Lazy vaults are secured by formal mathematical proofs, not just audits.
-              Five invariants guarantee your assets are handled fairly, always.
+              Lazy vaults are secured by formal mathematical proofs. Five invariants
+              guarantee your assets are handled fairly, always.
             </p>
           </div>
           <div className="security-badges">
             <div className="security-badge">
               <Shield size={20} />
-              5 Invariants Verified
+              5 invariants verified
             </div>
             <div className="security-badge">
-              <Clock size={20} />
-              Halmos Proven
+              <Eye size={20} />
+              Halmos proven
             </div>
             <div className="security-badge">
-              <FileText size={20} />
-              Audited
+              <Activity size={20} />
+              On-chain NAV
             </div>
           </div>
           </div>
@@ -411,11 +312,14 @@ export function Home() {
       {/* CTA Section */}
       <section className="section" style={{ textAlign: 'center' }}>
         <div className="container-narrow">
-          <h2 className="section-title">Patience pays.</h2>
+          <h2 className="section-title">Patience <em>pays.</em></h2>
           <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
             Your capital is ready. Patience is the only requirement.
           </p>
-          <a href="#vaults" className="btn btn-gold">Start Earning</a>
+          <div className="hero-cta-group" style={{ justifyContent: 'center' }}>
+            <button className="btn btn-gold" onClick={() => setShowDeposit(true)}>Deposit</button>
+            <Link to="/docs" className="btn btn-secondary">Read the docs</Link>
+          </div>
         </div>
       </section>
 

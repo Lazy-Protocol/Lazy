@@ -1668,6 +1668,7 @@ async function fetchVaultData() {
 
 const NAV_HISTORY_PATH = join(__dirname, '..', 'data', 'nav-history.json');
 const YIELD_SNAPSHOTS_PATH = join(__dirname, '..', 'data', 'yield-snapshots.json');
+const BACKING_PUBLIC_PATH = join(__dirname, '..', 'frontend', 'public', 'backing.json');
 
 function num(value, defaultValue = 0) {
   const parsed = Number(value);
@@ -1720,6 +1721,152 @@ function saveYieldSnapshot(snapshotData) {
   snapshots.snapshots.push(snapshotData);
   writeFileSync(YIELD_SNAPSHOTS_PATH, JSON.stringify(snapshots, null, 2));
   console.log(`\nSnapshot saved to ${YIELD_SNAPSHOTS_PATH}`);
+}
+
+function parseExpiryFromInstrument(instrument) {
+  const m = String(instrument || '').match(/^[A-Z]+-(\d{8})-/);
+  if (!m) return null;
+  const d = m[1];
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+}
+
+function buildBackingSnapshot(result) {
+  const h = result.holdings || {};
+  const derivePositions = h.derive?.positions || [];
+
+  let deriveShortCount = 0;
+  let deriveLongCount = 0;
+  const expirySet = new Set();
+  for (const pos of derivePositions) {
+    const amt = Number(pos.amount || 0);
+    if (amt < 0) deriveShortCount++;
+    else if (amt > 0) deriveLongCount++;
+    const exp = parseExpiryFromInstrument(pos.instrument);
+    if (exp) expirySet.add(exp);
+  }
+  const expiries = Array.from(expirySet).sort();
+
+  return {
+    publishedAt: new Date().toISOString(),
+    vault: {
+      address: VAULT_ADDRESS,
+      sharePrice: result.sharePrice,
+      totalShares: result.totalSupply,
+      totalAssets: result.vaultTotalAssets,
+      accumulatedYield: result.accumulatedYield,
+    },
+    cumulativeFlows: {
+      deposited: result.flows.cumulativeDeposited,
+      withdrawn: result.flows.cumulativeWithdrawn,
+    },
+    nav: {
+      total: result.nav,
+      breakdown: [
+        { label: 'Derive (USDC)',         value: result.breakdown.derive },
+        { label: 'LIT (hedged)',          value: result.breakdown.lit },
+        { label: 'HYPE (hedged)',         value: result.breakdown.hype },
+        { label: 'Hyperliquid (equity)',  value: result.breakdown.hyperliquidEquity },
+        { label: 'Lighter (collateral)',  value: result.breakdown.lighterCollateral },
+        { label: 'Lighter operator',      value: result.breakdown.lighterOperator },
+        { label: 'Rysk longs (mark)',     value: result.optionBook.ryskLongMark },
+        { label: 'Rysk (stables)',        value: result.breakdown.ryskStables },
+        { label: 'USDC (idle)',           value: result.breakdown.usdc },
+        { label: 'HyperLend (net)',       value: result.breakdown.hyperLend },
+        { label: 'ETH exposure',          value: result.breakdown.eth },
+        { label: 'SOL (hedged)',          value: result.breakdown.sol },
+        { label: 'BTC perp PnL',          value: result.breakdown.btc },
+      ].filter((b) => Number.isFinite(b.value) && Math.abs(b.value) > 0.005),
+    },
+    exposures: {
+      hype: h.hype && {
+        totalHoldings: h.hype.totalHoldings,
+        totalShort: h.hype.totalShort,
+        netExposure: h.hype.netExposure,
+        currentPrice: h.hype.currentPrice,
+        totalValue: h.hype.totalValue,
+      },
+      lit: h.lit && {
+        totalHoldings: h.lit.totalBalance,
+        totalShort: h.lit.totalShort,
+        netExposure: h.lit.netExposure,
+        currentPrice: h.lit.currentPrice,
+        totalValue: h.lit.totalValue,
+      },
+      eth: h.eth && {
+        spot: h.eth.spotEth,
+        netExposure: h.eth.netExposure,
+        currentPrice: h.eth.currentPrice,
+        totalValue: h.eth.totalValue,
+      },
+      btc: h.btc && {
+        netExposure: h.btc.netExposure,
+        currentPrice: h.btc.currentPrice,
+        totalValue: h.btc.totalValue,
+      },
+      sol: h.solana && {
+        totalSol: h.solana.totalSol,
+        currentPrice: h.solana.solPrice,
+        totalValue: h.solana.solValue,
+      },
+    },
+    venues: {
+      lighter: h.lighter && {
+        collateral: h.lighter.collateral,
+        unrealizedPnl: h.lighter.unrealizedPnl,
+        positionCount: (h.lighter.positions || []).length,
+      },
+      lighterOperator: h.lighter?.operatorTrading && {
+        equity: h.lighter.operatorTrading.equity,
+        unrealizedPnl: h.lighter.operatorTrading.unrealizedPnl,
+        positionCount: (h.lighter.operatorTrading.positions || []).length,
+      },
+      hyperliquid: h.hyperliquid && {
+        equity: h.hyperliquid.equity,
+        collateral: h.hyperliquid.collateral,
+        unrealizedPnl: h.hyperliquid.unrealizedPnl,
+        positionCount: (h.hyperliquid.positions || []).length,
+      },
+      derive: h.derive && {
+        usdcBalance: h.derive.usdcBalance,
+        portfolioValue: h.derive.portfolioValue,
+        shortCount: deriveShortCount,
+        longCount: deriveLongCount,
+      },
+      rysk: h.rysk && {
+        usdcCollateral: h.rysk.totalCollateralUsdc,
+        usdt0Collateral: h.rysk.totalCollateralUsdt0,
+        vaultCount: h.rysk.vaultCount,
+      },
+      hyperLend: h.hyperLend && {
+        totalCollateralUsd: h.hyperLend.totalCollateralUsd,
+        totalDebtUsd: h.hyperLend.totalDebtUsd,
+        netValueUsd: h.hyperLend.netValueUsd,
+      },
+      pendle: h.pendle && {
+        totalUsd: h.pendle.totalUsd,
+        positionCount: (h.pendle.positions || []).length,
+      },
+    },
+    optionBook: {
+      currentMtm: result.optionBook.currentMtm,
+      deriveShortMtmCost: result.optionBook.deriveShortMtmCost,
+      ryskLongMark: result.optionBook.ryskLongMark,
+      upperBoundIfAllOtm: result.optionBook.upperBoundIfAllOtm,
+      deriveShortCount,
+      deriveLongCount,
+      ryskUnmatchedLegs: result.optionBook.ryskUnmatchedLegs,
+      expiries,
+    },
+  };
+}
+
+function publishBackingSnapshot(snapshot) {
+  try {
+    writeFileSync(BACKING_PUBLIC_PATH, JSON.stringify(snapshot, null, 2));
+    console.log(`Backing snapshot published to ${BACKING_PUBLIC_PATH}`);
+  } catch (e) {
+    console.warn('Failed to publish backing snapshot:', e.message);
+  }
 }
 
 function promptUser(question) {
@@ -2440,6 +2587,13 @@ async function calculateYield() {
     sharePrice: vaultData.sharePrice,
     totalSupply: vaultData.totalSupply,
     accumulatedYield: vaultData.accumulatedYield,
+    optionBook: {
+      currentMtm: unreportedYield,
+      deriveShortMtmCost: -deriveOpenShortMarkCost,
+      ryskLongMark: ryskLongMarkValue,
+      upperBoundIfAllOtm: otmExpiryGap,
+      ryskUnmatchedLegs: ryskLongMarkData?.unmatched || 0,
+    },
     flows: {
       newDeposits,
       newWithdrawals,
@@ -2624,6 +2778,7 @@ async function main() {
       breakdown: result.breakdown,
     };
     saveYieldSnapshot(snapshot);
+    publishBackingSnapshot(buildBackingSnapshot(result));
   } else {
     console.log('Snapshot not saved.');
   }

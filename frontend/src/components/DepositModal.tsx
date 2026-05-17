@@ -269,7 +269,7 @@ getlazy.xyz?utm_source=share&utm_medium=twitter #PatientCapital`;
       <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
         <div className="modal" style={{ maxWidth: '560px' }}>
           <div className="modal-header">
-            <h3 className="modal-title">Deposit Confirmed</h3>
+            <h3 className="modal-title">Deposit <em>confirmed.</em></h3>
             <button className="modal-close" onClick={onClose}>
               <X size={20} />
             </button>
@@ -322,7 +322,7 @@ getlazy.xyz?utm_source=share&utm_medium=twitter #PatientCapital`;
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
-          <h3 className="modal-title">Deposit USDC</h3>
+          <h3 className="modal-title">Deposit <em>USDC.</em></h3>
           <button className="modal-close" onClick={onClose}>
             <X size={20} />
           </button>

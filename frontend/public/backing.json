@@ -1,0 +1,155 @@
+{
+  "publishedAt": "2026-05-16T20:16:09.935Z",
+  "vault": {
+    "address": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
+    "sharePrice": 1.026286,
+    "totalShares": 876594.234013759,
+    "totalAssets": 899637.035766,
+    "accumulatedYield": 20708.324065
+  },
+  "cumulativeFlows": {
+    "deposited": 978115.183635,
+    "withdrawn": 99186.471934
+  },
+  "nav": {
+    "total": 898192.2976543827,
+    "breakdown": [
+      {
+        "label": "Derive (USDC)",
+        "value": 434294.61535209004
+      },
+      {
+        "label": "LIT (hedged)",
+        "value": 242793.09077186964
+      },
+      {
+        "label": "HYPE (hedged)",
+        "value": 120878.19349198895
+      },
+      {
+        "label": "Hyperliquid (equity)",
+        "value": 46307.110624
+      },
+      {
+        "label": "Lighter (collateral)",
+        "value": 23724.943593
+      },
+      {
+        "label": "Lighter operator",
+        "value": 23370.85811
+      },
+      {
+        "label": "Rysk longs (mark)",
+        "value": 8656.7
+      },
+      {
+        "label": "Rysk (stables)",
+        "value": 4401.409102
+      },
+      {
+        "label": "USDC (idle)",
+        "value": 1079.0226092699997
+      },
+      {
+        "label": "HyperLend (net)",
+        "value": -17261.414779
+      },
+      {
+        "label": "ETH exposure",
+        "value": 69.25256
+      },
+      {
+        "label": "SOL (hedged)",
+        "value": 0.07733416413018145
+      },
+      {
+        "label": "BTC perp PnL",
+        "value": -13.815500000000043
+      }
+    ]
+  },
+  "exposures": {
+    "hype": {
+      "totalHoldings": 3766.367539627494,
+      "totalShort": 3761.15,
+      "netExposure": 5.217539627493807,
+      "currentPrice": 41.75697791367002,
+      "totalValue": 120878.19349198895
+    },
+    "lit": {
+      "totalHoldings": 192411.96079166883,
+      "totalShort": 187493.77,
+      "netExposure": 4918.190791668836,
+      "currentPrice": 0.8749399245081999,
+      "totalValue": 242793.09077186964
+    },
+    "eth": {
+      "spot": 0.0221,
+      "netExposure": 0,
+      "currentPrice": 2181.3,
+      "totalValue": 69.25256
+    },
+    "btc": {
+      "netExposure": -0.005,
+      "currentPrice": 78262.90000000001,
+      "totalValue": -13.815500000000043
+    },
+    "sol": {
+      "totalSol": 0.000891231,
+      "currentPrice": 86.77230048122367,
+      "totalValue": 0.07733416413018145
+    }
+  },
+  "venues": {
+    "lighter": {
+      "collateral": 23724.943593,
+      "unrealizedPnl": 47794.961834,
+      "positionCount": 2
+    },
+    "lighterOperator": {
+      "equity": 23370.85811,
+      "unrealizedPnl": -148.34893599999998,
+      "positionCount": 4
+    },
+    "hyperliquid": {
+      "equity": 46307.110624,
+      "collateral": 56199.365008999994,
+      "unrealizedPnl": -9892.254384999993,
+      "positionCount": 3
+    },
+    "derive": {
+      "usdcBalance": 455627.6356857554,
+      "portfolioValue": 434294.61535209004,
+      "shortCount": 43,
+      "longCount": 0
+    },
+    "rysk": {
+      "usdcCollateral": 0,
+      "usdt0Collateral": 0,
+      "vaultCount": 40
+    },
+    "hyperLend": {
+      "totalCollateralUsd": 156871.17712983,
+      "totalDebtUsd": 17257.49684671,
+      "netValueUsd": 139613.68028312
+    },
+    "pendle": {
+      "positionCount": 0
+    }
+  },
+  "optionBook": {
+    "currentMtm": -1444.7381116173929,
+    "deriveShortMtmCost": -21333.020333665365,
+    "ryskLongMark": 8656.7,
+    "upperBoundIfAllOtm": 11231.58222204796,
+    "deriveShortCount": 43,
+    "deriveLongCount": 0,
+    "ryskUnmatchedLegs": 20,
+    "expiries": [
+      "2026-05-22",
+      "2026-05-29",
+      "2026-06-05",
+      "2026-06-26"
+    ]
+  }
+}
