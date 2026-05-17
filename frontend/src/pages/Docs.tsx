@@ -158,7 +158,7 @@ export function Docs() {
             </p>
 
             <p className="lpx-pull">
-              The goal is simple. Make yield feel passive without hiding how it works.
+              The goal is simple: make yield feel passive without hiding how it works.
             </p>
           </Article>
 

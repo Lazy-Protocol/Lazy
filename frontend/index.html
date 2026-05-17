@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lazy · Patient capital, rewarded.</title>
     <meta name="description" content="Patient capital, rewarded. The vault manages positions so you don't have to. Target 10% APR on USDC, formally verified, fully transparent." />
-    <link rel="canonical" href="https://getlazy.xyz/" />
+    <!--
+      rel=canonical and og:url are intentionally NOT set here. They are
+      injected per-route at runtime by usePageMeta in
+      src/hooks/usePageMeta.ts. Crawlers that do not run JS will treat the
+      fetched URL as canonical, which is the correct SPA default.
+    -->
 
     <!-- Open Graph (Facebook, Discord, LinkedIn) -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://getlazy.xyz/" />
     <meta property="og:site_name" content="Lazy" />
     <meta property="og:title" content="Lazy · Patient capital, rewarded." />
     <meta property="og:description" content="The vault manages positions so you don't have to. Target 10% APR on USDC, formally verified, fully transparent." />

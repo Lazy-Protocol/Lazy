@@ -3654,19 +3654,9 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   font-weight: 500;
   color: var(--lpx-navy) !important;
   letter-spacing: -0.015em;
-  max-width: 26ch;
-  padding: 8px 0 8px 0;
-  position: relative;
-}
-.lpx-pull::before {
-  content: "“";
-  font-family: var(--font-primary);
-  font-size: 2.6rem;
-  color: var(--lpx-gold);
-  position: absolute;
-  left: -28px;
-  top: -10px;
-  line-height: 1;
+  max-width: 32ch;
+  padding: 6px 0 6px 18px;
+  border-left: 2px solid var(--lpx-gold);
 }
 
 /* Risk memo. Plate */
@@ -3864,8 +3854,7 @@ h4 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
   .lpx-art-body p.lpx-drop::first-letter { font-size: 3.4em; }
   .lpx-register li, .lpx-items li { grid-template-columns: 40px 1fr; gap: 12px; font-size: 1rem; }
   .lpx-items li::before { width: 18px; }
-  .lpx-pull { font-size: 1.2rem !important; }
-  .lpx-pull::before { left: -18px; font-size: 2rem; }
+  .lpx-pull { font-size: 1.2rem !important; padding-left: 14px; }
   .lpx-plate { padding: 24px 22px 28px; }
   .lpx-colophon { grid-template-columns: 1fr; gap: var(--space-md); }
   .lpx-footmark { flex-direction: column; align-items: flex-start; }
