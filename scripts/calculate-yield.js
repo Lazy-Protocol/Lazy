@@ -1891,6 +1891,37 @@ function publishBackingSnapshot(snapshot) {
     console.log(`Backing snapshot published to ${BACKING_PUBLIC_PATH}`);
   } catch (e) {
     console.warn('Failed to publish backing snapshot:', e.message);
+    return;
+  }
+  pushBackingSnapshot();
+}
+
+function pushBackingSnapshot() {
+  const repoRoot = join(__dirname, '..');
+  const rel = 'frontend/public/backing.json';
+  try {
+    const diff = execFileSync('git', ['diff', '--quiet', '--', rel], {
+      cwd: repoRoot, stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    // exit 0 = no change; we only reach here if --quiet exited 0
+    console.log('Backing snapshot unchanged, skipping push.');
+    return;
+  } catch (e) {
+    // exit 1 = file has changes, fall through to commit
+    if (e.status !== 1) {
+      console.warn('git diff failed, skipping auto-push:', e.message);
+      return;
+    }
+  }
+  try {
+    execFileSync('git', ['add', rel], { cwd: repoRoot, stdio: 'inherit' });
+    execFileSync('git', ['commit', '--only', rel, '-m', 'Update backing.json snapshot'], {
+      cwd: repoRoot, stdio: 'inherit',
+    });
+    execFileSync('git', ['push'], { cwd: repoRoot, stdio: 'inherit' });
+    console.log('Backing snapshot committed and pushed.');
+  } catch (e) {
+    console.warn('Auto-push failed, commit/push manually:', e.message);
   }
 }
 
@@ -2799,7 +2830,13 @@ async function calculateYield() {
 
 // Run with snapshot prompt
 async function main() {
+  const publishOnly = process.argv.includes('--publish-only');
   const result = await calculateYield();
+
+  if (publishOnly) {
+    publishBackingSnapshot(buildBackingSnapshot(result));
+    return;
+  }
 
   console.log('');
   const answer = await promptUser('Save snapshot after yield report? (y/n): ');
