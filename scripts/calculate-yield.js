@@ -1896,32 +1896,69 @@ function publishBackingSnapshot(snapshot) {
   pushBackingSnapshot();
 }
 
+// Publish backing.json to origin/main without touching the current branch.
+// The website reads from raw.githubusercontent.com/.../main/.../backing.json,
+// so the snapshot must land on main even when the operator works on develop.
+// Worktree approach keeps unrelated commits from leaking across branches.
 function pushBackingSnapshot() {
   const repoRoot = join(__dirname, '..');
   const rel = 'frontend/public/backing.json';
+  const worktreeDir = join(repoRoot, '.git', 'backing-publish-worktree');
+  const run = (args, opts = {}) =>
+    execFileSync('git', args, { cwd: repoRoot, stdio: 'inherit', ...opts });
+  const runQuiet = (args, opts = {}) =>
+    execFileSync('git', args, { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'], ...opts })
+      .toString().trim();
+
   try {
-    const diff = execFileSync('git', ['diff', '--quiet', '--', rel], {
-      cwd: repoRoot, stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    // exit 0 = no change; we only reach here if --quiet exited 0
-    console.log('Backing snapshot unchanged, skipping push.');
+    runQuiet(['fetch', 'origin', 'main']);
+  } catch (e) {
+    console.warn('git fetch origin main failed, skipping auto-publish:', e.message);
     return;
-  } catch (e) {
-    // exit 1 = file has changes, fall through to commit
-    if (e.status !== 1) {
-      console.warn('git diff failed, skipping auto-push:', e.message);
-      return;
-    }
   }
+
+  // Create a detached worktree at origin/main's tip.
   try {
-    execFileSync('git', ['add', rel], { cwd: repoRoot, stdio: 'inherit' });
-    execFileSync('git', ['commit', '--only', rel, '-m', 'Update backing.json snapshot'], {
-      cwd: repoRoot, stdio: 'inherit',
-    });
-    execFileSync('git', ['push'], { cwd: repoRoot, stdio: 'inherit' });
-    console.log('Backing snapshot committed and pushed.');
+    run(['worktree', 'remove', '--force', worktreeDir], { stdio: 'ignore' });
+  } catch {}
+  try {
+    run(['worktree', 'add', '--detach', worktreeDir, 'origin/main']);
   } catch (e) {
-    console.warn('Auto-push failed, commit/push manually:', e.message);
+    console.warn('git worktree add failed, skipping auto-publish:', e.message);
+    return;
+  }
+
+  try {
+    // Copy the freshly-written snapshot into the main worktree.
+    const src = join(repoRoot, rel);
+    const dst = join(worktreeDir, rel);
+    writeFileSync(dst, readFileSync(src));
+
+    // Skip if main already has identical content.
+    try {
+      execFileSync('git', ['diff', '--quiet', '--', rel], {
+        cwd: worktreeDir, stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      console.log('Backing snapshot identical to origin/main, skipping push.');
+      return;
+    } catch (e) {
+      if (e.status !== 1) throw e;
+    }
+
+    execFileSync('git', ['add', rel], { cwd: worktreeDir, stdio: 'inherit' });
+    execFileSync('git', ['commit', '-m', 'Update backing.json snapshot'], {
+      cwd: worktreeDir, stdio: 'inherit',
+    });
+    execFileSync('git', ['push', 'origin', 'HEAD:main'], {
+      cwd: worktreeDir, stdio: 'inherit',
+    });
+    console.log('Backing snapshot pushed to origin/main.');
+  } catch (e) {
+    console.warn('Auto-publish failed, push manually:', e.message);
+  } finally {
+    try {
+      run(['worktree', 'remove', '--force', worktreeDir], { stdio: 'ignore' });
+    } catch {}
   }
 }
 

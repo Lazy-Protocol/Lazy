@@ -205,7 +205,10 @@ export function Backing() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/backing.json', { cache: 'no-store' })
+    const REMOTE_BACKING_URL =
+      'https://raw.githubusercontent.com/Lazy-Protocol/lazy/main/frontend/public/backing.json';
+    const url = import.meta.env.DEV ? '/backing.json' : REMOTE_BACKING_URL;
+    fetch(url, { cache: 'no-store' })
       .then((res) => {
         if (!res.ok) throw new Error(`Status ${res.status}`);
         return res.json();
