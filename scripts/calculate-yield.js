@@ -1056,18 +1056,43 @@ async function fetchDeriveMark(instrument) {
   return null;
 }
 
-async function fetchRyskLongMarkValue() {
-  const groups = await loadActiveRyskLongs();
-  if (groups.length === 0) return { totalValue: 0, positions: [], unmatched: 0 };
+function computeOptionIntrinsic(underlying, strike, isPut, size, spot) {
+  if (!spot || spot <= 0) return 0;
+  const per = isPut ? Math.max(strike - spot, 0) : Math.max(spot - strike, 0);
+  return per * size;
+}
+
+// Value live Rysk longs leg by leg.
+// Priority per leg: Derive mark when listed -> intrinsic value at spot.
+// This mirrors paired_gamma_pnl.py: a leg without a Derive twin still has
+// real economic value (intrinsic), so we never silently zero gamma legs.
+async function valueRyskLongs(groups, spotPrices) {
+  if (!groups || groups.length === 0) {
+    return { totalValue: 0, positions: [], noDeriveMark: 0, valuedAtIntrinsic: 0, unknown: 0 };
+  }
   for (const g of groups) {
-    const inst = deriveInstrumentName(g.underlying, g.expiryMs, g.strike, g.optionType === 'PUT');
+    const isPut = g.optionType === 'PUT';
+    const inst = deriveInstrumentName(g.underlying, g.expiryMs, g.strike, isPut);
     g.instrument = inst;
     g.mark = await fetchDeriveMark(inst);
-    g.value = g.mark != null ? g.mark * g.size : 0;
+    const spot = spotPrices?.[g.underlying];
+    g.intrinsic = computeOptionIntrinsic(g.underlying, g.strike, isPut, g.size, spot);
+    if (g.mark != null) {
+      g.value = g.mark * g.size;
+      g.markSource = 'derive';
+    } else if (spot && spot > 0) {
+      g.value = g.intrinsic;
+      g.markSource = 'intrinsic';
+    } else {
+      g.value = 0;
+      g.markSource = 'unknown';
+    }
   }
   const totalValue = groups.reduce((s, g) => s + g.value, 0);
-  const unmatched = groups.filter((g) => g.mark == null).length;
-  return { totalValue, positions: groups, unmatched };
+  const noDeriveMark = groups.filter((g) => g.mark == null).length;
+  const valuedAtIntrinsic = groups.filter((g) => g.markSource === 'intrinsic').length;
+  const unknown = groups.filter((g) => g.markSource === 'unknown').length;
+  return { totalValue, positions: groups, noDeriveMark, valuedAtIntrinsic, unknown };
 }
 
 function calculateRyskIntrinsicLiability(positions, currentHypePrice) {
@@ -1925,7 +1950,7 @@ async function calculateYield() {
     ryskMmMarginPool,
     hyperLendData,
     deriveData,
-    ryskLongMarkData,
+    ryskLongLegs,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(MULTISIG_ADDRESS),
@@ -1946,7 +1971,7 @@ async function calculateYield() {
     fetchRyskMarginPoolBalances(RYSK_MM_ADDRESS),
     fetchHyperLendPositions(OPERATOR_ADDRESS),
     fetchDerivePositions(),
-    fetchRyskLongMarkValue(),
+    loadActiveRyskLongs(),
   ]);
 
   // Calculate deposit/withdrawal deltas from vault state
@@ -2412,9 +2437,17 @@ async function calculateYield() {
   // Derive.xyz: use portfolio value (USDC minus current mark cost of open shorts)
   const deriveUsdcBalance = deriveData.portfolioValue;
 
-  // Rysk longs (live legs, valued at matching Derive contract mark).
-  // Symmetric counterpart to deriveUsdcBalance's already-baked short MTM; without this credit,
-  // every ITM excursion shows up as one-sided drawdown in NAV.
+  // Rysk longs (live legs). Derive mark when the leg has a listed twin,
+  // intrinsic at spot otherwise. Without intrinsic fallback, gamma legs
+  // (no Derive counterpart by design) silently zero out and inflate drawdown.
+  const ryskLongSpotPrices = {
+    HYPE: hypeCurrentPrice,
+    BTC: currentBtcPrice,
+    ETH: currentEthPrice,
+    SOL: currentSolPrice,
+    LIT: litCurrentPrice,
+  };
+  const ryskLongMarkData = await valueRyskLongs(ryskLongLegs, ryskLongSpotPrices);
   const ryskLongMarkValue = ryskLongMarkData?.totalValue || 0;
 
   const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
@@ -2452,10 +2485,13 @@ async function calculateYield() {
   if (deriveUsdcBalance > 0) {
     console.log(`  Derive (USDC):    $${deriveUsdcBalance.toFixed(2)}`);
   }
-  if (ryskLongMarkValue !== 0) {
+  if (ryskLongMarkValue !== 0 || ryskLongMarkData?.positions?.length) {
     console.log(`  Rysk longs (mark):$${ryskLongMarkValue.toFixed(2)}`);
-    if (ryskLongMarkData?.unmatched) {
-      console.log(`    (${ryskLongMarkData.unmatched} legs had no Derive mark and were valued at $0)`);
+    if (ryskLongMarkData?.valuedAtIntrinsic) {
+      console.log(`    (${ryskLongMarkData.valuedAtIntrinsic} legs had no Derive mark, valued at intrinsic)`);
+    }
+    if (ryskLongMarkData?.unknown) {
+      console.log(`    (${ryskLongMarkData.unknown} legs had no Derive mark and no spot, valued at $0)`);
     }
   }
   console.log(`  ─────────────────────────`);
@@ -2592,7 +2628,9 @@ async function calculateYield() {
       deriveShortMtmCost: -deriveOpenShortMarkCost,
       ryskLongMark: ryskLongMarkValue,
       upperBoundIfAllOtm: otmExpiryGap,
-      ryskUnmatchedLegs: ryskLongMarkData?.unmatched || 0,
+      ryskUnmatchedLegs: ryskLongMarkData?.noDeriveMark || 0,
+      ryskLegsAtIntrinsic: ryskLongMarkData?.valuedAtIntrinsic || 0,
+      ryskLegsZeroValued: ryskLongMarkData?.unknown || 0,
     },
     flows: {
       newDeposits,
