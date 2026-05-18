@@ -3,32 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lazy Protocol | Yield on Autopilot</title>
-    <meta name="description" content="No staking. No claiming. Just yield. Patient capital for the long-term investor." />
+    <title>Lazy · Patient capital, rewarded.</title>
+    <meta name="description" content="Patient capital, rewarded. The vault manages positions so you don't have to. Target 10% APR on USDC, formally verified, fully transparent." />
+    <!--
+      rel=canonical and og:url are intentionally NOT set here. They are
+      injected per-route at runtime by usePageMeta in
+      src/hooks/usePageMeta.ts. Crawlers that do not run JS will treat the
+      fetched URL as canonical, which is the correct SPA default.
+    -->
 
     <!-- Open Graph (Facebook, Discord, LinkedIn) -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://getlazy.xyz" />
-    <meta property="og:title" content="Lazy | Patient capital, rewarded." />
-    <meta property="og:description" content="No staking. No claiming. Just yield. Patient capital for the long-term investor." />
+    <meta property="og:site_name" content="Lazy" />
+    <meta property="og:title" content="Lazy · Patient capital, rewarded." />
+    <meta property="og:description" content="The vault manages positions so you don't have to. Target 10% APR on USDC, formally verified, fully transparent." />
     <meta property="og:image" content="https://getlazy.xyz/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@getlazy" />
-    <meta name="twitter:title" content="Lazy | Patient capital, rewarded." />
-    <meta name="twitter:description" content="No staking. No claiming. Just yield. Patient capital for the long-term investor." />
+    <meta name="twitter:site" content="@lazydotxyz" />
+    <meta name="twitter:title" content="Lazy · Patient capital, rewarded." />
+    <meta name="twitter:description" content="The vault manages positions so you don't have to. Target 10% APR on USDC, formally verified, fully transparent." />
     <meta name="twitter:image" content="https://getlazy.xyz/og-image.png" />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p>Lazy is a vault for patient capital. JavaScript is required to use the app. Read the documentation at <a href="https://getlazy.xyz/docs">getlazy.xyz/docs</a>.</p>
+      <p>This documentation was written with the help of <a href="https://usenoren.ai" rel="noopener noreferrer">Noren</a>, a tool for keeping AI-assisted writing in your own voice.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,7 +1,7 @@
 import { createPublicClient, http, formatUnits, createWalletClient } from 'viem';
 import { mainnet } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, createReadStream } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
@@ -53,11 +53,12 @@ const TOKENS = {
     USDC: { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', decimals: 6 },
     WHYPE: { address: '0x5555555555555555555555555555555555555555', decimals: 18 },
     USDT0: { address: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb', decimals: 6 },
+    USDH: { address: '0x111111a1a0667d36bd57c0a9f569b98057111111', decimals: 6 },
   },
 };
 
 // Stablecoin symbols (always valued at $1)
-const STABLECOINS = ['USDC', 'USDT', 'USDT0', 'DAI'];
+const STABLECOINS = ['USDC', 'USDT', 'USDT0', 'USDH', 'DAI'];
 
 
 // ============================================
@@ -706,6 +707,7 @@ async function fetchLighterStakedLIT() {
 const RYSK_CONTROLLER = '0x84d84e481B49B8Bc5a55f17AaF8181c21A29B212';
 const USDT0_ADDRESS = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb';
 const HYPEREVM_USDC = '0xb88339CB7199b77E23DB6E890353E22632Ba630f';
+const USDH_ADDRESS = '0x111111a1a0667d36bd57c0a9f569b98057111111';
 const WHYPE_ADDRESS = '0x5555555555555555555555555555555555555555';
 
 const gammaControllerAbi = [
@@ -823,12 +825,14 @@ async function fetchRyskPositions(address) {
     const positions = [];
     let totalCollateralUsdt0 = 0;
     let totalCollateralUsdc = 0;
+    let totalCollateralUsdh = 0;
     let totalCollateralWhype = 0;
 
     const collateralDecimals = (addr) => {
       const lower = addr.toLowerCase();
       if (lower === USDT0_ADDRESS.toLowerCase()) return 6;
       if (lower === HYPEREVM_USDC.toLowerCase()) return 6;
+      if (lower === USDH_ADDRESS.toLowerCase()) return 6;
       if (lower === WHYPE_ADDRESS.toLowerCase()) return 18;
       return 18; // default
     };
@@ -837,6 +841,7 @@ async function fetchRyskPositions(address) {
       const lower = addr.toLowerCase();
       if (lower === USDT0_ADDRESS.toLowerCase()) return 'USDT0';
       if (lower === HYPEREVM_USDC.toLowerCase()) return 'USDC';
+      if (lower === USDH_ADDRESS.toLowerCase()) return 'USDH';
       if (lower === WHYPE_ADDRESS.toLowerCase()) return 'WHYPE';
       return 'UNKNOWN';
     };
@@ -863,6 +868,7 @@ async function fetchRyskPositions(address) {
 
       if (symbol === 'USDT0') totalCollateralUsdt0 += collateralAmount;
       else if (symbol === 'USDC') totalCollateralUsdc += collateralAmount;
+      else if (symbol === 'USDH') totalCollateralUsdh += collateralAmount;
       else if (symbol === 'WHYPE') totalCollateralWhype += collateralAmount;
 
       positions.push({
@@ -879,14 +885,15 @@ async function fetchRyskPositions(address) {
     return {
       totalCollateralUsdt0,
       totalCollateralUsdc,
+      totalCollateralUsdh,
       totalCollateralWhype,
-      totalCollateral: totalCollateralUsdt0 + totalCollateralUsdc, // USD-denominated portion
+      totalCollateral: totalCollateralUsdt0 + totalCollateralUsdc + totalCollateralUsdh, // USD-denominated portion
       positions,
       vaultCount: count,
     };
   } catch (e) {
     console.warn('Failed to fetch Rysk positions:', e.message);
-    return { totalCollateralUsdt0: 0, totalCollateralUsdc: 0, totalCollateralWhype: 0, totalCollateral: 0, positions: [], vaultCount: 0 };
+    return { totalCollateralUsdt0: 0, totalCollateralUsdc: 0, totalCollateralUsdh: 0, totalCollateralWhype: 0, totalCollateral: 0, positions: [], vaultCount: 0 };
   }
 }
 
@@ -913,6 +920,8 @@ def _decimals_for(asset: str) -> int:
         return 6
     if addr == ${JSON.stringify(HYPEREVM_USDC.toLowerCase())}:
         return 6
+    if addr == ${JSON.stringify(USDH_ADDRESS.toLowerCase())}:
+        return 6
     if addr == ${JSON.stringify(WHYPE_ADDRESS.toLowerCase())}:
         return 18
     return 18
@@ -938,6 +947,8 @@ try:
             out["USDT0"] = bal
         elif asset == ${JSON.stringify(HYPEREVM_USDC.toLowerCase())}:
             out["USDC"] = bal
+        elif asset == ${JSON.stringify(USDH_ADDRESS.toLowerCase())}:
+            out["USDH"] = bal
         elif asset == ${JSON.stringify(WHYPE_ADDRESS.toLowerCase())}:
             out["WHYPE"] = bal
     print(json.dumps(out))
@@ -958,12 +969,130 @@ finally:
     return {
       usdt0: num(parsed.USDT0),
       usdc: num(parsed.USDC),
+      usdh: num(parsed.USDH),
       whype: num(parsed.WHYPE),
     };
   } catch (e) {
     console.warn(`Failed to fetch Rysk MarginPool balances for ${address}:`, e.message);
-    return { usdt0: 0, usdc: 0, whype: 0 };
+    return { usdt0: 0, usdc: 0, usdh: 0, whype: 0 };
   }
+}
+
+// ============================================
+// Rysk LONG valuation (mark-based, via Derive)
+// ============================================
+// Symmetric counterpart to the existing short-side intrinsic-liability deduction.
+// Active Rysk longs (oTokens we hold) are not visible on-chain from `fetchRyskPositions`
+// because that reads vault shorts. We use the v3 trade ledger as source of truth and
+// value each leg at the matching Derive instrument's mark price (fair-value reference).
+const RYSK_LONG_ACTIVE_PHASES = new Set(['spread_active', 'gap', 'hedging', 'gamma_active']);
+const DERIVE_TICKER_URL = 'https://api.lyra.finance/public/get_ticker';
+
+async function loadActiveRyskLongs() {
+  const ledgerPath = join(__dirname, '..', 'data', 'v3', 'trades.jsonl');
+  if (!existsSync(ledgerPath)) return [];
+  const latest = new Map();
+  const rl = createInterface({ input: createReadStream(ledgerPath, { encoding: 'utf-8' }), crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    const tid = r.trade_id;
+    if (!tid) continue;
+    const prev = latest.get(tid);
+    if (!prev || (r.updated_at || '') >= (prev.updated_at || '')) latest.set(tid, r);
+  }
+  const groups = new Map();
+  const nowMs = Date.now();
+  for (const r of latest.values()) {
+    if (!RYSK_LONG_ACTIVE_PHASES.has(r.phase)) continue;
+    if (r.rysk_direction !== 'we_bought') continue;
+    const expMs = new Date(r.expiry).getTime();
+    if (!Number.isFinite(expMs)) continue;
+    // Skip past-Rysk-expiry legs; their payout flows through MarginPool / wallet balances
+    // already counted elsewhere. Crediting mark here would double-count or use a stale price.
+    if (expMs <= nowMs) continue;
+    const key = `${r.underlying}|${r.option_type}|${r.strike}|${expMs}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        underlying: r.underlying,
+        optionType: r.option_type,
+        strike: parseFloat(r.strike),
+        expiryMs: expMs,
+        size: 0,
+        premiumPaid: 0,
+      });
+    }
+    const g = groups.get(key);
+    g.size += parseFloat(r.rysk_size);
+    g.premiumPaid += parseFloat(r.rysk_premium) * parseFloat(r.rysk_size);
+  }
+  return [...groups.values()];
+}
+
+function deriveInstrumentName(underlying, expiryMs, strike, isPut) {
+  const yyyymmdd = new Date(expiryMs).toISOString().slice(0, 10).replace(/-/g, '');
+  let s = strike.toString();
+  if (s.includes('.')) s = s.replace(/\.?0+$/, '');
+  return `${underlying}-${yyyymmdd}-${s}-${isPut ? 'P' : 'C'}`;
+}
+
+async function fetchDeriveMark(instrument) {
+  try {
+    const resp = await fetch(DERIVE_TICKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (yield-calc)' },
+      body: JSON.stringify({ instrument_name: instrument }),
+    });
+    if (!resp.ok) return null;
+    const body = await resp.json();
+    const t = body?.result;
+    if (!t) return null;
+    for (const k of ['mark_price', 'best_ask_price', 'best_bid_price']) {
+      const v = parseFloat(t[k] || '0');
+      if (v > 0) return v;
+    }
+  } catch {}
+  return null;
+}
+
+function computeOptionIntrinsic(underlying, strike, isPut, size, spot) {
+  if (!spot || spot <= 0) return 0;
+  const per = isPut ? Math.max(strike - spot, 0) : Math.max(spot - strike, 0);
+  return per * size;
+}
+
+// Value live Rysk longs leg by leg.
+// Priority per leg: Derive mark when listed -> intrinsic value at spot.
+// This mirrors paired_gamma_pnl.py: a leg without a Derive twin still has
+// real economic value (intrinsic), so we never silently zero gamma legs.
+async function valueRyskLongs(groups, spotPrices) {
+  if (!groups || groups.length === 0) {
+    return { totalValue: 0, positions: [], noDeriveMark: 0, valuedAtIntrinsic: 0, unknown: 0 };
+  }
+  for (const g of groups) {
+    const isPut = g.optionType === 'PUT';
+    const inst = deriveInstrumentName(g.underlying, g.expiryMs, g.strike, isPut);
+    g.instrument = inst;
+    g.mark = await fetchDeriveMark(inst);
+    const spot = spotPrices?.[g.underlying];
+    g.intrinsic = computeOptionIntrinsic(g.underlying, g.strike, isPut, g.size, spot);
+    if (g.mark != null) {
+      g.value = g.mark * g.size;
+      g.markSource = 'derive';
+    } else if (spot && spot > 0) {
+      g.value = g.intrinsic;
+      g.markSource = 'intrinsic';
+    } else {
+      g.value = 0;
+      g.markSource = 'unknown';
+    }
+  }
+  const totalValue = groups.reduce((s, g) => s + g.value, 0);
+  const noDeriveMark = groups.filter((g) => g.mark == null).length;
+  const valuedAtIntrinsic = groups.filter((g) => g.markSource === 'intrinsic').length;
+  const unknown = groups.filter((g) => g.markSource === 'unknown').length;
+  return { totalValue, positions: groups, noDeriveMark, valuedAtIntrinsic, unknown };
 }
 
 function calculateRyskIntrinsicLiability(positions, currentHypePrice) {
@@ -1564,6 +1693,7 @@ async function fetchVaultData() {
 
 const NAV_HISTORY_PATH = join(__dirname, '..', 'data', 'nav-history.json');
 const YIELD_SNAPSHOTS_PATH = join(__dirname, '..', 'data', 'yield-snapshots.json');
+const BACKING_PUBLIC_PATH = join(__dirname, '..', 'frontend', 'public', 'backing.json');
 
 function num(value, defaultValue = 0) {
   const parsed = Number(value);
@@ -1616,6 +1746,220 @@ function saveYieldSnapshot(snapshotData) {
   snapshots.snapshots.push(snapshotData);
   writeFileSync(YIELD_SNAPSHOTS_PATH, JSON.stringify(snapshots, null, 2));
   console.log(`\nSnapshot saved to ${YIELD_SNAPSHOTS_PATH}`);
+}
+
+function parseExpiryFromInstrument(instrument) {
+  const m = String(instrument || '').match(/^[A-Z]+-(\d{8})-/);
+  if (!m) return null;
+  const d = m[1];
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+}
+
+function buildBackingSnapshot(result) {
+  const h = result.holdings || {};
+  const derivePositions = h.derive?.positions || [];
+
+  let deriveShortCount = 0;
+  let deriveLongCount = 0;
+  const expirySet = new Set();
+  for (const pos of derivePositions) {
+    const amt = Number(pos.amount || 0);
+    if (amt < 0) deriveShortCount++;
+    else if (amt > 0) deriveLongCount++;
+    const exp = parseExpiryFromInstrument(pos.instrument);
+    if (exp) expirySet.add(exp);
+  }
+  const expiries = Array.from(expirySet).sort();
+
+  return {
+    publishedAt: new Date().toISOString(),
+    vault: {
+      address: VAULT_ADDRESS,
+      sharePrice: result.sharePrice,
+      totalShares: result.totalSupply,
+      totalAssets: result.vaultTotalAssets,
+      accumulatedYield: result.accumulatedYield,
+    },
+    cumulativeFlows: {
+      deposited: result.flows.cumulativeDeposited,
+      withdrawn: result.flows.cumulativeWithdrawn,
+    },
+    nav: {
+      total: result.nav,
+      breakdown: [
+        { label: 'Derive (USDC)',         value: result.breakdown.derive },
+        { label: 'LIT (hedged)',          value: result.breakdown.lit },
+        { label: 'HYPE (hedged)',         value: result.breakdown.hype },
+        { label: 'Hyperliquid (equity)',  value: result.breakdown.hyperliquidEquity },
+        { label: 'Lighter (collateral)',  value: result.breakdown.lighterCollateral },
+        { label: 'Lighter operator',      value: result.breakdown.lighterOperator },
+        { label: 'Rysk longs (mark)',     value: result.optionBook.ryskLongMark },
+        { label: 'Rysk (stables)',        value: result.breakdown.ryskStables },
+        { label: 'USDC (idle)',           value: result.breakdown.usdc },
+        { label: 'HyperLend (net)',       value: result.breakdown.hyperLend },
+        { label: 'ETH exposure',          value: result.breakdown.eth },
+        { label: 'SOL (hedged)',          value: result.breakdown.sol },
+        { label: 'BTC perp PnL',          value: result.breakdown.btc },
+      ].filter((b) => Number.isFinite(b.value) && Math.abs(b.value) > 0.005),
+    },
+    exposures: {
+      hype: h.hype && {
+        totalHoldings: h.hype.totalHoldings,
+        totalShort: h.hype.totalShort,
+        netExposure: h.hype.netExposure,
+        currentPrice: h.hype.currentPrice,
+        totalValue: h.hype.totalValue,
+      },
+      lit: h.lit && {
+        totalHoldings: h.lit.totalBalance,
+        totalShort: h.lit.totalShort,
+        netExposure: h.lit.netExposure,
+        currentPrice: h.lit.currentPrice,
+        totalValue: h.lit.totalValue,
+      },
+      eth: h.eth && {
+        spot: h.eth.spotEth,
+        netExposure: h.eth.netExposure,
+        currentPrice: h.eth.currentPrice,
+        totalValue: h.eth.totalValue,
+      },
+      btc: h.btc && {
+        netExposure: h.btc.netExposure,
+        currentPrice: h.btc.currentPrice,
+        totalValue: h.btc.totalValue,
+      },
+      sol: h.solana && {
+        totalSol: h.solana.totalSol,
+        currentPrice: h.solana.solPrice,
+        totalValue: h.solana.solValue,
+      },
+    },
+    venues: {
+      lighter: h.lighter && {
+        collateral: h.lighter.collateral,
+        unrealizedPnl: h.lighter.unrealizedPnl,
+        positionCount: (h.lighter.positions || []).length,
+      },
+      lighterOperator: h.lighter?.operatorTrading && {
+        equity: h.lighter.operatorTrading.equity,
+        unrealizedPnl: h.lighter.operatorTrading.unrealizedPnl,
+        positionCount: (h.lighter.operatorTrading.positions || []).length,
+      },
+      hyperliquid: h.hyperliquid && {
+        equity: h.hyperliquid.equity,
+        collateral: h.hyperliquid.collateral,
+        unrealizedPnl: h.hyperliquid.unrealizedPnl,
+        positionCount: (h.hyperliquid.positions || []).length,
+      },
+      derive: h.derive && {
+        usdcBalance: h.derive.usdcBalance,
+        portfolioValue: h.derive.portfolioValue,
+        shortCount: deriveShortCount,
+        longCount: deriveLongCount,
+      },
+      rysk: h.rysk && {
+        usdcCollateral: h.rysk.totalCollateralUsdc,
+        usdt0Collateral: h.rysk.totalCollateralUsdt0,
+        vaultCount: h.rysk.vaultCount,
+      },
+      hyperLend: h.hyperLend && {
+        totalCollateralUsd: h.hyperLend.totalCollateralUsd,
+        totalDebtUsd: h.hyperLend.totalDebtUsd,
+        netValueUsd: h.hyperLend.netValueUsd,
+      },
+      pendle: h.pendle && {
+        totalUsd: h.pendle.totalUsd,
+        positionCount: (h.pendle.positions || []).length,
+      },
+    },
+    optionBook: {
+      currentMtm: result.optionBook.currentMtm,
+      deriveShortMtmCost: result.optionBook.deriveShortMtmCost,
+      ryskLongMark: result.optionBook.ryskLongMark,
+      upperBoundIfAllOtm: result.optionBook.upperBoundIfAllOtm,
+      deriveShortCount,
+      deriveLongCount,
+      ryskUnmatchedLegs: result.optionBook.ryskUnmatchedLegs,
+      expiries,
+    },
+  };
+}
+
+function publishBackingSnapshot(snapshot) {
+  try {
+    writeFileSync(BACKING_PUBLIC_PATH, JSON.stringify(snapshot, null, 2));
+    console.log(`Backing snapshot published to ${BACKING_PUBLIC_PATH}`);
+  } catch (e) {
+    console.warn('Failed to publish backing snapshot:', e.message);
+    return;
+  }
+  pushBackingSnapshot();
+}
+
+// Publish backing.json to origin/main without touching the current branch.
+// The website reads from raw.githubusercontent.com/.../main/.../backing.json,
+// so the snapshot must land on main even when the operator works on develop.
+// Worktree approach keeps unrelated commits from leaking across branches.
+function pushBackingSnapshot() {
+  const repoRoot = join(__dirname, '..');
+  const rel = 'frontend/public/backing.json';
+  const worktreeDir = join(repoRoot, '.git', 'backing-publish-worktree');
+  const run = (args, opts = {}) =>
+    execFileSync('git', args, { cwd: repoRoot, stdio: 'inherit', ...opts });
+  const runQuiet = (args, opts = {}) =>
+    execFileSync('git', args, { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'], ...opts })
+      .toString().trim();
+
+  try {
+    runQuiet(['fetch', 'origin', 'main']);
+  } catch (e) {
+    console.warn('git fetch origin main failed, skipping auto-publish:', e.message);
+    return;
+  }
+
+  // Create a detached worktree at origin/main's tip.
+  try {
+    run(['worktree', 'remove', '--force', worktreeDir], { stdio: 'ignore' });
+  } catch {}
+  try {
+    run(['worktree', 'add', '--detach', worktreeDir, 'origin/main']);
+  } catch (e) {
+    console.warn('git worktree add failed, skipping auto-publish:', e.message);
+    return;
+  }
+
+  try {
+    // Copy the freshly-written snapshot into the main worktree.
+    const src = join(repoRoot, rel);
+    const dst = join(worktreeDir, rel);
+    writeFileSync(dst, readFileSync(src));
+
+    // Skip if main already has identical content.
+    try {
+      execFileSync('git', ['diff', '--quiet', '--', rel], {
+        cwd: worktreeDir, stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      console.log('Backing snapshot identical to origin/main, skipping push.');
+      return;
+    } catch (e) {
+      if (e.status !== 1) throw e;
+    }
+
+    execFileSync('git', ['add', rel], { cwd: worktreeDir, stdio: 'inherit' });
+    execFileSync('git', ['commit', '-m', 'Update backing.json snapshot'], {
+      cwd: worktreeDir, stdio: 'inherit',
+    });
+    execFileSync('git', ['push', 'origin', 'HEAD:main'], {
+      cwd: worktreeDir, stdio: 'inherit',
+    });
+    console.log('Backing snapshot pushed to origin/main.');
+  } catch (e) {
+    console.warn('Auto-publish failed, push manually:', e.message);
+  } finally {
+    try {
+      run(['worktree', 'remove', '--force', worktreeDir], { stdio: 'ignore' });
+    } catch {}
+  }
 }
 
 function promptUser(question) {
@@ -1674,6 +2018,7 @@ async function calculateYield() {
     ryskMmMarginPool,
     hyperLendData,
     deriveData,
+    ryskLongLegs,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchHyperEvmBalances(MULTISIG_ADDRESS),
@@ -1694,6 +2039,7 @@ async function calculateYield() {
     fetchRyskMarginPoolBalances(RYSK_MM_ADDRESS),
     fetchHyperLendPositions(OPERATOR_ADDRESS),
     fetchDerivePositions(),
+    loadActiveRyskLongs(),
   ]);
 
   // Calculate deposit/withdrawal deltas from vault state
@@ -2034,13 +2380,16 @@ async function calculateYield() {
   const totalRyskVaults = (ryskData.positions.length || 0) + (ryskMmVaultData.positions.length || 0);
   const operatorRyskUsdt0 = (ryskData.totalCollateralUsdt0 || 0) + (ryskOperatorMarginPool.usdt0 || 0);
   const operatorRyskUsdc = (ryskData.totalCollateralUsdc || 0) + (ryskOperatorMarginPool.usdc || 0);
+  const operatorRyskUsdh = (ryskData.totalCollateralUsdh || 0) + (ryskOperatorMarginPool.usdh || 0);
   const operatorRyskWhype = (ryskData.totalCollateralWhype || 0) + (ryskOperatorMarginPool.whype || 0);
   const mmRyskUsdt0 = (ryskMmVaultData.totalCollateralUsdt0 || 0) + (ryskMmMarginPool.usdt0 || 0);
   const mmRyskUsdc = (ryskMmVaultData.totalCollateralUsdc || 0) + (ryskMmMarginPool.usdc || 0);
+  const mmRyskUsdh = (ryskMmVaultData.totalCollateralUsdh || 0) + (ryskMmMarginPool.usdh || 0);
   const mmRyskWhype = (ryskMmVaultData.totalCollateralWhype || 0) + (ryskMmMarginPool.whype || 0);
-  const totalRyskStableCollateral = operatorRyskUsdt0 + operatorRyskUsdc + mmRyskUsdt0 + mmRyskUsdc;
+  const totalRyskStableCollateral = operatorRyskUsdt0 + operatorRyskUsdc + operatorRyskUsdh + mmRyskUsdt0 + mmRyskUsdc + mmRyskUsdh;
   const totalRyskUsdt0 = operatorRyskUsdt0 + mmRyskUsdt0;
   const totalRyskUsdc = operatorRyskUsdc + mmRyskUsdc;
+  const totalRyskUsdh = operatorRyskUsdh + mmRyskUsdh;
   const totalRyskWhype = operatorRyskWhype + mmRyskWhype;
   const allRyskOptionPositions = [
     ...ryskData.positions,
@@ -2055,17 +2404,20 @@ async function calculateYield() {
     if (totalRyskUsdc > 0) {
       console.log(`  USDC collateral:   $${totalRyskUsdc.toFixed(2)}`);
     }
+    if (totalRyskUsdh > 0) {
+      console.log(`  USDH collateral:   $${totalRyskUsdh.toFixed(2)}`);
+    }
     if (totalRyskWhype > 0) {
       console.log(`  WHYPE collateral:  ${totalRyskWhype.toFixed(4)} HYPE`);
     }
     console.log(`  Short intrinsic:   -$${ryskOptionIntrinsicLiability.toFixed(2)}`);
     console.log(`  Operator vaults:   ${ryskData.vaultCount}`);
     console.log(`  MM wallet vaults:  ${ryskMmVaultData.vaultCount}`);
-    if (operatorRyskUsdt0 > 0 || operatorRyskUsdc > 0 || ryskOperatorMarginPool.whype > 0) {
-      console.log(`  Operator MarginPool: USDT0=$${ryskOperatorMarginPool.usdt0.toFixed(2)} USDC=$${ryskOperatorMarginPool.usdc.toFixed(2)} WHYPE=${ryskOperatorMarginPool.whype.toFixed(4)}`);
+    if (operatorRyskUsdt0 > 0 || operatorRyskUsdc > 0 || operatorRyskUsdh > 0 || ryskOperatorMarginPool.whype > 0) {
+      console.log(`  Operator MarginPool: USDT0=$${ryskOperatorMarginPool.usdt0.toFixed(2)} USDC=$${ryskOperatorMarginPool.usdc.toFixed(2)} USDH=$${ryskOperatorMarginPool.usdh.toFixed(2)} WHYPE=${ryskOperatorMarginPool.whype.toFixed(4)}`);
     }
-    if (mmRyskUsdt0 > 0 || mmRyskUsdc > 0 || ryskMmMarginPool.whype > 0) {
-      console.log(`  MM MarginPool:      USDT0=$${ryskMmMarginPool.usdt0.toFixed(2)} USDC=$${ryskMmMarginPool.usdc.toFixed(2)} WHYPE=${ryskMmMarginPool.whype.toFixed(4)}`);
+    if (mmRyskUsdt0 > 0 || mmRyskUsdc > 0 || mmRyskUsdh > 0 || ryskMmMarginPool.whype > 0) {
+      console.log(`  MM MarginPool:      USDT0=$${ryskMmMarginPool.usdt0.toFixed(2)} USDC=$${ryskMmMarginPool.usdc.toFixed(2)} USDH=$${ryskMmMarginPool.usdh.toFixed(2)} WHYPE=${ryskMmMarginPool.whype.toFixed(4)}`);
     }
     console.log(`  Positions (${totalRyskVaults} vaults):`);
     for (const pos of ryskData.positions) {
@@ -2141,7 +2493,7 @@ async function calculateYield() {
 
   const totalUsdcBalance = usdcBalance + lighterUsdcBalance + hyperliquidUsdcBalance;
 
-  // Rysk stable collateral (USDT0 + USDC at $1). WHYPE is counted in HYPE exposure above.
+  // Rysk stable collateral (USDT0 + USDC + USDH at $1). WHYPE is counted in HYPE exposure above.
   const ryskStableCollateral = totalRyskStableCollateral - ryskOptionIntrinsicLiability;
 
   // HyperLend: WHYPE is counted in HYPE exposure. Only add non-WHYPE supplies here.
@@ -2153,7 +2505,20 @@ async function calculateYield() {
   // Derive.xyz: use portfolio value (USDC minus current mark cost of open shorts)
   const deriveUsdcBalance = deriveData.portfolioValue;
 
-  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance;
+  // Rysk longs (live legs). Derive mark when the leg has a listed twin,
+  // intrinsic at spot otherwise. Without intrinsic fallback, gamma legs
+  // (no Derive counterpart by design) silently zero out and inflate drawdown.
+  const ryskLongSpotPrices = {
+    HYPE: hypeCurrentPrice,
+    BTC: currentBtcPrice,
+    ETH: currentEthPrice,
+    SOL: currentSolPrice,
+    LIT: litCurrentPrice,
+  };
+  const ryskLongMarkData = await valueRyskLongs(ryskLongLegs, ryskLongSpotPrices);
+  const ryskLongMarkValue = ryskLongMarkData?.totalValue || 0;
+
+  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + solValue + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
 
   console.log('');
   console.log('='.repeat(60));
@@ -2188,6 +2553,15 @@ async function calculateYield() {
   if (deriveUsdcBalance > 0) {
     console.log(`  Derive (USDC):    $${deriveUsdcBalance.toFixed(2)}`);
   }
+  if (ryskLongMarkValue !== 0 || ryskLongMarkData?.positions?.length) {
+    console.log(`  Rysk longs (mark):$${ryskLongMarkValue.toFixed(2)}`);
+    if (ryskLongMarkData?.valuedAtIntrinsic) {
+      console.log(`    (${ryskLongMarkData.valuedAtIntrinsic} legs had no Derive mark, valued at intrinsic)`);
+    }
+    if (ryskLongMarkData?.unknown) {
+      console.log(`    (${ryskLongMarkData.unknown} legs had no Derive mark and no spot, valued at $0)`);
+    }
+  }
   console.log(`  ─────────────────────────`);
   console.log(`  TOTAL NAV:        $${totalNav.toFixed(2)}`);
   console.log('='.repeat(60));
@@ -2220,6 +2594,14 @@ async function calculateYield() {
   const grossYield = totalNav - vaultData.totalAssets;
   const unreportedYield = grossYield - entryExitCosts;
 
+  // Forward "all-OTM" upper bound: assume every open Derive short expires worthless
+  // (we keep full subaccount cash) and every Rysk long expires worthless (mark → 0).
+  // Delta vs the honest-MTM NAV is the unrealized buffer sitting in the option book.
+  const deriveOpenShortMarkCost = (deriveData.usdcBalance || 0) - (deriveData.portfolioValue || 0);
+  const otmExpiryBuffer = deriveOpenShortMarkCost - ryskLongMarkValue;
+  const otmExpiryNav = totalNav + otmExpiryBuffer;
+  const otmExpiryGap = otmExpiryNav - vaultData.totalAssets - entryExitCosts;
+
   console.log('');
   console.log('='.repeat(60));
   console.log('YIELD CALCULATION:');
@@ -2228,8 +2610,16 @@ async function calculateYield() {
   console.log(`  Gross yield:          $${grossYield.toFixed(2)}`);
   console.log(`  Entry/exit costs:     -$${entryExitCosts.toFixed(2)}`);
   console.log(`  ─────────────────────────`);
-  console.log(`  NET UNREPORTED YIELD: $${unreportedYield.toFixed(2)}`);
+  console.log(`  NET UNREPORTED YIELD: $${unreportedYield.toFixed(2)}  (honest MTM, conservative)`);
   console.log(`  SAFE TO REPORT:       $${unreportedYield.toFixed(2)}`);
+  console.log('='.repeat(60));
+  console.log('');
+  console.log('FORWARD RANGE (option book held to expiry):');
+  console.log(`  Derive short MTM cost:    -$${deriveOpenShortMarkCost.toFixed(2)}  (paid if shorts settle at current mark)`);
+  console.log(`  Rysk long mark (offset):  +$${ryskLongMarkValue.toFixed(2)}  (recovered if longs settle at current mark)`);
+  console.log(`  ─────────────────────────`);
+  console.log(`  Current gap (now):        $${unreportedYield.toFixed(2)}`);
+  console.log(`  Upper bound (all OTM):    $${otmExpiryGap.toFixed(2)}  (Derive shorts decay to 0, perp churn = 0)`);
   console.log('='.repeat(60));
 
   // 9. Calculate PPS-based yield (using history loaded earlier)
@@ -2301,6 +2691,15 @@ async function calculateYield() {
     sharePrice: vaultData.sharePrice,
     totalSupply: vaultData.totalSupply,
     accumulatedYield: vaultData.accumulatedYield,
+    optionBook: {
+      currentMtm: unreportedYield,
+      deriveShortMtmCost: -deriveOpenShortMarkCost,
+      ryskLongMark: ryskLongMarkValue,
+      upperBoundIfAllOtm: otmExpiryGap,
+      ryskUnmatchedLegs: ryskLongMarkData?.noDeriveMark || 0,
+      ryskLegsAtIntrinsic: ryskLongMarkData?.valuedAtIntrinsic || 0,
+      ryskLegsZeroValued: ryskLongMarkData?.unknown || 0,
+    },
     flows: {
       newDeposits,
       newWithdrawals,
@@ -2425,12 +2824,14 @@ async function calculateYield() {
       rysk: {
         totalCollateralUsdt0: ryskData.totalCollateralUsdt0,
         totalCollateralUsdc: ryskData.totalCollateralUsdc,
+        totalCollateralUsdh: ryskData.totalCollateralUsdh,
         totalCollateralWhype: ryskData.totalCollateralWhype,
         operatorMarginPool: ryskOperatorMarginPool,
         positions: ryskData.positions,
         vaultCount: ryskData.vaultCount,
         mmTotalCollateralUsdt0: ryskMmVaultData.totalCollateralUsdt0,
         mmTotalCollateralUsdc: ryskMmVaultData.totalCollateralUsdc,
+        mmTotalCollateralUsdh: ryskMmVaultData.totalCollateralUsdh,
         mmTotalCollateralWhype: ryskMmVaultData.totalCollateralWhype,
         mmMarginPool: ryskMmMarginPool,
         mmPositions: ryskMmVaultData.positions,
@@ -2466,7 +2867,13 @@ async function calculateYield() {
 
 // Run with snapshot prompt
 async function main() {
+  const publishOnly = process.argv.includes('--publish-only');
   const result = await calculateYield();
+
+  if (publishOnly) {
+    publishBackingSnapshot(buildBackingSnapshot(result));
+    return;
+  }
 
   console.log('');
   const answer = await promptUser('Save snapshot after yield report? (y/n): ');
@@ -2483,6 +2890,7 @@ async function main() {
       breakdown: result.breakdown,
     };
     saveYieldSnapshot(snapshot);
+    publishBackingSnapshot(buildBackingSnapshot(result));
   } else {
     console.log('Snapshot not saved.');
   }
