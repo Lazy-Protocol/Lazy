@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-05-27T18:13:47.789Z",
+  "publishedAt": "2026-05-27T18:15:38.304Z",
   "vault": {
     "address": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
     "sharePrice": 1.026707,
@@ -12,23 +12,23 @@
     "withdrawn": 99186.471934
   },
   "nav": {
-    "total": 980453.9061196044,
+    "total": 980737.4586113762,
     "breakdown": [
       {
         "label": "Derive (USDC)",
-        "value": 338150.0617585733
+        "value": 338303.5592977398
       },
       {
         "label": "LIT (hedged)",
-        "value": 199473.6266497551
+        "value": 199458.62115331762
       },
       {
         "label": "HYPE (hedged)",
-        "value": 153857.746132713
+        "value": 153861.08476210412
       },
       {
         "label": "Hyperliquid (equity)",
-        "value": 29263.07011
+        "value": 29424.06437
       },
       {
         "label": "Lighter (collateral)",
@@ -36,11 +36,11 @@
       },
       {
         "label": "Lighter operator",
-        "value": 53067.601983
+        "value": 53069.362853
       },
       {
         "label": "Rysk longs (mark)",
-        "value": 43364.66656636438
+        "value": 43289.72229992931
       },
       {
         "label": "Rysk (stables)",
@@ -48,38 +48,38 @@
       },
       {
         "label": "USDC (idle)",
-        "value": 15668.792047010002
+        "value": 15883.69510301
       },
       {
         "label": "HyperLend (net)",
-        "value": 17645.044138
+        "value": 17645.046166
       },
       {
         "label": "ETH exposure",
-        "value": 70.6030801887119
+        "value": 70.60321227538496
       }
     ]
   },
   "exposures": {
     "hype": {
-      "totalHoldings": 3101.2718331451774,
+      "totalHoldings": 3101.271850965161,
       "totalShort": 2730.4300000000003,
-      "netExposure": 370.84183314517713,
-      "currentPrice": 59.075949883697504,
-      "totalValue": 153857.746132713
+      "netExposure": 370.8418509651606,
+      "currentPrice": 59.084949883697504,
+      "totalValue": 153861.08476210412
     },
     "lit": {
       "totalHoldings": 152586.62791345845,
       "totalShort": 150278.09,
       "netExposure": 2308.537913458451,
-      "currentPrice": 1.1680999245082,
-      "totalValue": 199473.6266497551
+      "currentPrice": 1.1615999245082,
+      "totalValue": 199458.62115331762
     },
     "eth": {
       "spot": 0.02276043336530486,
       "netExposure": 0.0006604333653048577,
-      "currentPrice": 2044.9,
-      "totalValue": 70.6030801887119
+      "currentPrice": 2045.1,
+      "totalValue": 70.60321227538496
     },
     "btc": {
       "netExposure": 0,
@@ -90,23 +90,23 @@
   "venues": {
     "lighter": {
       "collateral": 117296.593664,
-      "unrealizedPnl": 1764.2635879999998,
+      "unrealizedPnl": 2475.038104,
       "positionCount": 2
     },
     "lighterOperator": {
-      "equity": 53067.601983,
-      "unrealizedPnl": 1457.219529,
+      "equity": 53069.362853,
+      "unrealizedPnl": 1458.980399,
       "positionCount": 4
     },
     "hyperliquid": {
-      "equity": 29263.07011,
+      "equity": 29424.06437,
       "collateral": 39126.025238,
-      "unrealizedPnl": -9862.955127999998,
+      "unrealizedPnl": -9701.960868000002,
       "positionCount": 3
     },
     "derive": {
       "usdcBalance": 428555.825484572,
-      "portfolioValue": 338150.0617585733,
+      "portfolioValue": 338303.5592977398,
       "shortCount": 29,
       "longCount": 0
     },
@@ -116,19 +116,19 @@
       "vaultCount": 40
     },
     "hyperLend": {
-      "totalCollateralUsd": 171708.20311298,
+      "totalCollateralUsd": 171708.20619393,
       "totalDebtUsd": 0,
-      "netValueUsd": 171708.20311298
+      "netValueUsd": 171708.20619393
     },
     "pendle": {
       "positionCount": 0
     }
   },
   "optionBook": {
-    "currentMtm": 5317.160348604317,
-    "deriveShortMtmCost": -90405.7637259987,
-    "ryskLongMark": 43364.66656636438,
-    "upperBoundIfAllOtm": 52358.25750823866,
+    "currentMtm": 5600.712840376189,
+    "deriveShortMtmCost": -90252.26618683216,
+    "ryskLongMark": 43289.72229992931,
+    "upperBoundIfAllOtm": 52563.25672727905,
     "deriveShortCount": 29,
     "deriveLongCount": 0,
     "ryskUnmatchedLegs": 27,
