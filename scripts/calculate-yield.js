@@ -1,7 +1,7 @@
 import { createPublicClient, http, formatUnits, createWalletClient } from 'viem';
 import { mainnet } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
-import { readFileSync, writeFileSync, existsSync, createReadStream } from 'fs';
+import { readFileSync, writeFileSync, existsSync, createReadStream, openSync, closeSync, readSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
@@ -44,6 +44,8 @@ const EXIT_COST_RATE = 0.00055;   // 0.055% on withdrawals
 const HYPEREVM_RPC = 'https://rpc.hyperliquid.xyz/evm';
 const LIGHTER_PENDING_WITHDRAWAL_USDC = parseFloat(process.env.LIGHTER_PENDING_WITHDRAWAL_USDC || '0') || 0;
 const RYSK_MARK_CONCURRENCY = parseInt(process.env.RYSK_MARK_CONCURRENCY || '8', 10) || 8;
+const MARKET_SNAPSHOT_MAX_SKEW_MS = parseInt(process.env.MARKET_SNAPSHOT_MAX_SKEW_MS || '10000', 10) || 10000;
+const MARKET_SNAPSHOT_MAX_AGE_MS = parseInt(process.env.MARKET_SNAPSHOT_MAX_AGE_MS || '30000', 10) || 30000;
 
 // Token addresses
 const TOKENS = {
@@ -1059,25 +1061,12 @@ finally:
 const RYSK_LONG_ACTIVE_PHASES = new Set(['spread_active', 'gap', 'hedging', 'gamma_active']);
 const DERIVE_TICKER_URL = 'https://api.lyra.finance/public/get_ticker';
 
-async function loadActiveRyskLongs() {
-  const ledgerPath = join(__dirname, '..', 'data', 'v3', 'trades.jsonl');
-  if (!existsSync(ledgerPath)) return [];
-  const latest = new Map();
-  const rl = createInterface({ input: createReadStream(ledgerPath, { encoding: 'utf-8' }), crlfDelay: Infinity });
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    let r;
-    try { r = JSON.parse(line); } catch { continue; }
-    const tid = r.trade_id;
-    if (!tid) continue;
-    const prev = latest.get(tid);
-    if (!prev || (r.updated_at || '') >= (prev.updated_at || '')) latest.set(tid, r);
-  }
+function buildActiveRyskLongGroups(records) {
   const groups = new Map();
   const nowMs = Date.now();
-  for (const r of latest.values()) {
+  for (const r of records) {
     if (!RYSK_LONG_ACTIVE_PHASES.has(r.phase)) continue;
-    if (r.rysk_direction !== 'we_bought') continue;
+    if (r.rysk_direction !== "we_bought") continue;
     const expMs = new Date(r.expiry).getTime();
     if (!Number.isFinite(expMs)) continue;
     // Skip past-Rysk-expiry legs; their payout flows through MarginPool / wallet balances
@@ -1100,6 +1089,81 @@ async function loadActiveRyskLongs() {
   }
   return [...groups.values()];
 }
+
+function readLineAtOffset(fd, offset) {
+  const chunks = [];
+  const buffer = Buffer.allocUnsafe(8192);
+  let position = Number(offset);
+  let totalBytes = 0;
+
+  while (true) {
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, position);
+    if (bytesRead <= 0) break;
+    const newlineIndex = buffer.indexOf(10, 0);
+    if (newlineIndex >= 0 && newlineIndex < bytesRead) {
+      chunks.push(Buffer.from(buffer.subarray(0, newlineIndex)));
+      break;
+    }
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    position += bytesRead;
+    totalBytes += bytesRead;
+    if (totalBytes > 1024 * 1024) throw new Error("Indexed trade record exceeds 1MB");
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function loadActiveRyskLongsFromIndex(ledgerPath) {
+  const indexPath = join(__dirname, "..", "data", "v3", "trades.index.json");
+  if (!existsSync(indexPath)) return null;
+
+  const index = JSON.parse(readFileSync(indexPath, "utf8"));
+  const records = [];
+  const fd = openSync(ledgerPath, "r");
+  try {
+    for (const [tradeId, offset] of Object.entries(index)) {
+      const line = readLineAtOffset(fd, offset);
+      if (!line.trim()) continue;
+      try {
+        const r = JSON.parse(line);
+        if (!r.trade_id) r.trade_id = tradeId;
+        records.push(r);
+      } catch {}
+    }
+  } finally {
+    closeSync(fd);
+  }
+
+  return buildActiveRyskLongGroups(records);
+}
+
+async function scanActiveRyskLongsFromLedger(ledgerPath) {
+  const latest = new Map();
+  const rl = createInterface({ input: createReadStream(ledgerPath, { encoding: "utf-8" }), crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    const tid = r.trade_id;
+    if (!tid) continue;
+    const prev = latest.get(tid);
+    if (!prev || (r.updated_at || "") >= (prev.updated_at || "")) latest.set(tid, r);
+  }
+  return buildActiveRyskLongGroups(latest.values());
+}
+
+async function loadActiveRyskLongs() {
+  const ledgerPath = join(__dirname, "..", "data", "v3", "trades.jsonl");
+  if (!existsSync(ledgerPath)) return [];
+  try {
+    const indexed = loadActiveRyskLongsFromIndex(ledgerPath);
+    if (indexed) return indexed;
+  } catch (e) {
+    console.warn("Failed to load Rysk longs from trades.index.json, scanning ledger:", e.message);
+  }
+  return await scanActiveRyskLongsFromLedger(ledgerPath);
+}
+
 
 function deriveInstrumentName(underlying, expiryMs, strike, isPut) {
   const yyyymmdd = new Date(expiryMs).toISOString().slice(0, 10).replace(/-/g, '');
@@ -1155,7 +1219,7 @@ async function markRyskLongs(groups, deriveMarks = new Map()) {
   let derivePositionMarks = 0;
   let tickerMarks = 0;
   const missingGroups = [];
-  const markFetchStart = Date.now();
+  const markStartedAt = Date.now();
 
   for (const g of groups) {
     const isPut = g.optionType === "PUT";
@@ -1179,7 +1243,15 @@ async function markRyskLongs(groups, deriveMarks = new Map()) {
     }
   });
 
-  return { markFetchMs: Date.now() - markFetchStart, markedAt: new Date().toISOString(), derivePositionMarks, tickerMarks };
+  const markFinishedAt = Date.now();
+  return {
+    markFetchMs: markFinishedAt - markStartedAt,
+    markedAt: new Date(markFinishedAt).toISOString(),
+    markStartedAt,
+    markFinishedAt,
+    derivePositionMarks,
+    tickerMarks,
+  };
 }
 
 function buildDeriveMarkMap(deriveData) {
@@ -2138,6 +2210,70 @@ function promptUser(question) {
   });
 }
 
+
+async function timedFetch(label, fetcher) {
+  const startedAt = Date.now();
+  const value = await fetcher();
+  const finishedAt = Date.now();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    Object.defineProperty(value, "__timing", {
+      value: { label, startedAt, finishedAt, ms: finishedAt - startedAt },
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  return value;
+}
+
+function marketTimingFromValue(value) {
+  return value?.__timing || null;
+}
+
+function marketTimingFromRyskMarks(markTiming) {
+  if (!markTiming?.markStartedAt || !markTiming?.markFinishedAt) return null;
+  return {
+    label: "Rysk long marks",
+    startedAt: markTiming.markStartedAt,
+    finishedAt: markTiming.markFinishedAt,
+    ms: markTiming.markFinishedAt - markTiming.markStartedAt,
+  };
+}
+
+function buildMarketSnapshotQuality(timings) {
+  const validTimings = timings.filter(Boolean);
+  if (validTimings.length === 0) {
+    return { timings: [], skewMs: 0, ageMs: 0, isStale: false, isWide: false };
+  }
+  const firstFinishedAt = Math.min(...validTimings.map(t => t.finishedAt));
+  const lastFinishedAt = Math.max(...validTimings.map(t => t.finishedAt));
+  const skewMs = lastFinishedAt - firstFinishedAt;
+  const ageMs = Date.now() - lastFinishedAt;
+  return {
+    timings: validTimings,
+    firstFinishedAt,
+    lastFinishedAt,
+    skewMs,
+    ageMs,
+    isWide: skewMs > MARKET_SNAPSHOT_MAX_SKEW_MS,
+    isStale: ageMs > MARKET_SNAPSHOT_MAX_AGE_MS,
+  };
+}
+
+function printMarketSnapshotQuality(quality) {
+  if (!quality?.timings?.length) return;
+  console.log("Market snapshot skew: " + (quality.skewMs / 1000).toFixed(1) + "s; report age: " + (quality.ageMs / 1000).toFixed(1) + "s");
+  if (quality.isWide || quality.isStale) {
+    const reasons = [];
+    if (quality.isWide) reasons.push("skew > " + (MARKET_SNAPSHOT_MAX_SKEW_MS / 1000).toFixed(0) + "s");
+    if (quality.isStale) reasons.push("age > " + (MARKET_SNAPSHOT_MAX_AGE_MS / 1000).toFixed(0) + "s");
+    console.log("WARNING: Market snapshot quality degraded (" + reasons.join(", ") + "). Mirrored option/perp legs may be using stale relative prices.");
+  }
+  const now = Date.now();
+  for (const t of quality.timings) {
+    console.log("  " + t.label + ": " + (t.ms / 1000).toFixed(1) + "s, finished " + ((now - t.finishedAt) / 1000).toFixed(1) + "s ago");
+  }
+}
+
 // ============================================
 // Main Calculation
 // ============================================
@@ -2159,13 +2295,55 @@ async function calculateYield() {
   console.log(`USDC Price: $${usdcPrice.toFixed(6)} (all values in USDC, not USD)`);
   console.log('');
 
-  // 2. Fetch all position data in parallel. Fetch Derive subaccount data once,
-  // then reuse its marks for matching Rysk longs before falling back to ticker marks.
-  const liveDataFetchStart = Date.now();
+  // 2. Fetch price-sensitive market data first. Do not start the slow
+  // blocking balance helpers until this snapshot is captured, otherwise mirrored
+  // Derive/Rysk/Lighter/Hyperliquid legs can be valued from different markets.
+  const marketFetchStart = Date.now();
   const ryskLongLegsPromise = loadActiveRyskLongs();
-  const deriveDataPromise = fetchDerivePositions();
+  const deriveDataPromise = timedFetch("Derive", () => fetchDerivePositions());
+  const lighterDataPromise = timedFetch("Lighter DN", () => fetchLighterEquity(MULTISIG_ADDRESS, {
+    includeDefaultAccount: true,
+    includeAccountIndexes: LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES,
+  }));
+  const lighterOperatorDataPromise = timedFetch("Lighter operator", () => fetchLighterEquity(OPERATOR_ADDRESS, {
+    includeDefaultAccount: false,
+    excludeAccountIndexes: LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES,
+  }));
+  const hyperliquidDataPromise = timedFetch("Hyperliquid perp", () => fetchHyperliquidEquity(OPERATOR_ADDRESS));
   const ryskLongMarkTimingPromise = Promise.all([ryskLongLegsPromise, deriveDataPromise])
     .then(([legs, derive]) => markRyskLongs(legs, buildDeriveMarkMap(derive)));
+
+  const [
+    lighterData,
+    lighterOperatorData,
+    hyperliquidData,
+    deriveData,
+    ryskLongLegs,
+    ryskLongMarkTiming,
+  ] = await Promise.all([
+    lighterDataPromise,
+    lighterOperatorDataPromise,
+    hyperliquidDataPromise,
+    deriveDataPromise,
+    ryskLongLegsPromise,
+    ryskLongMarkTimingPromise,
+  ]);
+
+  const marketFetchMs = Date.now() - marketFetchStart;
+  const marketSnapshotQuality = buildMarketSnapshotQuality([
+    marketTimingFromValue(lighterData),
+    marketTimingFromValue(lighterOperatorData),
+    marketTimingFromValue(hyperliquidData),
+    marketTimingFromValue(deriveData),
+    marketTimingFromRyskMarks(ryskLongMarkTiming),
+  ]);
+  console.log(`Market fetch window: ${(marketFetchMs / 1000).toFixed(1)}s; Derive fetch: ${(deriveData.fetchMs / 1000).toFixed(1)}s; Rysk long marks: ${(ryskLongMarkTiming.markFetchMs / 1000).toFixed(1)}s`);
+  printMarketSnapshotQuality(marketSnapshotQuality);
+  console.log("");
+
+  // 3. Fetch slower balance/state data after the market snapshot. These values
+  // are mostly balances or collateral state rather than fast-moving marks.
+  const slowDataFetchStart = Date.now();
   const [
     multisigEthBalances,
     operatorEthBalances,
@@ -2173,11 +2351,8 @@ async function calculateYield() {
     operatorHyperBalances,
     ryskMmHyperBalances,
     pendleData,
-    lighterData,
-    lighterOperatorData,
     lighterSpotData,
     lighterStakedData,
-    hyperliquidData,
     vaultData,
     hyperliquidSpotData,
     ryskData,
@@ -2185,10 +2360,7 @@ async function calculateYield() {
     ryskOperatorMarginPool,
     ryskMmMarginPool,
     hyperLendData,
-    deriveData,
-    ryskLongLegs,
     kHypeToHypeRate,
-    ryskLongMarkTiming,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchEthereumBalances(OPERATOR_ADDRESS),
@@ -2196,17 +2368,8 @@ async function calculateYield() {
     fetchHyperEvmBalances(OPERATOR_ADDRESS),
     fetchHyperEvmBalances(RYSK_MM_ADDRESS),
     fetchPendlePositions(MULTISIG_ADDRESS, usdcPrice),
-    fetchLighterEquity(MULTISIG_ADDRESS, {
-      includeDefaultAccount: true,
-      includeAccountIndexes: LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES,
-    }),
-    fetchLighterEquity(OPERATOR_ADDRESS, {
-      includeDefaultAccount: false,
-      excludeAccountIndexes: LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES,
-    }),
     fetchLighterSpotAssets(),
     fetchLighterStakedLIT(),
-    fetchHyperliquidEquity(OPERATOR_ADDRESS),
     fetchVaultData(),
     fetchHyperliquidSpot(OPERATOR_ADDRESS),
     fetchRyskPositions(OPERATOR_ADDRESS),
@@ -2214,13 +2377,10 @@ async function calculateYield() {
     fetchRyskMarginPoolBalances(OPERATOR_ADDRESS),
     fetchRyskMarginPoolBalances(RYSK_MM_ADDRESS),
     fetchHyperLendPositions(OPERATOR_ADDRESS),
-    deriveDataPromise,
-    ryskLongLegsPromise,
     fetchKHypeToHypeRate(),
-    ryskLongMarkTimingPromise,
   ]);
-  const liveDataFetchMs = Date.now() - liveDataFetchStart;
-  console.log(`Live fetch window: ${(liveDataFetchMs / 1000).toFixed(1)}s; Derive fetch: ${(deriveData.fetchMs / 1000).toFixed(1)}s; Rysk long marks: ${(ryskLongMarkTiming.markFetchMs / 1000).toFixed(1)}s`);
+  const slowDataFetchMs = Date.now() - slowDataFetchStart;
+  console.log(`Slow balance/state fetch: ${(slowDataFetchMs / 1000).toFixed(1)}s`);
   console.log("");
 
   // Calculate deposit/withdrawal deltas from vault state
