@@ -71,7 +71,18 @@ type BackingData = {
       longCount: number;
     };
     rysk?: { usdcCollateral: number; usdt0Collateral: number; vaultCount: number };
-    hyperLend?: { totalCollateralUsd: number; totalDebtUsd: number; netValueUsd: number };
+    hyperLend?: {
+      totalCollateralUsd: number;
+      totalDebtUsd: number;
+      netValueUsd: number;
+      stableSupplyUsd?: number;
+      stableDebtUsd?: number;
+      stableNetUsd?: number;
+      hypeCollateralValueUsd?: number;
+      rawNetValueUsd?: number;
+      supplies?: Record<string, number>;
+      debts?: Record<string, number>;
+    };
     pendle?: { totalUsd?: number; positionCount: number };
   };
   optionBook: {
@@ -343,8 +354,8 @@ export function Backing() {
             <Section num="III" tag="Composition" title="NAV breakdown.">
               <NavRegister data={data} />
               <p className="bkx-footnote">
-                Total NAV reflects everything except still-open option-book mark-to-market, which
-                is shown separately in §VII.
+                HYPE includes HYPE-like collateral supplied to HyperLend. HyperLend stable debt is
+                shown separately so the same collateral is not counted twice.
               </p>
             </Section>
 
@@ -421,10 +432,10 @@ export function Backing() {
                 <VenueRow
                   name="HyperLend"
                   metric="Net value"
-                  value={data?.venues.hyperLend?.netValueUsd}
+                  value={data?.venues.hyperLend?.rawNetValueUsd ?? data?.venues.hyperLend?.netValueUsd}
                   meta={
                     data
-                      ? `Collateral ${fmtUsd(data.venues.hyperLend?.totalCollateralUsd, { decimals: 0 })} · debt ${fmtUsd(data.venues.hyperLend?.totalDebtUsd, { decimals: 0 })}`
+                      ? `HYPE collateral ${fmtUsd(data.venues.hyperLend?.hypeCollateralValueUsd ?? data.venues.hyperLend?.totalCollateralUsd, { decimals: 0 })} · stable debt ${fmtUsd(data.venues.hyperLend?.stableDebtUsd ?? data.venues.hyperLend?.totalDebtUsd, { decimals: 0 })}`
                       : null
                   }
                 />
@@ -746,18 +757,17 @@ function OptionBook({ data }: { data: BackingData | null }) {
   }
   const ob = data.optionBook;
   const range = ob.upperBoundIfAllOtm - ob.currentMtm;
-  // scale: place current at left, ceiling at right, on a normalized 0..1
+  // scale: place current at left, all-OTM scenario at right, on a normalized 0..1
   const zeroPos =
     range > 0 ? Math.max(0, Math.min(1, (0 - ob.currentMtm) / range)) : 0.5;
   const currentPos = 0;
-  const ceilingPos = 1;
+  const scenarioPos = 1;
 
   return (
     <div className="bkx-ob">
       <p className="bkx-section-intro">
-        The vault sells rich-IV options on Derive and buys cheap-IV options on Rysk. Until each
-        leg expires, the position carries an unrealised mark-to-market. The arc below is what
-        that book can still deliver before the next round of expiries.
+        Open options are marked live. Some Derive shorts are paired with Rysk longs, and some are
+        hedged with perp accounts. The range below is a scenario view, not reported yield.
       </p>
 
       <div className="bkx-ob-range">
@@ -774,8 +784,8 @@ function OptionBook({ data }: { data: BackingData | null }) {
           />
           <div
             className="bkx-ob-ceiling"
-            style={{ left: `${ceilingPos * 100}%` }}
-            aria-label="Theoretical ceiling"
+            style={{ left: `${scenarioPos * 100}%` }}
+            aria-label="All-OTM scenario"
           />
         </div>
         <div className="bkx-ob-range-axis">
@@ -783,8 +793,8 @@ function OptionBook({ data }: { data: BackingData | null }) {
             <div className="bkx-ob-axis-label">Current MTM</div>
             <div className="bkx-ob-axis-val">{fmtUsd(ob.currentMtm, { decimals: 0 })}</div>
           </div>
-          <div className="bkx-ob-axis-ceiling" style={{ left: `${ceilingPos * 100}%` }}>
-            <div className="bkx-ob-axis-label">Theoretical ceiling</div>
+          <div className="bkx-ob-axis-ceiling" style={{ left: `${scenarioPos * 100}%` }}>
+            <div className="bkx-ob-axis-label">All-OTM scenario</div>
             <div className="bkx-ob-axis-val">{fmtUsd(ob.upperBoundIfAllOtm, { decimals: 0 })}</div>
           </div>
           <div className="bkx-ob-axis-zero" style={{ left: `${zeroPos * 100}%` }}>
@@ -794,9 +804,8 @@ function OptionBook({ data }: { data: BackingData | null }) {
       </div>
 
       <p className="bkx-ob-caveat">
-        The ceiling is unreachable in practice. The perp hedges that keep the book delta-neutral
-        bleed continuously between now and expiry, so the realised number will land below the
-        ceiling. Treat it as the upper bound of a range, not a target.
+        This scenario assumes the open Derive shorts expire out of the money. It excludes future
+        hedge PnL, funding, and spot movement, so it should not be read as a forecast.
       </p>
 
       <div className="bkx-ob-detail">

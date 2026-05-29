@@ -5,9 +5,11 @@ import { readFileSync, writeFileSync, existsSync, createReadStream, openSync, cl
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
-import { execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
+import { promisify } from 'util';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const execFileAsync = promisify(execFile);
 
 // Load .env file if present (no dotenv dependency)
 const envPath = join(__dirname, '..', '.env');
@@ -46,6 +48,10 @@ const LIGHTER_PENDING_WITHDRAWAL_USDC = parseFloat(process.env.LIGHTER_PENDING_W
 const RYSK_MARK_CONCURRENCY = parseInt(process.env.RYSK_MARK_CONCURRENCY || '8', 10) || 8;
 const MARKET_SNAPSHOT_MAX_SKEW_MS = parseInt(process.env.MARKET_SNAPSHOT_MAX_SKEW_MS || '10000', 10) || 10000;
 const MARKET_SNAPSHOT_MAX_AGE_MS = parseInt(process.env.MARKET_SNAPSHOT_MAX_AGE_MS || '30000', 10) || 30000;
+const RYSK_MARGIN_POOL_BALANCE_ATTEMPTS = parseInt(process.env.RYSK_MARGIN_POOL_BALANCE_ATTEMPTS || '1', 10) || 1;
+const RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS = parseInt(process.env.RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS || '6000', 10) || 6000;
+const RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS || '10000', 10) || 10000;
+const RYSK_LIVE_POSITIONS_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_TIMEOUT_MS || '20000', 10) || 20000;
 
 // Token addresses
 const TOKENS = {
@@ -57,6 +63,9 @@ const TOKENS = {
     USDC: { address: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', decimals: 6 },
     WHYPE: { address: '0x5555555555555555555555555555555555555555', decimals: 18 },
     KHYPE: { address: '0xfD739d4e423301CE9385c1fb8850539D657C296D', decimals: 18 },
+    STHYPE: { address: '0xfFaa4a3D97fE9107Cef8a3F48c069F577Ff76cC1', decimals: 18 },
+    WSTHYPE: { address: '0x94e8396e0869c9F2200760aF0621aFd240E1CF38', decimals: 18 },
+    LHYPE: { address: '0x5748ae796AE46A4F1348a1693de4b50560485562', decimals: 18 },
     USDT0: { address: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb', decimals: 6 },
     USDH: { address: '0x111111a1a0667d36bd57c0a9f569b98057111111', decimals: 6 },
   },
@@ -176,6 +185,11 @@ function calculateHedgedExposure({ symbol, totalHoldings, shorts, longs = [], cu
   const netExposure = totalHoldings - netShort;
   const netEntryValue = shorts.reduce((sum, s) => sum + s.size * s.entryPrice, 0)
     - longs.reduce((sum, l) => sum + l.size * l.entryPrice, 0);
+  const shortUnrealizedPnl = shorts.reduce((sum, s) => sum + (s.unrealizedPnl || 0), 0);
+  const longUnrealizedPnl = longs.reduce((sum, l) => sum + (l.unrealizedPnl || 0), 0);
+  const perpUnrealizedPnl = shortUnrealizedPnl + longUnrealizedPnl;
+  const currentSpotValue = currentPrice > 0 ? totalHoldings * currentPrice : 0;
+  const liquidationValue = currentSpotValue + perpUnrealizedPnl;
   let totalValue = 0;
 
   console.log(`  Shorts:`);
@@ -223,8 +237,22 @@ function calculateHedgedExposure({ symbol, totalHoldings, shorts, longs = [], cu
 
   console.log(`  ─────────────────────────`);
   console.log(`  ${symbol} TOTAL:${' '.repeat(Math.max(0, 11 - symbol.length))}$${totalValue.toFixed(2)}`);
+  if (currentPrice > 0 && (totalShort > 0 || totalLong > 0)) {
+    const diff = totalValue - liquidationValue;
+    console.log(`  ${symbol} check: spot@mark $${currentSpotValue.toFixed(2)} + perp uPnL $${perpUnrealizedPnl.toFixed(2)} = $${liquidationValue.toFixed(2)} (diff $${diff.toFixed(2)})`);
+  }
 
-  return { totalHoldings, totalShort: netShort, netExposure, totalValue, currentPrice };
+  return {
+    totalHoldings,
+    totalShort: netShort,
+    netExposure,
+    totalValue,
+    currentPrice,
+    currentSpotValue,
+    perpUnrealizedPnl,
+    liquidationValue,
+    netEntryValue,
+  };
 }
 
 // Helper: extract short position for a coin from Hyperliquid positions array
@@ -310,13 +338,15 @@ function firstPositive(...values) {
 }
 
 function isHypeLikeSymbol(symbol) {
-  return symbol === 'HYPE' || symbol === 'WHYPE' || symbol === 'KHYPE';
+  return ['HYPE', 'WHYPE', 'KHYPE', 'STHYPE', 'WSTHYPE', 'LHYPE'].includes(symbol);
 }
 
-function hypeEquivalentBalance(balance, kHypeToHypeRate = 1) {
+function hypeEquivalentBalance(balance, hypeRates = 1) {
   const amount = parseFloat(balance?.balance ?? balance ?? 0);
   if (!Number.isFinite(amount)) return 0;
-  return balance?.symbol === 'KHYPE' ? amount * kHypeToHypeRate : amount;
+  const rates = typeof hypeRates === 'number' ? { KHYPE: hypeRates } : hypeRates;
+  const rate = rates?.[balance?.symbol] || 1;
+  return amount * rate;
 }
 
 // ============================================
@@ -495,6 +525,8 @@ const LIGHTER_ACCOUNT_INDEX = process.env.LIGHTER_ACCOUNT_INDEX || '702036';
 const LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES = parseIndexList(
   process.env.LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES || process.env.SETTLEMENT_PERP_ACCOUNT_INDEX || ''
 );
+const LIGHTER_NETTED_ACCOUNT_INDEXES = parseIndexList(process.env.NETTED_PERP_ACCOUNT_INDEX || '');
+const LIGHTER_GAMMA_STRATEGY_ACCOUNT_INDEXES = parseIndexList(process.env.GAMMA_STRATEGY_PERP_ACCOUNT_INDEX || '');
 
 // Market index to symbol mapping
 const LIGHTER_MARKETS = {
@@ -509,6 +541,89 @@ function parseIndexList(value) {
     .split(',')
     .map(v => v.trim())
     .filter(Boolean);
+}
+
+function mergeIndexLists(...lists) {
+  return [...new Set(lists.flat().map(String).filter(Boolean))];
+}
+
+function emptyLighterEquity() {
+  return { collateral: 0, unrealizedPnl: 0, equity: 0, positions: [], accountIndexes: [] };
+}
+
+function printLighterBook(label, data) {
+  console.log(`  ${label}: equity $${data.equity.toFixed(2)} = collateral $${data.collateral.toFixed(2)} + PnL $${data.unrealizedPnl.toFixed(2)}`);
+  if (data.accountIndexes?.length > 0) {
+    console.log(`    accounts: ${data.accountIndexes.join(', ')}`);
+  }
+  for (const pos of data.positions || []) {
+    const pnlSign = pos.unrealizedPnl >= 0 ? '+' : '';
+    console.log(`    ${pos.market} ${pos.side.toUpperCase()}: ${pos.size} @ $${pos.entryPrice} (${pnlSign}$${pos.unrealizedPnl.toFixed(2)})`);
+  }
+}
+
+const NAV_MOVEMENT_COMPONENTS = [
+  { label: 'HYPE hedged', keys: ['hypeValue'] },
+  { label: 'LIT hedged', keys: ['litValue'] },
+  { label: 'ETH exposure', keys: ['ethValue'] },
+  { label: 'BTC perp', keys: ['btcValue'] },
+  { label: 'USDC total', keys: ['totalUsdcBalance', 'usdcBalance'] },
+  { label: 'Lighter DN collateral', keys: ['lighterCollateral'] },
+  { label: 'Lighter operator', keys: ['lighterOperatorEquity'] },
+  { label: 'Hyperliquid collateral', keys: ['hyperliquidCollateral', 'hyperliquidEquity'] },
+  { label: 'Rysk stables', keys: ['ryskStableCollateral'] },
+  { label: 'HyperLend non-HYPE', keys: ['hyperLendNonHypeValue'] },
+  { label: 'Derive portfolio', keys: ['deriveUsdcBalance'] },
+  { label: 'Rysk longs live', keys: ['ryskLongMarkValue'] },
+];
+
+function sharedFiniteFields(beforeRow, afterRow, keys) {
+  if (!beforeRow || !afterRow) return null;
+  for (const key of keys) {
+    const before = Number(beforeRow[key]);
+    const after = Number(afterRow[key]);
+    if (Number.isFinite(before) && Number.isFinite(after)) {
+      return { before, after };
+    }
+  }
+  return null;
+}
+
+function printNavMovement(lastEntry, currentEntry) {
+  const previousNav = Number(lastEntry?.nav);
+  const currentNav = Number(currentEntry?.nav);
+  if (!Number.isFinite(previousNav) || !Number.isFinite(currentNav)) return;
+
+  const navDelta = currentNav - previousNav;
+  let explained = 0;
+  console.log('');
+  console.log('NAV MOVEMENT VS LAST RUN:');
+  console.log(`  Previous NAV: $${previousNav.toFixed(2)} (${lastEntry.timestamp || 'unknown time'})`);
+  console.log(`  Current NAV:  $${currentNav.toFixed(2)}`);
+  console.log(`  NAV delta:    $${navDelta.toFixed(2)}`);
+  console.log('  Component deltas:');
+
+  let printed = 0;
+  for (const component of NAV_MOVEMENT_COMPONENTS) {
+    const values = sharedFiniteFields(lastEntry, currentEntry, component.keys);
+    if (!values) continue;
+    const delta = values.after - values.before;
+    explained += delta;
+    if (Math.abs(delta) < 1) continue;
+    const sign = delta >= 0 ? '+' : '';
+    console.log(`    ${component.label}: ${sign}$${delta.toFixed(2)}`);
+    printed += 1;
+  }
+
+  if (printed === 0) {
+    console.log('    (no component moved by more than $1)');
+  }
+  const residual = navDelta - explained;
+  if (Math.abs(residual) > 1) {
+    const sign = residual >= 0 ? '+' : '';
+    console.log(`    Unmapped/residual: ${sign}$${residual.toFixed(2)}`);
+  }
+  console.log('='.repeat(60));
 }
 
 async function fetchLighterEquity(addresses, options = {}) {
@@ -769,9 +884,14 @@ const HYPEREVM_USDC = '0xb88339CB7199b77E23DB6E890353E22632Ba630f';
 const USDH_ADDRESS = '0x111111a1a0667d36bd57c0a9f569b98057111111';
 const WHYPE_ADDRESS = '0x5555555555555555555555555555555555555555';
 const KHYPE_ADDRESS = '0xfD739d4e423301CE9385c1fb8850539D657C296D';
+const STHYPE_ADDRESS = '0xfFaa4a3D97fE9107Cef8a3F48c069F577Ff76cC1';
+const LHYPE_ACCOUNTANT = '0xcE621a3CA6F72706678cFF0572ae8d15e5F001c3';
 const KINETIQ_ACCOUNTANT = '0x9209648Ec9D448EF57116B73A2f081835643dc7A';
 const KHYPE_TO_HYPE_SELECTOR = '759bc2fc';
+const STHYPE_SHARES_TO_BALANCE_SELECTOR = '53735f37';
+const LHYPE_RATE_IN_QUOTE_SELECTOR = '1dcbb110';
 const ONE_E18 = 10n ** 18n;
+const ONE_E24 = 10n ** 24n;
 
 const gammaControllerAbi = [
   {
@@ -965,9 +1085,11 @@ async function fetchRyskPositions(address) {
   }
 }
 
-function fetchRyskMarginPoolBalances(address) {
-  try {
-    const py = `
+async function fetchRyskMarginPoolBalances(address) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= RYSK_MARGIN_POOL_BALANCE_ATTEMPTS; attempt++) {
+    try {
+      const py = `
 import json
 import os
 import io
@@ -1003,11 +1125,13 @@ try:
     client.get_balances(account)
     time.sleep(2.5)
     entries = []
+    got_balances = False
     for resp in responses:
         if isinstance(resp, dict) and resp.get("id") == "balances":
             entries = resp.get("result", []) or []
+            got_balances = True
             break
-    out = {}
+    out = {"__got_balances": got_balances}
     for e in entries:
         asset = (e.get("assetAddress") or "").lower()
         raw = int(e.get("balance", "0"))
@@ -1031,35 +1155,124 @@ finally:
     except Exception:
         pass
 `;
-    const stdout = execFileSync('/Users/onomeokajevo/AYP/.venv/bin/python3', ['-c', py], {
-      cwd: join(__dirname, '..'),
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const jsonText = extractJsonObject(stdout);
-    const parsed = jsonText ? JSON.parse(jsonText) : {};
-    return {
-      usdt0: num(parsed.USDT0),
-      usdc: num(parsed.USDC),
-      usdh: num(parsed.USDH),
-      whype: num(parsed.WHYPE),
-      khype: num(parsed.KHYPE),
-    };
-  } catch (e) {
-    console.warn(`Failed to fetch Rysk MarginPool balances for ${address}:`, e.message);
-    return { usdt0: 0, usdc: 0, usdh: 0, whype: 0, khype: 0 };
+      const { stdout } = await execFileAsync('/Users/onomeokajevo/AYP/.venv/bin/python3', ['-c', py], {
+        cwd: join(__dirname, '..'),
+        encoding: 'utf8',
+        timeout: RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      });
+      const jsonText = extractJsonObject(stdout);
+      if (!jsonText) throw new Error('empty balance response');
+      const parsed = JSON.parse(jsonText);
+      if (parsed.__got_balances === false) throw new Error('balance response not received');
+      return {
+        usdt0: num(parsed.USDT0),
+        usdc: num(parsed.USDC),
+        usdh: num(parsed.USDH),
+        whype: num(parsed.WHYPE),
+        khype: num(parsed.KHYPE),
+      };
+    } catch (e) {
+      lastError = e;
+      if (attempt < RYSK_MARGIN_POOL_BALANCE_ATTEMPTS) {
+        console.warn(`Failed to fetch Rysk MarginPool balances for ${address} (attempt ${attempt}/${RYSK_MARGIN_POOL_BALANCE_ATTEMPTS}):`, e.message);
+      }
+    }
   }
+  throw new Error(`Failed to fetch Rysk MarginPool balances for ${address}: ${lastError?.message || 'unknown error'}`);
 }
 
 // ============================================
 // Rysk LONG valuation (mark-based, via Derive)
 // ============================================
 // Symmetric counterpart to the existing short-side intrinsic-liability deduction.
-// Active Rysk longs (oTokens we hold) are not visible on-chain from `fetchRyskPositions`
-// because that reads vault shorts. We use the v3 trade ledger as source of truth and
-// value each leg at the matching Derive instrument's mark price (fair-value reference).
+// Long oToken balances are queried live from Rysk. The ledger helpers remain below
+// for diagnostics, but the yield run must not infer live exposure from local state.
 const RYSK_LONG_ACTIVE_PHASES = new Set(['spread_active', 'gap', 'hedging', 'gamma_active']);
 const DERIVE_TICKER_URL = 'https://api.lyra.finance/public/get_ticker';
+
+async function fetchLiveRyskLongs(address) {
+  const responseTimeout = Math.max(1, RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS / 1000);
+  const py = `
+import json
+import os
+from decimal import Decimal
+
+from scripts.arb.v3.venues.rysk import RyskMakerClient
+
+account = ${JSON.stringify(address)}
+response_timeout = ${JSON.stringify(responseTimeout)}
+client = RyskMakerClient(env=os.environ.get("RYSK_ENV", "mainnet"))
+try:
+    client.start([])
+    res = client.get_positions(account, response_timeout=response_timeout)
+    stderr = res.get("stderr") or ""
+    stdout = res.get("stdout") or ""
+    if "positions_response_timeout" in stderr:
+        raise RuntimeError(stderr)
+    data = json.loads(stdout) if stdout else {}
+    rows = data.get("result") if isinstance(data, dict) else []
+    if not isinstance(rows, list):
+        rows = []
+    groups = {}
+    otoken_rows = 0
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("isOtoken"):
+            continue
+        otoken_rows += 1
+        balance = Decimal(str(row.get("balance", "0"))) / Decimal(10) ** 18
+        if balance <= 0:
+            continue
+        underlying = str(row.get("underlying") or row.get("assetName") or "").upper()
+        if not underlying:
+            continue
+        strike = Decimal(str(row.get("strike", "0"))) / Decimal(10) ** 18
+        expiry = int(row.get("expiry") or 0)
+        if expiry <= 0:
+            continue
+        option_type = "PUT" if row.get("isPut") else "CALL"
+        key = f"{underlying}|{option_type}|{strike.normalize()}|{expiry}"
+        current = groups.setdefault(key, {
+            "underlying": underlying,
+            "optionType": option_type,
+            "strike": float(strike),
+            "expiryMs": expiry * 1000,
+            "size": 0.0,
+            "assetAddresses": [],
+        })
+        current["size"] += float(balance)
+        asset = row.get("assetAddress")
+        if asset and asset not in current["assetAddresses"]:
+            current["assetAddresses"].append(asset)
+    print(json.dumps({
+        "positions": list(groups.values()),
+        "rawRows": len(rows),
+        "otokenRows": otoken_rows,
+        "account": account,
+    }, sort_keys=True))
+finally:
+    try:
+        client.stop()
+    except Exception:
+        pass
+`;
+  const { stdout } = await execFileAsync('/Users/onomeokajevo/AYP/.venv/bin/python3', ['-c', py], {
+    cwd: join(__dirname, '..'),
+    encoding: 'utf8',
+    timeout: RYSK_LIVE_POSITIONS_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024,
+  });
+  const jsonText = extractJsonObject(stdout);
+  if (!jsonText) throw new Error(`empty Rysk live positions response for ${address}`);
+  const parsed = JSON.parse(jsonText);
+  const positions = Array.isArray(parsed.positions) ? parsed.positions : [];
+  return {
+    positions,
+    rawRows: num(parsed.rawRows),
+    otokenRows: num(parsed.otokenRows),
+    account: parsed.account || address,
+  };
+}
 
 function buildActiveRyskLongGroups(records) {
   const groups = new Map();
@@ -1357,6 +1570,56 @@ async function fetchKHypeToHypeRate() {
     console.warn('Failed to fetch kHYPE/HYPE conversion rate:', e.message);
   }
   return 1;
+}
+
+function uintArg(value) {
+  return BigInt(value).toString(16).padStart(64, '0');
+}
+
+function addressArg(address) {
+  return String(address).toLowerCase().replace(/^0x/, '').padStart(64, '0');
+}
+
+async function fetchWstHypeToHypeRate() {
+  const data = `0x${STHYPE_SHARES_TO_BALANCE_SELECTOR}${uintArg(ONE_E24)}`;
+  try {
+    const result = await hyperEvmClient.call({ to: STHYPE_ADDRESS, data });
+    const raw = result?.data ? BigInt(result.data) : 0n;
+    const rate = parseFloat(formatUnits(raw, 18));
+    if (Number.isFinite(rate) && rate > 0) return rate;
+  } catch (e) {
+    console.warn('Failed to fetch wstHYPE/HYPE conversion rate:', e.message);
+  }
+  return 1;
+}
+
+async function fetchLHypeToHypeRate() {
+  const data = `0x${LHYPE_RATE_IN_QUOTE_SELECTOR}${addressArg(WHYPE_ADDRESS)}`;
+  try {
+    const result = await hyperEvmClient.call({ to: LHYPE_ACCOUNTANT, data });
+    const raw = result?.data ? BigInt(result.data) : 0n;
+    const rate = parseFloat(formatUnits(raw, 18));
+    if (Number.isFinite(rate) && rate > 0) return rate;
+  } catch (e) {
+    console.warn('Failed to fetch LHYPE/HYPE conversion rate:', e.message);
+  }
+  return 1;
+}
+
+async function fetchHypeLikeRates() {
+  const [khype, wsthype, lhype] = await Promise.all([
+    fetchKHypeToHypeRate(),
+    fetchWstHypeToHypeRate(),
+    fetchLHypeToHypeRate(),
+  ]);
+  return {
+    HYPE: 1,
+    WHYPE: 1,
+    KHYPE: khype,
+    STHYPE: 1,
+    WSTHYPE: wsthype,
+    LHYPE: lhype,
+  };
 }
 
 async function fetchHyperLendPositions(address) {
@@ -1995,6 +2258,187 @@ function parseExpiryFromInstrument(instrument) {
   return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 }
 
+function parseDeriveOptionInstrument(instrument) {
+  const m = String(instrument || '').match(/^([A-Z]+)-(\d{8})-(\d+(?:\.\d+)?)-([CP])$/);
+  if (!m) return null;
+  return {
+    underlying: m[1],
+    expiry: `${m[2].slice(0, 4)}-${m[2].slice(4, 6)}-${m[2].slice(6, 8)}`,
+    strike: parseFloat(m[3]),
+    isPut: m[4] === 'P',
+  };
+}
+
+function calculateDeriveIntrinsicAtSpot(positions, spotPrices) {
+  let shortLiability = 0;
+  let longValue = 0;
+  let unknown = 0;
+
+  for (const pos of positions || []) {
+    const amount = Number(pos.amount || 0);
+    if (amount === 0) continue;
+    const parsed = parseDeriveOptionInstrument(pos.instrument);
+    const spot = parsed ? spotPrices?.[parsed.underlying] : null;
+    if (!parsed || !spot || spot <= 0) {
+      unknown += 1;
+      continue;
+    }
+
+    const intrinsic = computeOptionIntrinsic(parsed.underlying, parsed.strike, parsed.isPut, Math.abs(amount), spot);
+    if (amount < 0) shortLiability += intrinsic;
+    else longValue += intrinsic;
+  }
+
+  return {
+    shortLiability,
+    longValue,
+    netValue: longValue - shortLiability,
+    unknown,
+  };
+}
+
+function formatExpiryFromMs(expiryMs) {
+  const date = new Date(expiryMs);
+  if (!Number.isFinite(date.getTime())) return 'unknown';
+  return date.toISOString().slice(0, 10);
+}
+
+function addOptionBucket(map, expiry, delta) {
+  const bucket = map.get(expiry) || {
+    expiry,
+    deriveShortMark: 0,
+    deriveLongMark: 0,
+    deriveShortIntrinsic: 0,
+    deriveLongIntrinsic: 0,
+    ryskLongMark: 0,
+    ryskLongIntrinsic: 0,
+  };
+  for (const [key, value] of Object.entries(delta)) {
+    bucket[key] = (bucket[key] || 0) + value;
+  }
+  map.set(expiry, bucket);
+}
+
+function printOptionBookReconciliation(derivePositions, ryskLongMarkData, spotPrices, hedgeBooks = {}) {
+  const byExpiry = new Map();
+  const deriveByInstrument = new Map();
+  const ryskByInstrument = new Map();
+  let deriveShortMark = 0;
+  let deriveLongMark = 0;
+  let deriveShortIntrinsic = 0;
+  let deriveLongIntrinsic = 0;
+
+  for (const pos of derivePositions || []) {
+    const amount = Number(pos.amount || 0);
+    const markPrice = Number(pos.markPrice || 0);
+    if (!amount || !Number.isFinite(markPrice)) continue;
+    const parsed = parseDeriveOptionInstrument(pos.instrument);
+    const spot = parsed ? spotPrices?.[parsed.underlying] : null;
+    const intrinsic = parsed && spot
+      ? computeOptionIntrinsic(parsed.underlying, parsed.strike, parsed.isPut, Math.abs(amount), spot)
+      : 0;
+    const markValue = Math.abs(amount) * markPrice;
+    const expiry = parsed?.expiry || parseExpiryFromInstrument(pos.instrument) || 'unknown';
+    const existing = deriveByInstrument.get(pos.instrument) || {
+      instrument: pos.instrument,
+      amount: 0,
+      shortMark: 0,
+      longMark: 0,
+      shortIntrinsic: 0,
+      longIntrinsic: 0,
+    };
+    existing.amount += amount;
+    if (amount < 0) {
+      deriveShortMark += markValue;
+      deriveShortIntrinsic += intrinsic;
+      existing.shortMark += markValue;
+      existing.shortIntrinsic += intrinsic;
+      addOptionBucket(byExpiry, expiry, { deriveShortMark: markValue, deriveShortIntrinsic: intrinsic });
+    } else {
+      deriveLongMark += markValue;
+      deriveLongIntrinsic += intrinsic;
+      existing.longMark += markValue;
+      existing.longIntrinsic += intrinsic;
+      addOptionBucket(byExpiry, expiry, { deriveLongMark: markValue, deriveLongIntrinsic: intrinsic });
+    }
+    deriveByInstrument.set(pos.instrument, existing);
+  }
+
+  for (const pos of ryskLongMarkData?.positions || []) {
+    const instrument = pos.instrument || deriveInstrumentName(pos.underlying, pos.expiryMs, pos.strike, pos.optionType === 'PUT');
+    const expiry = formatExpiryFromMs(pos.expiryMs);
+    const existing = ryskByInstrument.get(instrument) || {
+      instrument,
+      size: 0,
+      mark: 0,
+      intrinsic: 0,
+      markSource: pos.markSource || '',
+    };
+    existing.size += Number(pos.size || 0);
+    existing.mark += Number(pos.value || 0);
+    existing.intrinsic += Number(pos.intrinsic || 0);
+    if (!existing.markSource && pos.markSource) existing.markSource = pos.markSource;
+    ryskByInstrument.set(instrument, existing);
+    addOptionBucket(byExpiry, expiry, {
+      ryskLongMark: Number(pos.value || 0),
+      ryskLongIntrinsic: Number(pos.intrinsic || 0),
+    });
+  }
+
+  const ryskLongMark = [...ryskByInstrument.values()].reduce((sum, row) => sum + row.mark, 0);
+  const ryskLongIntrinsic = [...ryskByInstrument.values()].reduce((sum, row) => sum + row.intrinsic, 0);
+  const netOptionMark = -deriveShortMark + deriveLongMark + ryskLongMark;
+  const netOptionIntrinsic = -deriveShortIntrinsic + deriveLongIntrinsic + ryskLongIntrinsic;
+  const nettedPerpPnl = Number(hedgeBooks.netted?.unrealizedPnl || 0);
+  const gammaPerpPnl = Number(hedgeBooks.gamma?.unrealizedPnl || 0);
+  const hedgePerpPnl = nettedPerpPnl + gammaPerpPnl;
+
+  console.log('');
+  console.log('OPTION BOOK RECONCILIATION:');
+  console.log(`  Derive short mark:       -$${deriveShortMark.toFixed(2)}`);
+  if (deriveLongMark > 0) {
+    console.log(`  Derive long mark:        +$${deriveLongMark.toFixed(2)}`);
+  }
+  console.log(`  Rysk long mark:          +$${ryskLongMark.toFixed(2)}`);
+  console.log(`  Net option mark:         $${netOptionMark.toFixed(2)} (excluding Derive/Rysk cash collateral)`);
+  console.log(`  Net intrinsic @ spot:    $${netOptionIntrinsic.toFixed(2)}`);
+  if (nettedPerpPnl !== 0 || gammaPerpPnl !== 0) {
+    console.log(`  Netted perp PnL:         ${nettedPerpPnl >= 0 ? '+' : ''}$${nettedPerpPnl.toFixed(2)} (configured netted account)`);
+    if (gammaPerpPnl !== 0) {
+      console.log(`  Gamma perp PnL:          ${gammaPerpPnl >= 0 ? '+' : ''}$${gammaPerpPnl.toFixed(2)} (configured gamma account)`);
+    }
+    console.log(`  Option + hedge PnL:      $${(netOptionMark + hedgePerpPnl).toFixed(2)} (diagnostic; NAV already counts Lighter equity)`);
+  }
+  console.log('  By expiry:');
+  for (const bucket of [...byExpiry.values()].sort((a, b) => a.expiry.localeCompare(b.expiry))) {
+    const markNet = -bucket.deriveShortMark + bucket.deriveLongMark + bucket.ryskLongMark;
+    const intrinsicNet = -bucket.deriveShortIntrinsic + bucket.deriveLongIntrinsic + bucket.ryskLongIntrinsic;
+    console.log(`    ${bucket.expiry}: mark $${markNet.toFixed(2)} = Derive short -$${bucket.deriveShortMark.toFixed(2)} + Derive long $${bucket.deriveLongMark.toFixed(2)} + Rysk long $${bucket.ryskLongMark.toFixed(2)}; intrinsic $${intrinsicNet.toFixed(2)}`);
+  }
+
+  const unmatchedRysk = [...ryskByInstrument.values()]
+    .filter(row => !deriveByInstrument.has(row.instrument))
+    .sort((a, b) => Math.abs(b.mark) - Math.abs(a.mark))
+    .slice(0, 8);
+  const unmatchedDeriveShorts = [...deriveByInstrument.values()]
+    .filter(row => row.shortMark > 0 && !ryskByInstrument.has(row.instrument))
+    .sort((a, b) => b.shortMark - a.shortMark)
+    .slice(0, 8);
+
+  if (unmatchedRysk.length > 0) {
+    console.log('  Rysk longs without exact Derive instrument:');
+    for (const row of unmatchedRysk) {
+      console.log(`    ${row.instrument}: size ${row.size.toFixed(2)}, mark $${row.mark.toFixed(2)}, intrinsic $${row.intrinsic.toFixed(2)} (${row.markSource || 'mark'})`);
+    }
+  }
+  if (unmatchedDeriveShorts.length > 0) {
+    console.log('  Derive shorts without exact Rysk long instrument:');
+    for (const row of unmatchedDeriveShorts) {
+      console.log(`    ${row.instrument}: short ${Math.abs(row.amount).toFixed(2)}, mark -$${row.shortMark.toFixed(2)}, intrinsic -$${row.shortIntrinsic.toFixed(2)}`);
+    }
+  }
+}
+
 function buildBackingSnapshot(result) {
   const h = result.holdings || {};
   const derivePositions = h.derive?.positions || [];
@@ -2029,14 +2473,14 @@ function buildBackingSnapshot(result) {
       breakdown: [
         { label: 'Derive (USDC)',         value: result.breakdown.derive },
         { label: 'LIT (hedged)',          value: result.breakdown.lit },
-        { label: 'HYPE (hedged)',         value: result.breakdown.hype },
+        { label: 'HYPE incl. HyperLend', value: result.breakdown.hype },
         { label: 'Hyperliquid (equity)',  value: result.breakdown.hyperliquidEquity },
         { label: 'Lighter (collateral)',  value: result.breakdown.lighterCollateral },
         { label: 'Lighter operator',      value: result.breakdown.lighterOperator },
         { label: 'Rysk longs (mark)',     value: result.optionBook.ryskLongMark },
         { label: 'Rysk (stables)',        value: result.breakdown.ryskStables },
         { label: 'USDC (idle)',           value: result.breakdown.usdc },
-        { label: 'HyperLend (net)',       value: result.breakdown.hyperLend },
+        { label: 'HyperLend stable debt', value: result.breakdown.hyperLend },
         { label: 'ETH exposure',          value: result.breakdown.eth },
         { label: 'BTC perp PnL',          value: result.breakdown.btc },
       ].filter((b) => Number.isFinite(b.value) && Math.abs(b.value) > 0.005),
@@ -2100,6 +2544,13 @@ function buildBackingSnapshot(result) {
         totalCollateralUsd: h.hyperLend.totalCollateralUsd,
         totalDebtUsd: h.hyperLend.totalDebtUsd,
         netValueUsd: h.hyperLend.netValueUsd,
+        supplies: h.hyperLend.supplies,
+        debts: h.hyperLend.debts,
+        stableSupplyUsd: result.breakdown.hyperLendStableSupply,
+        stableDebtUsd: result.breakdown.hyperLendStableDebt,
+        stableNetUsd: result.breakdown.hyperLend,
+        hypeCollateralValueUsd: result.breakdown.hyperLendHypeCollateralValue,
+        rawNetValueUsd: result.breakdown.hyperLendRawNet,
       },
       pendle: h.pendle && {
         totalUsd: h.pendle.totalUsd,
@@ -2299,7 +2750,7 @@ async function calculateYield() {
   // blocking balance helpers until this snapshot is captured, otherwise mirrored
   // Derive/Rysk/Lighter/Hyperliquid legs can be valued from different markets.
   const marketFetchStart = Date.now();
-  const ryskLongLegsPromise = loadActiveRyskLongs();
+  const ryskLongLegsPromise = timedFetch("Rysk live longs", () => fetchLiveRyskLongs(RYSK_MM_ADDRESS));
   const deriveDataPromise = timedFetch("Derive", () => fetchDerivePositions());
   const lighterDataPromise = timedFetch("Lighter DN", () => fetchLighterEquity(MULTISIG_ADDRESS, {
     includeDefaultAccount: true,
@@ -2309,20 +2760,50 @@ async function calculateYield() {
     includeDefaultAccount: false,
     excludeAccountIndexes: LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES,
   }));
+  const lighterNettedBookPromise = timedFetch("Lighter netted book", () => (
+    LIGHTER_NETTED_ACCOUNT_INDEXES.length
+      ? fetchLighterEquity([], {
+        includeDefaultAccount: false,
+        includeAccountIndexes: LIGHTER_NETTED_ACCOUNT_INDEXES,
+      })
+      : emptyLighterEquity()
+  ));
+  const lighterGammaBookPromise = timedFetch("Lighter gamma book", () => (
+    LIGHTER_GAMMA_STRATEGY_ACCOUNT_INDEXES.length
+      ? fetchLighterEquity([], {
+        includeDefaultAccount: false,
+        includeAccountIndexes: LIGHTER_GAMMA_STRATEGY_ACCOUNT_INDEXES,
+      })
+      : emptyLighterEquity()
+  ));
+  const lighterOtherBookPromise = timedFetch("Lighter other book", () => fetchLighterEquity(OPERATOR_ADDRESS, {
+    includeDefaultAccount: false,
+    excludeAccountIndexes: mergeIndexLists(
+      LIGHTER_DELTA_NEUTRAL_ACCOUNT_INDEXES,
+      LIGHTER_NETTED_ACCOUNT_INDEXES,
+      LIGHTER_GAMMA_STRATEGY_ACCOUNT_INDEXES,
+    ),
+  }));
   const hyperliquidDataPromise = timedFetch("Hyperliquid perp", () => fetchHyperliquidEquity(OPERATOR_ADDRESS));
   const ryskLongMarkTimingPromise = Promise.all([ryskLongLegsPromise, deriveDataPromise])
-    .then(([legs, derive]) => markRyskLongs(legs, buildDeriveMarkMap(derive)));
+    .then(([liveLongs, derive]) => markRyskLongs(liveLongs.positions, buildDeriveMarkMap(derive)));
 
   const [
     lighterData,
     lighterOperatorData,
+    lighterNettedBook,
+    lighterGammaBook,
+    lighterOtherBook,
     hyperliquidData,
     deriveData,
-    ryskLongLegs,
+    ryskLiveLongs,
     ryskLongMarkTiming,
   ] = await Promise.all([
     lighterDataPromise,
     lighterOperatorDataPromise,
+    lighterNettedBookPromise,
+    lighterGammaBookPromise,
+    lighterOtherBookPromise,
     hyperliquidDataPromise,
     deriveDataPromise,
     ryskLongLegsPromise,
@@ -2333,8 +2814,12 @@ async function calculateYield() {
   const marketSnapshotQuality = buildMarketSnapshotQuality([
     marketTimingFromValue(lighterData),
     marketTimingFromValue(lighterOperatorData),
+    marketTimingFromValue(lighterNettedBook),
+    marketTimingFromValue(lighterGammaBook),
+    marketTimingFromValue(lighterOtherBook),
     marketTimingFromValue(hyperliquidData),
     marketTimingFromValue(deriveData),
+    marketTimingFromValue(ryskLiveLongs),
     marketTimingFromRyskMarks(ryskLongMarkTiming),
   ]);
   console.log(`Market fetch window: ${(marketFetchMs / 1000).toFixed(1)}s; Derive fetch: ${(deriveData.fetchMs / 1000).toFixed(1)}s; Rysk long marks: ${(ryskLongMarkTiming.markFetchMs / 1000).toFixed(1)}s`);
@@ -2360,7 +2845,7 @@ async function calculateYield() {
     ryskOperatorMarginPool,
     ryskMmMarginPool,
     hyperLendData,
-    kHypeToHypeRate,
+    hypeRates,
   ] = await Promise.all([
     fetchEthereumBalances(MULTISIG_ADDRESS),
     fetchEthereumBalances(OPERATOR_ADDRESS),
@@ -2377,8 +2862,9 @@ async function calculateYield() {
     fetchRyskMarginPoolBalances(OPERATOR_ADDRESS),
     fetchRyskMarginPoolBalances(RYSK_MM_ADDRESS),
     fetchHyperLendPositions(OPERATOR_ADDRESS),
-    fetchKHypeToHypeRate(),
+    fetchHypeLikeRates(),
   ]);
+  const kHypeToHypeRate = hypeRates.KHYPE || 1;
   const slowDataFetchMs = Date.now() - slowDataFetchStart;
   console.log(`Slow balance/state fetch: ${(slowDataFetchMs / 1000).toFixed(1)}s`);
   console.log("");
@@ -2442,7 +2928,7 @@ async function calculateYield() {
     .reduce((sum, b) => sum + parseFloat(b.balance), 0);
   const ryskMmHypeBalance = ryskMmHyperBalances
     .filter(b => isHypeLikeSymbol(b.symbol))
-    .reduce((sum, b) => sum + hypeEquivalentBalance(b, kHypeToHypeRate), 0);
+    .reduce((sum, b) => sum + hypeEquivalentBalance(b, hypeRates), 0);
   const ryskMmOtherTrackedValue = ryskMmHyperBalances
     .filter(b => !STABLECOINS.includes(b.symbol) && !isHypeLikeSymbol(b.symbol))
     .reduce((sum, b) => {
@@ -2473,13 +2959,22 @@ async function calculateYield() {
 
   const spotHypeEvm = allSpotBalances
     .filter(b => isHypeLikeSymbol(b.symbol))
-    .reduce((sum, b) => sum + hypeEquivalentBalance(b, kHypeToHypeRate), 0);
+    .reduce((sum, b) => sum + hypeEquivalentBalance(b, hypeRates), 0);
   console.log(`  Spot HYPE (EVM):  ${spotHypeEvm.toFixed(2)} HYPE`);
   const spotKhypeEvm = allSpotBalances
     .filter(b => b.symbol === 'KHYPE')
     .reduce((sum, b) => sum + parseFloat(b.balance), 0);
   if (spotKhypeEvm > 0) {
     console.log(`    includes kHYPE: ${spotKhypeEvm.toFixed(4)} @ ${kHypeToHypeRate.toFixed(6)} = ${(spotKhypeEvm * kHypeToHypeRate).toFixed(4)} HYPE equiv`);
+  }
+  for (const symbol of ['STHYPE', 'WSTHYPE', 'LHYPE']) {
+    const amount = allSpotBalances
+      .filter(b => b.symbol === symbol)
+      .reduce((sum, b) => sum + parseFloat(b.balance), 0);
+    if (amount > 0) {
+      const rate = hypeRates[symbol] || 1;
+      console.log(`    includes ${symbol}: ${amount.toFixed(4)} @ ${rate.toFixed(6)} = ${(amount * rate).toFixed(4)} HYPE equiv`);
+    }
   }
 
   const spotHypeL1 = hyperliquidSpotData.hypeBalance || 0;
@@ -2508,6 +3003,11 @@ async function calculateYield() {
   const hyperLendHypeSupply = hyperLendWhypeSupply + hyperLendKhypeSupply;
   const hyperLendHypeDebt = hyperLendWhypeDebt + hyperLendKhypeDebt;
   const hyperLendHypeNet = hyperLendHypeSupply - hyperLendHypeDebt;
+  const hyperLendStableValue = (hyperLendData.supplies['USDT0'] || 0) + (hyperLendData.supplies['USDC'] || 0);
+  const hyperLendDebtValue = Object.entries(hyperLendData.debts)
+    .filter(([symbol]) => !isHypeLikeSymbol(symbol))
+    .reduce((sum, [, value]) => sum + value, 0);
+  const hyperLendNonHypeValue = hyperLendStableValue - hyperLendDebtValue;
   if (hyperLendHypeSupply > 0 || hyperLendHypeDebt > 0) {
     console.log(`  HyperLend net:    ${hyperLendHypeNet.toFixed(2)} HYPE`);
   }
@@ -2540,6 +3040,18 @@ async function calculateYield() {
     currentPrice: hypeCurrentPrice,
   });
   const { netExposure, totalValue: totalHypeValue } = hypeExposure;
+  const hyperLendHypeCurrentValue = hyperLendHypeNet * hypeCurrentPrice;
+  const hypePlusHyperLendNetValue = totalHypeValue + hyperLendNonHypeValue;
+
+  if (hyperLendHypeSupply > 0 || hyperLendHypeDebt > 0 || hyperLendDebtValue > 0 || hyperLendStableValue > 0) {
+    console.log('');
+    console.log('HYPE / HYPERLEND SETTLEMENT CHECK:');
+    console.log(`  HyperLend HYPE net:      ${hyperLendHypeNet.toFixed(4)} HYPE × $${hypeCurrentPrice.toFixed(4)} = $${hyperLendHypeCurrentValue.toFixed(2)}`);
+    console.log(`  HyperLend stables net:   $${hyperLendNonHypeValue.toFixed(2)} (supplies $${hyperLendStableValue.toFixed(2)} - debts $${hyperLendDebtValue.toFixed(2)})`);
+    console.log(`  Raw HyperLend net @ mark:$${(hyperLendHypeCurrentValue + hyperLendNonHypeValue).toFixed(2)}`);
+    console.log(`  HYPE book with hedges:   $${totalHypeValue.toFixed(2)} (spot@mark $${hypeExposure.currentSpotValue.toFixed(2)} + perp uPnL $${hypeExposure.perpUnrealizedPnl.toFixed(2)})`);
+    console.log(`  HYPE + stable debt:      $${hypePlusHyperLendNetValue.toFixed(2)}`);
+  }
 
   // 5. Perp positions (collateral only - unrealized PnL offsets spot price changes)
   console.log('');
@@ -2572,6 +3084,15 @@ async function calculateYield() {
       const pnlSign = pos.unrealizedPnl >= 0 ? '+' : '';
       console.log(`    ${pos.market} ${pos.side.toUpperCase()}: ${pos.size} @ $${pos.entryPrice} (${pnlSign}$${pos.unrealizedPnl.toFixed(2)})`);
     }
+  }
+  console.log('  Book split (diagnostic only; NAV still uses total line above):');
+  printLighterBook('netted', lighterNettedBook);
+  printLighterBook('gamma strategy', lighterGammaBook);
+  printLighterBook('other operator', lighterOtherBook);
+  const lighterSplitEquity = lighterNettedBook.equity + lighterGammaBook.equity + lighterOtherBook.equity;
+  const lighterSplitDrift = lighterOperatorData.equity - lighterSplitEquity;
+  if (Math.abs(lighterSplitDrift) > 1) {
+    console.log(`  WARN split drift: total operator equity differs from split by $${lighterSplitDrift.toFixed(2)}`);
   }
 
   // Calculate Hyperliquid total unrealized PnL and collateral
@@ -2858,11 +3379,6 @@ async function calculateYield() {
   const ryskStableCollateral = totalRyskStableCollateral - ryskOptionIntrinsicLiability;
 
   // HyperLend: HYPE-like assets/debts are counted in HYPE exposure. Only add stable supplies/debts here.
-  const hyperLendStableValue = (hyperLendData.supplies['USDT0'] || 0) + (hyperLendData.supplies['USDC'] || 0);
-  const hyperLendDebtValue = Object.entries(hyperLendData.debts)
-    .filter(([symbol]) => !isHypeLikeSymbol(symbol))
-    .reduce((sum, [, value]) => sum + value, 0);
-  const hyperLendNonHypeValue = hyperLendStableValue - hyperLendDebtValue;
 
   // Derive.xyz: use portfolio value (USDC minus current mark cost of open shorts)
   const deriveUsdcBalance = deriveData.portfolioValue;
@@ -2877,8 +3393,15 @@ async function calculateYield() {
     SOL: currentSolPrice,
     LIT: litCurrentPrice,
   };
-  const ryskLongMarkData = valueRyskLongs(ryskLongLegs, ryskLongSpotPrices, ryskLongMarkTiming);
+  const ryskLongMarkData = valueRyskLongs(ryskLiveLongs.positions, ryskLongSpotPrices, ryskLongMarkTiming);
   const ryskLongMarkValue = ryskLongMarkData?.totalValue || 0;
+  const ryskLongIntrinsicAtSpot = (ryskLongMarkData?.positions || [])
+    .reduce((sum, pos) => sum + (pos.intrinsic || 0), 0);
+  const deriveIntrinsicAtSpot = calculateDeriveIntrinsicAtSpot(deriveData.positions, ryskLongSpotPrices);
+  printOptionBookReconciliation(deriveData.positions, ryskLongMarkData, ryskLongSpotPrices, {
+    netted: lighterNettedBook,
+    gamma: lighterGammaBook,
+  });
 
   const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
 
@@ -2912,15 +3435,18 @@ async function calculateYield() {
   if (ryskStableCollateral > 0) {
     console.log(`  Rysk (stables):   $${ryskStableCollateral.toFixed(2)}`);
   }
-  if (hyperLendNonHypeValue > 0) {
+  if (Math.abs(hyperLendNonHypeValue) > 0.01) {
     console.log(`  HyperLend:        $${hyperLendNonHypeValue.toFixed(2)}`);
+    if (hyperLendStableValue !== 0 || hyperLendDebtValue !== 0) {
+      console.log(`    (stable supplies $${hyperLendStableValue.toFixed(2)} - stable debts $${hyperLendDebtValue.toFixed(2)})`);
+    }
   }
   if (deriveUsdcBalance > 0) {
     console.log(`  Derive (USDC):    $${deriveUsdcBalance.toFixed(2)}`);
   }
   if (ryskLongMarkValue !== 0 || ryskLongMarkData?.positions?.length) {
-    console.log(`  Rysk longs (mark):$${ryskLongMarkValue.toFixed(2)}`);
-    console.log(`    (${ryskLongMarkData.positions.length} legs marked in ${(ryskLongMarkData.markFetchMs / 1000).toFixed(1)}s with concurrency ${RYSK_MARK_CONCURRENCY}; ${ryskLongMarkData.derivePositionMarks || 0} from Derive positions, ${ryskLongMarkData.tickerMarks || 0} from ticker)`);
+    console.log(`  Rysk longs (live):$${ryskLongMarkValue.toFixed(2)}`);
+    console.log(`    (${ryskLongMarkData.positions.length} grouped live legs from ${ryskLiveLongs.otokenRows || 0} oToken rows; marked in ${(ryskLongMarkData.markFetchMs / 1000).toFixed(1)}s with concurrency ${RYSK_MARK_CONCURRENCY}; ${ryskLongMarkData.derivePositionMarks || 0} from Derive positions, ${ryskLongMarkData.tickerMarks || 0} from ticker)`);
     if (ryskLongMarkData?.valuedAtIntrinsic) {
       console.log(`    (${ryskLongMarkData.valuedAtIntrinsic} legs had no Derive mark, valued at intrinsic)`);
     }
@@ -2959,6 +3485,7 @@ async function calculateYield() {
   // 8. Calculate unreported yield (minus entry/exit costs)
   const grossYield = totalNav - vaultData.totalAssets;
   const unreportedYield = grossYield - entryExitCosts;
+  const reportableYield = unreportedYield;
 
   // Forward "all-OTM" upper bound: assume every open Derive short expires worthless
   // (we keep full subaccount cash) and every Rysk long expires worthless (mark → 0).
@@ -2967,6 +3494,12 @@ async function calculateYield() {
   const otmExpiryBuffer = deriveOpenShortMarkCost - ryskLongMarkValue;
   const otmExpiryNav = totalNav + otmExpiryBuffer;
   const otmExpiryGap = otmExpiryNav - vaultData.totalAssets - entryExitCosts;
+  const deriveExpiryValueAtSpot = (deriveData.usdcBalance || 0) + deriveIntrinsicAtSpot.netValue;
+  const currentSpotExpiryNav = totalNav
+    + (deriveExpiryValueAtSpot - deriveUsdcBalance)
+    + (ryskLongIntrinsicAtSpot - ryskLongMarkValue);
+  const currentSpotExpiryGap = currentSpotExpiryNav - vaultData.totalAssets - entryExitCosts;
+  const optionExtrinsicNet = unreportedYield - currentSpotExpiryGap;
 
   console.log('');
   console.log('='.repeat(60));
@@ -2977,16 +3510,77 @@ async function calculateYield() {
   console.log(`  Entry/exit costs:     -$${entryExitCosts.toFixed(2)}`);
   console.log(`  ─────────────────────────`);
   console.log(`  NET UNREPORTED YIELD: $${unreportedYield.toFixed(2)}  (honest MTM, conservative)`);
-  console.log(`  SAFE TO REPORT:       $${unreportedYield.toFixed(2)}`);
+  console.log(`  INTRINSIC-ONLY GAP:   $${currentSpotExpiryGap.toFixed(2)}  (spot unchanged, options at intrinsic)`);
+  console.log(`  Net option extrinsic: $${optionExtrinsicNet.toFixed(2)}  (MTM gap minus intrinsic gap)`);
+  console.log(`  SAFE TO REPORT:       $${reportableYield.toFixed(2)}`);
   console.log('='.repeat(60));
   console.log('');
   console.log('FORWARD RANGE (option book held to expiry):');
   console.log(`  Derive short MTM cost:    -$${deriveOpenShortMarkCost.toFixed(2)}  (paid if shorts settle at current mark)`);
-  console.log(`  Rysk long mark (offset):  +$${ryskLongMarkValue.toFixed(2)}  (recovered if longs settle at current mark)`);
+  console.log(`  Derive intrinsic @ spot:  -$${deriveIntrinsicAtSpot.shortLiability.toFixed(2)}  (settlement if spot is unchanged)`);
+  if (deriveIntrinsicAtSpot.longValue > 0) {
+    console.log(`  Derive long intrinsic:    +$${deriveIntrinsicAtSpot.longValue.toFixed(2)}`);
+  }
+  console.log(`  Rysk long mark (offset):  +$${ryskLongMarkValue.toFixed(2)}  (current mark)`);
+  console.log(`  Rysk intrinsic @ spot:    +$${ryskLongIntrinsicAtSpot.toFixed(2)}  (settlement if spot is unchanged)`);
   console.log(`  ─────────────────────────`);
   console.log(`  Current gap (now):        $${unreportedYield.toFixed(2)}`);
-  console.log(`  Upper bound (all OTM):    $${otmExpiryGap.toFixed(2)}  (Derive shorts decay to 0, perp churn = 0)`);
+  console.log(`  Expiry @ current spot:    $${currentSpotExpiryGap.toFixed(2)}  (intrinsic settlement, no spot move)`);
+  console.log(`  All-OTM scenario:         $${otmExpiryGap.toFixed(2)}  (only if Derive shorts expire worthless)`);
+  if (deriveIntrinsicAtSpot.unknown > 0) {
+    console.log(`  WARN: ${deriveIntrinsicAtSpot.unknown} Derive legs had no spot for intrinsic scenario`);
+  }
   console.log('='.repeat(60));
+
+  if (Math.abs(netExposure) * hypeCurrentPrice > 10000 || Math.abs(netLitExposure) * litCurrentPrice > 10000) {
+    console.log('');
+    console.log('EXPOSURE WARNINGS:');
+    if (Math.abs(netExposure) * hypeCurrentPrice > 10000) {
+      console.log(`  HYPE net exposure: ${netExposure.toFixed(2)} HYPE (~$${(netExposure * hypeCurrentPrice).toFixed(2)})`);
+    }
+    if (Math.abs(netLitExposure) * litCurrentPrice > 10000) {
+      console.log(`  LIT net exposure:  ${netLitExposure.toFixed(2)} LIT (~$${(netLitExposure * litCurrentPrice).toFixed(2)})`);
+    }
+    console.log('='.repeat(60));
+  }
+
+  const currentHistoryEntry = {
+    timestamp: new Date().toISOString(),
+    nav: totalNav,
+    vaultTotalAssets: vaultData.totalAssets,
+    grossYield,
+    unreportedYield,
+    reportableYield,
+    intrinsicOnlyGap: currentSpotExpiryGap,
+    optionExtrinsicNet,
+    sharePrice: vaultData.sharePrice,
+    totalSupply: vaultData.totalSupply,
+    hypeValue: totalHypeValue,
+    ethValue,
+    btcValue,
+    usdcBalance,
+    totalUsdcBalance,
+    lighterCollateral: lighterData.collateral,
+    lighterOperatorEquity: lighterOperatorData.equity,
+    hyperliquidEquity: hyperliquidData.equity,
+    hyperliquidCollateral,
+    litValue,
+    ryskStableCollateral,
+    hyperLendNonHypeValue,
+    deriveUsdcBalance,
+    ryskLongMarkValue,
+    deriveOpenShortMarkCost,
+    netHypeExposure: netExposure,
+    netLitExposure: netLitExposure,
+    // Cumulative flow tracking for cost socialization
+    cumulativeDeposited: vaultData.totalDeposited,
+    cumulativeWithdrawn: vaultData.totalWithdrawn,
+    newDeposits,
+    newWithdrawals,
+    entryExitCosts,
+  };
+
+  printNavMovement(lastEntry, currentHistoryEntry);
 
   // 9. Calculate PPS-based yield (using history loaded earlier)
   const yesterday = lastEntry;
@@ -3005,31 +3599,7 @@ async function calculateYield() {
   }
 
   // 10. Save today's data
-  history.entries.push({
-    timestamp: new Date().toISOString(),
-    nav: totalNav,
-    sharePrice: vaultData.sharePrice,
-    totalSupply: vaultData.totalSupply,
-    hypeValue: totalHypeValue,
-    ethValue,
-    btcValue,
-    usdcBalance,
-    lighterCollateral: lighterData.collateral,
-    lighterOperatorEquity: lighterOperatorData.equity,
-    hyperliquidEquity: hyperliquidData.equity,
-    litValue,
-    ryskStableCollateral,
-    hyperLendNonHypeValue,
-    deriveUsdcBalance,
-    netHypeExposure: netExposure,
-    netLitExposure: netLitExposure,
-    // Cumulative flow tracking for cost socialization
-    cumulativeDeposited: vaultData.totalDeposited,
-    cumulativeWithdrawn: vaultData.totalWithdrawn,
-    newDeposits,
-    newWithdrawals,
-    entryExitCosts,
-  });
+  history.entries.push(currentHistoryEntry);
 
   // Keep last 90 days
   if (history.entries.length > 90) {
@@ -3039,7 +3609,6 @@ async function calculateYield() {
   saveNavHistory(history);
 
   // 11. Output for reporting
-  const reportableYield = unreportedYield;
   console.log('');
   console.log('='.repeat(60));
   console.log('TO REPORT THIS YIELD:');
@@ -3083,6 +3652,10 @@ async function calculateYield() {
       lit: litValue,
       ryskStables: ryskStableCollateral,
       hyperLend: hyperLendNonHypeValue,
+      hyperLendStableSupply: hyperLendStableValue,
+      hyperLendStableDebt: hyperLendDebtValue,
+      hyperLendHypeCollateralValue: hyperLendHypeCurrentValue,
+      hyperLendRawNet: hyperLendHypeCurrentValue + hyperLendNonHypeValue,
       derive: deriveUsdcBalance,
     },
     // Detailed holdings for snapshot
