@@ -62,6 +62,9 @@ type BackingData = {
       equity: number;
       collateral: number;
       unrealizedPnl: number;
+      unifiedCash?: number;
+      cashNeutralPerpPnl?: number;
+      nonCashNeutralPerpPnl?: number;
       positionCount: number;
     };
     derive?: {
@@ -87,8 +90,12 @@ type BackingData = {
   };
   optionBook: {
     currentMtm: number;
+    intrinsicOnlyGap?: number;
+    optionExtrinsicNet?: number;
     deriveShortMtmCost: number;
+    deriveShortIntrinsicCost?: number;
     ryskLongMark: number;
+    ryskLongIntrinsic?: number;
     upperBoundIfAllOtm: number;
     deriveShortCount: number;
     deriveLongCount: number;
@@ -286,7 +293,7 @@ export function Backing() {
               role="Operator"
               roleHint="Executes on venues"
               name="Operator wallet"
-              description="Single-key wallet used on venues without Safe support. Mirrors the same on-chain visibility; trades route here, never the underlying capital."
+              description="Hardware wallet used on venues without Safe support. It executes trades and can hold the collateral required for those venue positions."
               address={OPERATOR_ADDRESS}
               explorers={OPERATOR_EXPLORERS}
             />
@@ -354,8 +361,9 @@ export function Backing() {
             <Section num="III" tag="Composition" title="NAV breakdown.">
               <NavRegister data={data} />
               <p className="bkx-footnote">
-                HYPE includes HYPE-like collateral supplied to HyperLend. HyperLend stable debt is
-                shown separately so the same collateral is not counted twice.
+                Total NAV is shown on a conservative marked basis, including open Derive and
+                Rysk option marks. HYPE includes HYPE-like collateral supplied to HyperLend;
+                HyperLend stable debt is shown separately so the same collateral is not counted twice.
               </p>
             </Section>
 
@@ -400,11 +408,11 @@ export function Backing() {
                 />
                 <VenueRow
                   name="Hyperliquid"
-                  metric="Equity"
-                  value={data?.venues.hyperliquid?.equity}
+                  metric="Unified cash"
+                  value={data?.venues.hyperliquid?.unifiedCash ?? data?.venues.hyperliquid?.equity}
                   meta={
                     data
-                      ? `${data.venues.hyperliquid?.positionCount ?? 0} short perps · collateral ${fmtUsd(data.venues.hyperliquid?.collateral, { decimals: 0 })}`
+                      ? `${data.venues.hyperliquid?.positionCount ?? 0} short perps · collateral view ${fmtUsd(data.venues.hyperliquid?.collateral, { decimals: 0 })}`
                       : null
                   }
                 />
@@ -473,7 +481,7 @@ export function Backing() {
                 <StrategyRow
                   roman="ii."
                   name="Options arbitrage"
-                  body="The vault sells options on Derive where implied volatility is rich and buys the same option on Rysk where it is cheap. The spread is the yield, hedged at the moment the trade opens. The Derive and Rysk numbers in §V are this book. The mark-to-market and ceiling in §VI are the book in flight."
+                  body="The vault sells options on Derive where implied volatility is rich and buys offsetting options on Rysk where it is cheap. Premiums sit in venue collateral; open liabilities are marked separately. Section VI shows both marked value and intrinsic-only settlement value at current spot."
                 />
                 <StrategyRow
                   roman="iii."
@@ -756,18 +764,27 @@ function OptionBook({ data }: { data: BackingData | null }) {
     );
   }
   const ob = data.optionBook;
-  const range = ob.upperBoundIfAllOtm - ob.currentMtm;
-  // scale: place current at left, all-OTM scenario at right, on a normalized 0..1
-  const zeroPos =
-    range > 0 ? Math.max(0, Math.min(1, (0 - ob.currentMtm) / range)) : 0.5;
-  const currentPos = 0;
-  const scenarioPos = 1;
+  const hasIntrinsic = Number.isFinite(ob.intrinsicOnlyGap);
+  const intrinsicOnlyGap = hasIntrinsic ? ob.intrinsicOnlyGap : undefined;
+  const optionExtrinsicNet = Number.isFinite(ob.optionExtrinsicNet) ? ob.optionExtrinsicNet : undefined;
+  const scaleValues = [ob.currentMtm, ob.upperBoundIfAllOtm, 0];
+  if (intrinsicOnlyGap !== undefined) scaleValues.push(intrinsicOnlyGap);
+  const scaleMin = Math.min(...scaleValues);
+  const scaleMax = Math.max(...scaleValues);
+  const valueToPos = (value: number) =>
+    scaleMax > scaleMin ? (value - scaleMin) / (scaleMax - scaleMin) : 0.5;
+  const currentPos = valueToPos(ob.currentMtm);
+  const intrinsicPos = intrinsicOnlyGap !== undefined ? valueToPos(intrinsicOnlyGap) : null;
+  const scenarioPos = valueToPos(ob.upperBoundIfAllOtm);
+  const zeroPos = valueToPos(0);
+  const longLegs = ob.deriveLongCount + ob.ryskUnmatchedLegs;
 
   return (
     <div className="bkx-ob">
       <p className="bkx-section-intro">
-        Open options are marked live. Some Derive shorts are paired with Rysk longs, and some are
-        hedged with perp accounts. The range below is a scenario view, not reported yield.
+        Open options are included in NAV at live venue marks. The intrinsic-only view replaces
+        those marks with strike-versus-spot settlement value, so the remaining difference is
+        option extrinsic value.
       </p>
 
       <div className="bkx-ob-range">
@@ -780,32 +797,53 @@ function OptionBook({ data }: { data: BackingData | null }) {
           <div
             className="bkx-ob-current"
             style={{ left: `${currentPos * 100}%` }}
-            aria-label="Current mark-to-market"
+            aria-label="Current marked gap"
           />
+          {intrinsicPos !== null && (
+            <div
+              className="bkx-ob-intrinsic"
+              style={{ left: `${intrinsicPos * 100}%` }}
+              aria-label="Intrinsic-only gap"
+            />
+          )}
           <div
             className="bkx-ob-ceiling"
             style={{ left: `${scenarioPos * 100}%` }}
             aria-label="All-OTM scenario"
           />
         </div>
-        <div className="bkx-ob-range-axis">
-          <div className="bkx-ob-axis-current" style={{ left: `${currentPos * 100}%` }}>
-            <div className="bkx-ob-axis-label">Current MTM</div>
-            <div className="bkx-ob-axis-val">{fmtUsd(ob.currentMtm, { decimals: 0 })}</div>
-          </div>
-          <div className="bkx-ob-axis-ceiling" style={{ left: `${scenarioPos * 100}%` }}>
-            <div className="bkx-ob-axis-label">All-OTM scenario</div>
-            <div className="bkx-ob-axis-val">{fmtUsd(ob.upperBoundIfAllOtm, { decimals: 0 })}</div>
-          </div>
-          <div className="bkx-ob-axis-zero" style={{ left: `${zeroPos * 100}%` }}>
-            <div className="bkx-ob-axis-label">Zero</div>
-          </div>
+        <div className="bkx-ob-range-legend" aria-hidden>
+          <span><i className="bkx-ob-key bkx-ob-key-current" /> Marked</span>
+          <span><i className="bkx-ob-key bkx-ob-key-intrinsic" /> Intrinsic</span>
+          <span><i className="bkx-ob-key bkx-ob-key-scenario" /> All-OTM</span>
         </div>
       </div>
 
+      <div className="bkx-ob-scenarios">
+        <ScenarioFig
+          label="Current marked gap"
+          value={ob.currentMtm}
+          note="The backing gap using current Derive and Rysk option marks."
+        />
+        <ScenarioFig
+          label="Intrinsic-only gap"
+          value={intrinsicOnlyGap}
+          note={
+            hasIntrinsic
+              ? 'Same spot prices, options valued as max(spot minus strike, 0).'
+              : 'Available after the next backing snapshot is published.'
+          }
+        />
+        <ScenarioFig
+          label="All-OTM scenario"
+          value={ob.upperBoundIfAllOtm}
+          note="Only if open Derive shorts expire worthless; not a forecast."
+        />
+      </div>
+
       <p className="bkx-ob-caveat">
-        This scenario assumes the open Derive shorts expire out of the money. It excludes future
-        hedge PnL, funding, and spot movement, so it should not be read as a forecast.
+        Marked NAV stays the headline backing figure. Intrinsic-only is included as a settlement
+        lens for deep in-the-money options; it does not replace live mark-to-market reporting.
       </p>
 
       <div className="bkx-ob-detail">
@@ -826,13 +864,36 @@ function OptionBook({ data }: { data: BackingData | null }) {
           </div>
         </div>
         <div className="bkx-ob-d">
+          <div className="bkx-ob-d-label">Derive short intrinsic</div>
+          <div className="bkx-ob-d-val">{fmtUsd(ob.deriveShortIntrinsicCost, { decimals: 0 })}</div>
+          <div className="bkx-ob-d-note">
+            Strike-versus-spot liability if shorts settled at unchanged spot
+          </div>
+        </div>
+        <div className="bkx-ob-d">
+          <div className="bkx-ob-d-label">Rysk long intrinsic</div>
+          <div className="bkx-ob-d-val">
+            {fmtUsd(ob.ryskLongIntrinsic, { sign: true, decimals: 0 })}
+          </div>
+          <div className="bkx-ob-d-note">
+            Strike-versus-spot offset if longs settled at unchanged spot
+          </div>
+        </div>
+        <div className="bkx-ob-d">
+          <div className="bkx-ob-d-label">Net option extrinsic</div>
+          <div className="bkx-ob-d-val">{fmtUsd(optionExtrinsicNet, { decimals: 0 })}</div>
+          <div className="bkx-ob-d-note">
+            Difference between marked gap and intrinsic-only gap
+          </div>
+        </div>
+        <div className="bkx-ob-d">
           <div className="bkx-ob-d-label">Short positions</div>
           <div className="bkx-ob-d-val">{ob.deriveShortCount}</div>
           <div className="bkx-ob-d-note">Derive (vault sells rich IV here)</div>
         </div>
         <div className="bkx-ob-d">
           <div className="bkx-ob-d-label">Long legs</div>
-          <div className="bkx-ob-d-val">{ob.deriveLongCount + ob.ryskUnmatchedLegs}</div>
+          <div className="bkx-ob-d-val">{longLegs}</div>
           <div className="bkx-ob-d-note">
             Rysk longs offsetting the Derive shorts
           </div>
@@ -849,6 +910,24 @@ function OptionBook({ data }: { data: BackingData | null }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ScenarioFig({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: number | undefined;
+  note: string;
+}) {
+  return (
+    <div className="bkx-ob-scenario">
+      <div className="bkx-ob-scenario-label">{label}</div>
+      <div className="bkx-ob-scenario-value">{fmtUsd(value, { decimals: 0 })}</div>
+      <div className="bkx-ob-scenario-note">{note}</div>
     </div>
   );
 }

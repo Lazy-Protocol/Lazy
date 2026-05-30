@@ -2476,7 +2476,6 @@ function buildBackingSnapshot(result) {
         { label: 'Derive (USDC)',         value: result.breakdown.derive },
         { label: 'LIT (hedged)',          value: result.breakdown.lit },
         { label: 'HYPE incl. HyperLend', value: result.breakdown.hype },
-        { label: 'Hyperliquid (equity)',  value: result.breakdown.hyperliquidEquity },
         { label: 'Lighter (collateral)',  value: result.breakdown.lighterCollateral },
         { label: 'Lighter operator',      value: result.breakdown.lighterOperator },
         { label: 'Rysk longs (mark)',     value: result.optionBook.ryskLongMark },
@@ -2529,6 +2528,9 @@ function buildBackingSnapshot(result) {
         equity: h.hyperliquid.equity,
         collateral: h.hyperliquid.collateral,
         unrealizedPnl: h.hyperliquid.unrealizedPnl,
+        unifiedCash: h.hyperliquid.unifiedCash,
+        cashNeutralPerpPnl: h.hyperliquid.cashNeutralPerpPnl,
+        nonCashNeutralPerpPnl: h.hyperliquid.nonCashNeutralPerpPnl,
         positionCount: (h.hyperliquid.positions || []).length,
       },
       derive: h.derive && {
