@@ -52,6 +52,9 @@ const RYSK_MARGIN_POOL_BALANCE_ATTEMPTS = parseInt(process.env.RYSK_MARGIN_POOL_
 const RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS = parseInt(process.env.RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS || '6000', 10) || 6000;
 const RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS || '10000', 10) || 10000;
 const RYSK_LIVE_POSITIONS_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_TIMEOUT_MS || '20000', 10) || 20000;
+const MANUAL_HYPE_ADJUSTMENT = 1000;
+const MANUAL_USDC_ADJUSTMENT = -55000;
+const MANUAL_ADJUSTMENT_LABEL = '+1000 HYPE / -55000 USDC manual entry';
 
 // Token addresses
 const TOKENS = {
@@ -570,7 +573,6 @@ const NAV_MOVEMENT_COMPONENTS = [
   { label: 'USDC total', keys: ['totalUsdcBalance', 'usdcBalance'] },
   { label: 'Lighter DN collateral', keys: ['lighterCollateral'] },
   { label: 'Lighter operator', keys: ['lighterOperatorEquity'] },
-  { label: 'Hyperliquid collateral', keys: ['hyperliquidCollateral', 'hyperliquidEquity'] },
   { label: 'Rysk stables', keys: ['ryskStableCollateral'] },
   { label: 'HyperLend non-HYPE', keys: ['hyperLendNonHypeValue'] },
   { label: 'Derive portfolio', keys: ['deriveUsdcBalance'] },
@@ -1966,9 +1968,9 @@ async function fetchHyperliquidSpot(address) {
         usdcTotal = parseFloat(bal.total || 0) || 0;
         usdcHeld = parseFloat(bal.hold || 0) || 0;
         usdcFree = Math.max(usdcTotal - usdcHeld, 0);
-        // Perp accountValue already includes the margin-held USDC. Count only
-        // free spot cash here to avoid adding the same margin twice.
-        usdcBalance = usdcFree;
+        // In unified margin, hold/free is a withdrawal-state split. NAV uses
+        // the full owned spot balance, adjusted later for DN perp PnL.
+        usdcBalance = usdcTotal;
       }
     }
 
@@ -2559,8 +2561,12 @@ function buildBackingSnapshot(result) {
     },
     optionBook: {
       currentMtm: result.optionBook.currentMtm,
+      intrinsicOnlyGap: result.optionBook.intrinsicOnlyGap,
+      optionExtrinsicNet: result.optionBook.optionExtrinsicNet,
       deriveShortMtmCost: result.optionBook.deriveShortMtmCost,
+      deriveShortIntrinsicCost: result.optionBook.deriveShortIntrinsicCost,
       ryskLongMark: result.optionBook.ryskLongMark,
+      ryskLongIntrinsic: result.optionBook.ryskLongIntrinsic,
       upperBoundIfAllOtm: result.optionBook.upperBoundIfAllOtm,
       deriveShortCount,
       deriveLongCount,
@@ -3011,8 +3017,11 @@ async function calculateYield() {
   if (hyperLendHypeSupply > 0 || hyperLendHypeDebt > 0) {
     console.log(`  HyperLend net:    ${hyperLendHypeNet.toFixed(2)} HYPE`);
   }
+  if (MANUAL_HYPE_ADJUSTMENT !== 0) {
+    console.log(`  Manual entry:     ${MANUAL_HYPE_ADJUSTMENT.toFixed(2)} HYPE`);
+  }
 
-  const totalHypeHoldings = spotHypeEvm + spotHypeL1 + ptHypeEquiv + ryskHypeLike + hyperLendHypeNet;
+  const totalHypeHoldings = spotHypeEvm + spotHypeL1 + ptHypeEquiv + ryskHypeLike + hyperLendHypeNet + MANUAL_HYPE_ADJUSTMENT;
   console.log(`  ─────────────────────────`);
   console.log(`  Total holdings:   ${totalHypeHoldings.toFixed(2)} HYPE`);
 
@@ -3370,10 +3379,19 @@ async function calculateYield() {
   // Add Lighter spot USDC
   const lighterUsdcBalance = lighterSpotData.usdcBalance || 0;
 
-  // Add Hyperliquid spot USDC
-  const hyperliquidUsdcBalance = hyperliquidSpotData.usdcBalance || 0;
+  // Hyperliquid unified margin: spot USDC is the cash ledger. For DN books
+  // whose HL perp PnL is already embedded in entry-price asset valuation,
+  // remove that PnL from cash so each leg is counted exactly once.
+  const hyperliquidSpotUsdcTotal = hyperliquidSpotData.usdcTotal || hyperliquidSpotData.usdcBalance || 0;
+  const hyperliquidSpotUsdcFree = hyperliquidSpotData.usdcFree || 0;
+  const hyperliquidCashNeutralPerpPnl =
+    (hlHypeShort.unrealizedPnl || 0)
+    + (hlLitShort.unrealizedPnl || 0);
+  const hyperliquidNonCashNeutralPerpPnl = hyperliquidTotalUnrealizedPnl - hyperliquidCashNeutralPerpPnl;
+  const hyperliquidUnifiedCash = hyperliquidSpotUsdcTotal - hyperliquidCashNeutralPerpPnl;
+  const hyperliquidUsdcBalance = hyperliquidUnifiedCash;
 
-  const totalUsdcBalance = usdcBalance + lighterUsdcBalance + LIGHTER_PENDING_WITHDRAWAL_USDC + hyperliquidUsdcBalance;
+  const totalUsdcBalance = usdcBalance + lighterUsdcBalance + LIGHTER_PENDING_WITHDRAWAL_USDC + hyperliquidUsdcBalance + MANUAL_USDC_ADJUSTMENT;
 
   // Rysk stable collateral (USDT0 + USDC + USDH at $1). HYPE-like collateral is counted in HYPE exposure above.
   const ryskStableCollateral = totalRyskStableCollateral - ryskOptionIntrinsicLiability;
@@ -3403,7 +3421,7 @@ async function calculateYield() {
     gamma: lighterGammaBook,
   });
 
-  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + hyperliquidCollateral + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
+  const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
 
   console.log('');
   console.log('='.repeat(60));
@@ -3421,16 +3439,23 @@ async function calculateYield() {
   if (LIGHTER_PENDING_WITHDRAWAL_USDC > 0) {
     console.log(`    (incl. Lighter pending withdrawal: $${LIGHTER_PENDING_WITHDRAWAL_USDC.toFixed(2)})`);
   }
+  if (MANUAL_USDC_ADJUSTMENT !== 0) {
+    console.log(`    (incl. manual adjustment: $${MANUAL_USDC_ADJUSTMENT.toFixed(2)}; ${MANUAL_ADJUSTMENT_LABEL})`);
+  }
   if (hyperliquidUsdcBalance > 0 || (hyperliquidSpotData.usdcTotal || 0) > 0) {
-    console.log(`    (incl. Hyperliquid spot free: $${hyperliquidUsdcBalance.toFixed(2)})`);
-    console.log(`      HL spot USDC total=$${(hyperliquidSpotData.usdcTotal || 0).toFixed(2)} held margin=$${(hyperliquidSpotData.usdcHeld || 0).toFixed(2)} available-after-maint=$${(hyperliquidSpotData.usdcAvailableAfterMaintenance || 0).toFixed(2)}`);
+    console.log(`    (incl. Hyperliquid unified cash: $${hyperliquidUsdcBalance.toFixed(2)})`);
+    console.log(`      HL spot USDC total=$${hyperliquidSpotUsdcTotal.toFixed(2)} free=$${hyperliquidSpotUsdcFree.toFixed(2)} held margin=$${(hyperliquidSpotData.usdcHeld || 0).toFixed(2)} available-after-maint=$${(hyperliquidSpotData.usdcAvailableAfterMaintenance || 0).toFixed(2)}`);
+    console.log(`      HL cash-neutral perp uPnL=$${hyperliquidCashNeutralPerpPnl.toFixed(2)} (HYPE $${(hlHypeShort.unrealizedPnl || 0).toFixed(2)} + LIT $${(hlLitShort.unrealizedPnl || 0).toFixed(2)})`);
+    if (Math.abs(hyperliquidNonCashNeutralPerpPnl) > 0.01) {
+      console.log(`      HL non-cash-neutral perp uPnL=$${hyperliquidNonCashNeutralPerpPnl.toFixed(2)} (counted in ETH/BTC exposure lines)`);
+    }
   }
   console.log(`  Lighter collat:   $${lighterData.collateral.toFixed(2)}`);
   if (lighterOperatorData.equity !== 0) {
     console.log(`  Lighter operator: $${lighterOperatorData.equity.toFixed(2)}`);
   }
   if (hyperliquidCollateral > 0) {
-    console.log(`  Hyperliquid col:  $${hyperliquidCollateral.toFixed(2)}`);
+    console.log(`  Hyperliquid col:  $${hyperliquidCollateral.toFixed(2)} (view only, not added)`);
   }
   if (ryskStableCollateral > 0) {
     console.log(`  Rysk (stables):   $${ryskStableCollateral.toFixed(2)}`);
@@ -3564,6 +3589,17 @@ async function calculateYield() {
     lighterOperatorEquity: lighterOperatorData.equity,
     hyperliquidEquity: hyperliquidData.equity,
     hyperliquidCollateral,
+    hyperliquidUnifiedCash,
+    hyperliquidSpotUsdcTotal,
+    hyperliquidSpotUsdcHeld: hyperliquidSpotData.usdcHeld || 0,
+    hyperliquidSpotUsdcFree,
+    hyperliquidSpotUsdcAvailableAfterMaintenance: hyperliquidSpotData.usdcAvailableAfterMaintenance || 0,
+    hyperliquidPerpUnrealizedPnl: hyperliquidTotalUnrealizedPnl,
+    hyperliquidCashNeutralPerpPnl,
+    hyperliquidNonCashNeutralPerpPnl,
+    manualHypeAdjustment: MANUAL_HYPE_ADJUSTMENT,
+    manualUsdcAdjustment: MANUAL_USDC_ADJUSTMENT,
+    manualAdjustmentLabel: MANUAL_ADJUSTMENT_LABEL,
     litValue,
     ryskStableCollateral,
     hyperLendNonHypeValue,
@@ -3611,7 +3647,13 @@ async function calculateYield() {
   // 11. Output for reporting
   console.log('');
   console.log('='.repeat(60));
-  console.log('TO REPORT THIS YIELD:');
+  console.log('REPORTING READINGS:');
+  console.log(`  MTM unreported yield:       $${unreportedYield.toFixed(2)}  (close-now / conservative)`);
+  console.log(`  Intrinsic-only yield:       $${currentSpotExpiryGap.toFixed(2)}  (spot unchanged, expiry settlement)`);
+  console.log(`  Net option extrinsic drag:  $${optionExtrinsicNet.toFixed(2)}`);
+  console.log(`  Current SAFE TO REPORT:     $${reportableYield.toFixed(2)}  (current policy: MTM)`);
+  console.log('');
+  console.log('TO REPORT CURRENT POLICY YIELD:');
   console.log(`  cast send ${VAULT_ADDRESS} "reportYieldAndCollectFees(int256)" ${Math.round(reportableYield * 1e6)} --rpc-url ${ETH_RPC} --private-key <KEY>`);
   console.log('='.repeat(60));
 
@@ -3627,8 +3669,12 @@ async function calculateYield() {
     accumulatedYield: vaultData.accumulatedYield,
     optionBook: {
       currentMtm: unreportedYield,
+      intrinsicOnlyGap: currentSpotExpiryGap,
+      optionExtrinsicNet,
       deriveShortMtmCost: -deriveOpenShortMarkCost,
+      deriveShortIntrinsicCost: -deriveIntrinsicAtSpot.shortLiability,
       ryskLongMark: ryskLongMarkValue,
+      ryskLongIntrinsic: ryskLongIntrinsicAtSpot,
       upperBoundIfAllOtm: otmExpiryGap,
       ryskUnmatchedLegs: ryskLongMarkData?.noDeriveMark || 0,
       ryskLegsAtIntrinsic: ryskLongMarkData?.valuedAtIntrinsic || 0,
@@ -3649,6 +3695,7 @@ async function calculateYield() {
       lighterCollateral: lighterData.collateral,
       lighterOperator: lighterOperatorData.equity,
       hyperliquidEquity: hyperliquidData.equity,
+      hyperliquidUnifiedCash,
       lit: litValue,
       ryskStables: ryskStableCollateral,
       hyperLend: hyperLendNonHypeValue,
@@ -3676,6 +3723,7 @@ async function calculateYield() {
         lit: litSpot,
       },
       hype: {
+        manualAdjustment: MANUAL_HYPE_ADJUSTMENT,
         spotHypeEvm,
         spotHypeL1,
         ptHypeEquivalent: ptHypeEquiv,
@@ -3737,9 +3785,13 @@ async function calculateYield() {
         equity: hyperliquidData.equity,
         collateral: hyperliquidCollateral,
         unrealizedPnl: hyperliquidTotalUnrealizedPnl,
+        unifiedCash: hyperliquidUnifiedCash,
+        cashNeutralPerpPnl: hyperliquidCashNeutralPerpPnl,
+        nonCashNeutralPerpPnl: hyperliquidNonCashNeutralPerpPnl,
         spotUsdc: {
-          countedFree: hyperliquidUsdcBalance,
-          total: hyperliquidSpotData.usdcTotal || 0,
+          counted: hyperliquidUsdcBalance,
+          total: hyperliquidSpotUsdcTotal,
+          free: hyperliquidSpotUsdcFree,
           heldMargin: hyperliquidSpotData.usdcHeld || 0,
           availableAfterMaintenance: hyperliquidSpotData.usdcAvailableAfterMaintenance || 0,
         },
@@ -3752,6 +3804,11 @@ async function calculateYield() {
             unrealizedPnl: parseFloat(position.unrealizedPnl || pos.unrealizedPnl || 0),
           };
         }),
+      },
+      manualAdjustments: {
+        label: MANUAL_ADJUSTMENT_LABEL,
+        hype: MANUAL_HYPE_ADJUSTMENT,
+        usdc: MANUAL_USDC_ADJUSTMENT,
       },
       pendle: {
         positions: pendleData.positions,
