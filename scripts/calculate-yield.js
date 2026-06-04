@@ -52,6 +52,7 @@ const RYSK_MARGIN_POOL_BALANCE_ATTEMPTS = parseInt(process.env.RYSK_MARGIN_POOL_
 const RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS = parseInt(process.env.RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS || '6000', 10) || 6000;
 const RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS || '10000', 10) || 10000;
 const RYSK_LIVE_POSITIONS_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_TIMEOUT_MS || '20000', 10) || 20000;
+const KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS = parseInt(process.env.KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS || '500', 10) || 500;
 const MANUAL_HYPE_ADJUSTMENT = 1000;
 const MANUAL_USDC_ADJUSTMENT = -55000;
 const MANUAL_ADJUSTMENT_LABEL = '+1000 HYPE / -55000 USDC manual entry';
@@ -76,6 +77,7 @@ const TOKENS = {
 
 // Stablecoin symbols (always valued at $1)
 const STABLECOINS = ['USDC', 'USDT', 'USDT0', 'USDH', 'DAI'];
+const KINETIQ_STAKING_MANAGER = '0x393D0B87Ed38fc779FD9611144aE649BA6082109';
 
 
 // ============================================
@@ -153,6 +155,38 @@ const vaultAbi = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
+  },
+];
+
+const kinetiqStakingManagerAbi = [
+  {
+    name: 'nextWithdrawalId',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'withdrawalRequests',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'requestId', type: 'uint256' },
+    ],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'hypeAmount', type: 'uint256' },
+          { name: 'kHYPEAmount', type: 'uint256' },
+          { name: 'fee', type: 'uint256' },
+          { name: 'bufferUsed', type: 'uint256' },
+          { name: 'timestamp', type: 'uint256' },
+        ],
+      },
+    ],
   },
 ];
 
@@ -1624,6 +1658,91 @@ async function fetchHypeLikeRates() {
   };
 }
 
+function normalizeWithdrawalRequest(row) {
+  const hypeRaw = row?.hypeAmount ?? row?.[0] ?? 0n;
+  const khypeRaw = row?.kHYPEAmount ?? row?.[1] ?? 0n;
+  const feeRaw = row?.fee ?? row?.[2] ?? 0n;
+  const bufferUsedRaw = row?.bufferUsed ?? row?.[3] ?? 0n;
+  const timestampRaw = row?.timestamp ?? row?.[4] ?? 0n;
+  return {
+    hypeAmount: formatUnits(BigInt(hypeRaw || 0n), 18),
+    khypeAmount: formatUnits(BigInt(khypeRaw || 0n), 18),
+    fee: formatUnits(BigInt(feeRaw || 0n), 18),
+    bufferUsed: formatUnits(BigInt(bufferUsedRaw || 0n), 18),
+    timestamp: Number(timestampRaw || 0n),
+  };
+}
+
+async function fetchKinetiqWithdrawalQueue(addresses, hypeRates = {}) {
+  const addressList = [...new Set((Array.isArray(addresses) ? addresses : [addresses]).filter(Boolean))];
+  const claims = [];
+  let truncated = false;
+
+  for (const address of addressList) {
+    try {
+      const nextId = await hyperEvmClient.readContract({
+        address: KINETIQ_STAKING_MANAGER,
+        abi: kinetiqStakingManagerAbi,
+        functionName: 'nextWithdrawalId',
+        args: [address],
+      });
+      const requestCount = Number(nextId || 0n);
+      if (!Number.isFinite(requestCount) || requestCount <= 0) continue;
+
+      const idsToRead = Math.min(requestCount, KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS);
+      if (idsToRead < requestCount) truncated = true;
+      const startId = requestCount - idsToRead;
+      const requests = await Promise.all(
+        Array.from({ length: idsToRead }, (_, idx) => {
+          const requestId = BigInt(startId + idx);
+          return hyperEvmClient.readContract({
+            address: KINETIQ_STAKING_MANAGER,
+            abi: kinetiqStakingManagerAbi,
+            functionName: 'withdrawalRequests',
+            args: [address, requestId],
+          })
+            .then((row) => ({ requestId: startId + idx, row }))
+            .catch(() => null);
+        })
+      );
+
+      for (const request of requests) {
+        if (!request) continue;
+        const normalized = normalizeWithdrawalRequest(request.row);
+        const hypeAmount = parseFloat(normalized.hypeAmount);
+        const khypeAmount = parseFloat(normalized.khypeAmount);
+        if (normalized.timestamp <= 0 || (hypeAmount <= 0 && khypeAmount <= 0)) continue;
+        const hypeEquivalent = hypeAmount > 0 ? hypeAmount : khypeAmount * (hypeRates.KHYPE || 1);
+        claims.push({
+          address,
+          requestId: request.requestId,
+          hypeAmount,
+          khypeAmount,
+          fee: parseFloat(normalized.fee),
+          bufferUsed: parseFloat(normalized.bufferUsed),
+          timestamp: normalized.timestamp,
+          requestedAt: new Date(normalized.timestamp * 1000).toISOString(),
+          hypeEquivalent,
+        });
+      }
+    } catch (e) {
+      console.warn(`Failed to fetch Kinetiq withdrawal queue for ${address}:`, e.message);
+    }
+  }
+
+  claims.sort((a, b) => a.timestamp - b.timestamp || a.requestId - b.requestId);
+  const totalHypeEquivalent = claims.reduce((sum, claim) => sum + claim.hypeEquivalent, 0);
+  const totalKhype = claims.reduce((sum, claim) => sum + claim.khypeAmount, 0);
+  const totalFee = claims.reduce((sum, claim) => sum + claim.fee, 0);
+  return {
+    claims,
+    totalHypeEquivalent,
+    totalKhype,
+    totalFee,
+    truncated,
+  };
+}
+
 async function fetchHyperLendPositions(address) {
   try {
     // Read hToken balances (supplied amounts with interest) and debt tokens in parallel
@@ -2489,6 +2608,7 @@ function buildBackingSnapshot(result) {
     exposures: {
       hype: h.hype && {
         totalHoldings: h.hype.totalHoldings,
+        kinetiqQueueHype: h.hype.kinetiqQueue?.totalHypeEquivalent || 0,
         totalShort: h.hype.totalShort,
         netExposure: h.hype.netExposure,
         currentPrice: h.hype.currentPrice,
@@ -2873,6 +2993,10 @@ async function calculateYield() {
     fetchHypeLikeRates(),
   ]);
   const kHypeToHypeRate = hypeRates.KHYPE || 1;
+  const kinetiqQueueData = await fetchKinetiqWithdrawalQueue(
+    [MULTISIG_ADDRESS, OPERATOR_ADDRESS, RYSK_MM_ADDRESS],
+    hypeRates
+  );
   const slowDataFetchMs = Date.now() - slowDataFetchStart;
   console.log(`Slow balance/state fetch: ${(slowDataFetchMs / 1000).toFixed(1)}s`);
   console.log("");
@@ -3019,11 +3143,21 @@ async function calculateYield() {
   if (hyperLendHypeSupply > 0 || hyperLendHypeDebt > 0) {
     console.log(`  HyperLend net:    ${hyperLendHypeNet.toFixed(2)} HYPE`);
   }
+  const kinetiqQueueHype = kinetiqQueueData.totalHypeEquivalent || 0;
+  if (kinetiqQueueHype > 0) {
+    console.log(`  Kinetiq queue:    ${kinetiqQueueHype.toFixed(2)} HYPE claim (${(kinetiqQueueData.totalKhype || 0).toFixed(4)} kHYPE unstaking)`);
+    for (const claim of kinetiqQueueData.claims) {
+      console.log(`    ${claim.requestedAt}: ${claim.hypeEquivalent.toFixed(4)} HYPE claim from ${claim.khypeAmount.toFixed(4)} kHYPE (fee ${claim.fee.toFixed(4)})`);
+    }
+    if (kinetiqQueueData.truncated) {
+      console.log(`    WARN: queue scan capped at ${KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS} requests per address`);
+    }
+  }
   if (MANUAL_HYPE_ADJUSTMENT !== 0) {
     console.log(`  Manual entry:     ${MANUAL_HYPE_ADJUSTMENT.toFixed(2)} HYPE`);
   }
 
-  const totalHypeHoldings = spotHypeEvm + spotHypeL1 + ptHypeEquiv + ryskHypeLike + hyperLendHypeNet + MANUAL_HYPE_ADJUSTMENT;
+  const totalHypeHoldings = spotHypeEvm + spotHypeL1 + ptHypeEquiv + ryskHypeLike + hyperLendHypeNet + kinetiqQueueHype + MANUAL_HYPE_ADJUSTMENT;
   console.log(`  ─────────────────────────`);
   console.log(`  Total holdings:   ${totalHypeHoldings.toFixed(2)} HYPE`);
 
@@ -3599,6 +3733,9 @@ async function calculateYield() {
     hyperliquidPerpUnrealizedPnl: hyperliquidTotalUnrealizedPnl,
     hyperliquidCashNeutralPerpPnl,
     hyperliquidNonCashNeutralPerpPnl,
+    kinetiqQueueHype,
+    kinetiqQueueKhype: kinetiqQueueData.totalKhype || 0,
+    kinetiqQueueClaims: kinetiqQueueData.claims.length,
     manualHypeAdjustment: MANUAL_HYPE_ADJUSTMENT,
     manualUsdcAdjustment: MANUAL_USDC_ADJUSTMENT,
     manualAdjustmentLabel: MANUAL_ADJUSTMENT_LABEL,
@@ -3729,6 +3866,13 @@ async function calculateYield() {
         spotHypeEvm,
         spotHypeL1,
         ptHypeEquivalent: ptHypeEquiv,
+        kinetiqQueue: {
+          totalHypeEquivalent: kinetiqQueueHype,
+          totalKhype: kinetiqQueueData.totalKhype || 0,
+          totalFee: kinetiqQueueData.totalFee || 0,
+          claims: kinetiqQueueData.claims,
+          truncated: kinetiqQueueData.truncated,
+        },
         totalHoldings: totalHypeHoldings,
         lighterShort: { size: lighterHypeShort.size, entryPrice: lighterHypeShort.entryPrice },
         hyperliquidShort: { size: hlHypeShort.size, entryPrice: hlHypeShort.entryPrice },
