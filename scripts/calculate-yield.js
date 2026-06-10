@@ -53,9 +53,9 @@ const RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS = parseInt(process.env.RYSK_MARGIN_POO
 const RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS || '10000', 10) || 10000;
 const RYSK_LIVE_POSITIONS_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_TIMEOUT_MS || '20000', 10) || 20000;
 const KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS = parseInt(process.env.KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS || '500', 10) || 500;
-const MANUAL_HYPE_ADJUSTMENT = 1000;
-const MANUAL_USDC_ADJUSTMENT = -55000;
-const MANUAL_ADJUSTMENT_LABEL = '+1000 HYPE / -55000 USDC manual entry';
+const MANUAL_HYPE_ADJUSTMENT = 0;
+const MANUAL_USDC_ADJUSTMENT = 0;
+const MANUAL_ADJUSTMENT_LABEL = '';
 
 // Token addresses
 const TOKENS = {
@@ -1097,6 +1097,25 @@ async function fetchRyskPositions(address) {
 
         const details = otokenDetails[shortAddr];
         const expiry = details ? new Date(details.expiryTimestamp * 1000) : null;
+        const underlyingAsset = details?.underlyingAsset || '';
+        const underlyingLower = String(underlyingAsset).toLowerCase();
+        let underlying = 'UNKNOWN';
+        if (underlyingLower) {
+          for (const [symbolName, token] of Object.entries(TOKENS.hyperevm)) {
+            if (token.address.toLowerCase() === underlyingLower) {
+              underlying = symbolName;
+              break;
+            }
+          }
+          if (underlying === 'UNKNOWN') {
+            for (const [symbolName, token] of Object.entries(TOKENS.ethereum)) {
+              if (token.address.toLowerCase() === underlyingLower) {
+                underlying = symbolName;
+                break;
+              }
+            }
+          }
+        }
 
         if (symbol === 'USDT0') totalCollateralUsdt0 += collateralAmount;
         else if (symbol === 'USDC') totalCollateralUsdc += collateralAmount;
@@ -1110,6 +1129,7 @@ async function fetchRyskPositions(address) {
           type: details?.isPut ? 'PUT' : 'CALL',
           strike: details?.strikePrice || 0,
           expiry: expiry ? expiry.toISOString().split('T')[0] : 'unknown',
+          underlying,
           contracts,
           collateral: collateralAmount,
           collateralSymbol: symbol,
@@ -1555,14 +1575,15 @@ function valueRyskLongs(groups, spotPrices, markTiming = {}) {
 }
 
 
-function calculateRyskIntrinsicLiability(positions, currentHypePrice) {
-  if (!currentHypePrice || currentHypePrice <= 0) return 0;
+function calculateRyskIntrinsicLiability(positions, spotPrices) {
   return positions.reduce((sum, pos) => {
+    const spot = spotPrices?.[pos.underlying] || 0;
+    if (!spot || spot <= 0) return sum;
     if (pos.type === 'PUT') {
-      return sum + Math.max(pos.strike - currentHypePrice, 0) * pos.contracts;
+      return sum + Math.max(pos.strike - spot, 0) * pos.contracts;
     }
     if (pos.type === 'CALL') {
-      return sum + Math.max(currentHypePrice - pos.strike, 0) * pos.contracts;
+      return sum + Math.max(spot - pos.strike, 0) * pos.contracts;
     }
     return sum;
   }, 0);
@@ -3398,6 +3419,14 @@ async function calculateYield() {
   });
   const { netExposure: netLitExposure, totalValue: litValue } = litExposure;
 
+  const ryskLongSpotPrices = {
+    HYPE: hypeCurrentPrice,
+    BTC: currentBtcPrice,
+    ETH: currentEthPrice,
+    SOL: currentSolPrice,
+    LIT: litCurrentPrice,
+  };
+
   // Rysk Finance (options)
   console.log('');
   console.log('RYSK (Options on HyperEVM):');
@@ -3423,7 +3452,7 @@ async function calculateYield() {
     ...ryskData.positions,
     ...ryskMmVaultData.positions,
   ];
-  const ryskOptionIntrinsicLiability = calculateRyskIntrinsicLiability(allRyskOptionPositions, hypeCurrentPrice);
+  const ryskOptionIntrinsicLiability = calculateRyskIntrinsicLiability(allRyskOptionPositions, ryskLongSpotPrices);
 
   if (totalRyskVaults > 0 || totalRyskStableCollateral > 0 || totalRyskWhype > 0 || totalRyskKhype > 0) {
     if (totalRyskUsdt0 > 0) {
@@ -3552,13 +3581,6 @@ async function calculateYield() {
   // Rysk longs (live legs). Derive mark when the leg has a listed twin,
   // intrinsic at spot otherwise. Without intrinsic fallback, gamma legs
   // (no Derive counterpart by design) silently zero out and inflate drawdown.
-  const ryskLongSpotPrices = {
-    HYPE: hypeCurrentPrice,
-    BTC: currentBtcPrice,
-    ETH: currentEthPrice,
-    SOL: currentSolPrice,
-    LIT: litCurrentPrice,
-  };
   const ryskLongMarkData = valueRyskLongs(ryskLiveLongs.positions, ryskLongSpotPrices, ryskLongMarkTiming);
   const ryskLongMarkValue = ryskLongMarkData?.totalValue || 0;
   const ryskLongIntrinsicAtSpot = (ryskLongMarkData?.positions || [])
