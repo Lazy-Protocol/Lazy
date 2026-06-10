@@ -1072,37 +1072,49 @@ async function fetchRyskPositions(address) {
       const vault = vaults[i];
       if (!vault) continue;
 
-      const shortAddr = vault.shortOtokens?.[0];
-      const collateralAddr = vault.collateralAssets?.[0];
-      const collateralRaw = vault.collateralAmounts?.[0] || 0n;
-      const shortAmount = vault.shortAmounts?.[0] || 0n;
+      const slotCount = Math.max(
+        vault.shortOtokens?.length || 0,
+        vault.longOtokens?.length || 0,
+        vault.collateralAssets?.length || 0,
+        vault.shortAmounts?.length || 0,
+        vault.longAmounts?.length || 0,
+        vault.collateralAmounts?.length || 0,
+      );
 
-      if (!shortAddr || shortAddr === '0x0000000000000000000000000000000000000000') continue;
-      if (collateralRaw === 0n && shortAmount === 0n) continue;
+      for (let slot = 0; slot < slotCount; slot++) {
+        const shortAddr = vault.shortOtokens?.[slot];
+        const collateralAddr = vault.collateralAssets?.[slot];
+        const collateralRaw = vault.collateralAmounts?.[slot] || 0n;
+        const shortAmount = vault.shortAmounts?.[slot] || 0n;
 
-      const decimals = collateralAddr ? collateralDecimals(collateralAddr) : 6;
-      const symbol = collateralAddr ? collateralSymbol(collateralAddr) : 'UNKNOWN';
-      const collateralAmount = parseFloat(formatUnits(collateralRaw, decimals));
-      const contracts = Number(shortAmount) / 1e8;
+        if (!shortAddr || shortAddr === '0x0000000000000000000000000000000000000000') continue;
+        if (collateralRaw === 0n && shortAmount === 0n) continue;
 
-      const details = otokenDetails[shortAddr];
-      const expiry = details ? new Date(details.expiryTimestamp * 1000) : null;
+        const decimals = collateralAddr ? collateralDecimals(collateralAddr) : 6;
+        const symbol = collateralAddr ? collateralSymbol(collateralAddr) : 'UNKNOWN';
+        const collateralAmount = parseFloat(formatUnits(collateralRaw, decimals));
+        const contracts = Number(shortAmount) / 1e8;
 
-      if (symbol === 'USDT0') totalCollateralUsdt0 += collateralAmount;
-      else if (symbol === 'USDC') totalCollateralUsdc += collateralAmount;
-      else if (symbol === 'USDH') totalCollateralUsdh += collateralAmount;
-      else if (symbol === 'WHYPE') totalCollateralWhype += collateralAmount;
-      else if (symbol === 'KHYPE') totalCollateralKhype += collateralAmount;
+        const details = otokenDetails[shortAddr];
+        const expiry = details ? new Date(details.expiryTimestamp * 1000) : null;
 
-      positions.push({
-        vaultId: i + 1,
-        type: details?.isPut ? 'PUT' : 'CALL',
-        strike: details?.strikePrice || 0,
-        expiry: expiry ? expiry.toISOString().split('T')[0] : 'unknown',
-        contracts,
-        collateral: collateralAmount,
-        collateralSymbol: symbol,
-      });
+        if (symbol === 'USDT0') totalCollateralUsdt0 += collateralAmount;
+        else if (symbol === 'USDC') totalCollateralUsdc += collateralAmount;
+        else if (symbol === 'USDH') totalCollateralUsdh += collateralAmount;
+        else if (symbol === 'WHYPE') totalCollateralWhype += collateralAmount;
+        else if (symbol === 'KHYPE') totalCollateralKhype += collateralAmount;
+
+        positions.push({
+          vaultId: i + 1,
+          vaultSlot: slot,
+          type: details?.isPut ? 'PUT' : 'CALL',
+          strike: details?.strikePrice || 0,
+          expiry: expiry ? expiry.toISOString().split('T')[0] : 'unknown',
+          contracts,
+          collateral: collateralAmount,
+          collateralSymbol: symbol,
+        });
+      }
     }
 
     return {
