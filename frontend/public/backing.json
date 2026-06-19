@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-06-19T06:58:42.163Z",
+  "publishedAt": "2026-06-19T10:08:54.653Z",
   "vault": {
     "address": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
     "sharePrice": 1.03206,
@@ -12,71 +12,71 @@
     "withdrawn": 212835.997987
   },
   "nav": {
-    "total": 1019395.3219198808,
+    "total": 1016679.9612163038,
     "breakdown": [
       {
         "label": "Derive (USDC)",
-        "value": 81025.72476526297
+        "value": 82140.85696186981
       },
       {
         "label": "LIT (hedged)",
-        "value": 200951.3210097824
+        "value": 200809.66823148378
       },
       {
         "label": "HYPE incl. HyperLend",
-        "value": 295396.0520624141
+        "value": 354842.8536234387
       },
       {
         "label": "Lighter (collateral)",
-        "value": 145292.758427
+        "value": 145321.51873399998
       },
       {
         "label": "Lighter operator",
-        "value": 125753.15137
+        "value": 126217.267414
       },
       {
         "label": "Rysk longs (mark)",
-        "value": 21227.87001347986
+        "value": 1942.7793001311823
       },
       {
         "label": "Rysk (stables)",
-        "value": 31651.363158
+        "value": 2002.24916
       },
       {
         "label": "USDC (idle)",
-        "value": -16539.478213209994
+        "value": -7601.601317060005
       },
       {
         "label": "HyperLend stable debt",
-        "value": 134564.974331
+        "value": 110932.79796400001
       },
       {
         "label": "ETH exposure",
-        "value": 71.58499615143806
+        "value": 71.57114444030175
       }
     ]
   },
   "exposures": {
     "hype": {
-      "totalHoldings": 4706.022300727036,
+      "totalHoldings": 5604.66254274223,
       "kinetiqQueueHype": 0,
       "totalShort": 3735.2,
-      "netExposure": 970.8223007270362,
-      "currentPrice": 67.49791628533947,
-      "totalValue": 295396.0520624141
+      "netExposure": 1869.4625427422297,
+      "currentPrice": 66.85091628533948,
+      "totalValue": 354842.8536234387
     },
     "lit": {
       "totalHoldings": 152901.2895981226,
       "totalShort": 150278.09,
       "netExposure": 2623.199598122592,
-      "currentPrice": 1.5912999245081998,
-      "totalValue": 200951.3210097824
+      "currentPrice": 1.5372999245081997,
+      "totalValue": 200809.66823148378
     },
     "eth": {
       "spot": 0.02347145654814962,
       "netExposure": 0.0013714565481496195,
-      "currentPrice": 1700.7,
-      "totalValue": 71.58499615143806
+      "currentPrice": 1690.6,
+      "totalValue": 71.57114444030175
     },
     "btc": {
       "netExposure": 0,
@@ -86,67 +86,70 @@
   },
   "venues": {
     "lighter": {
-      "collateral": 145292.758427,
-      "unrealizedPnl": -49940.050021,
+      "collateral": 145321.51873399998,
+      "unrealizedPnl": -43293.805997,
       "positionCount": 1
     },
     "lighterOperator": {
-      "equity": 125753.15137,
-      "unrealizedPnl": 17632.843537,
-      "positionCount": 7
+      "equity": 126217.267414,
+      "unrealizedPnl": 6234.291919,
+      "positionCount": 5
     },
     "hyperliquid": {
-      "equity": 102616.476953,
-      "collateral": 117181.481792,
-      "unrealizedPnl": -14565.004839,
-      "unifiedCash": 117210.52078279,
-      "cashNeutralPerpPnl": -14596.671928999998,
-      "nonCashNeutralPerpPnl": 31.667089999999007,
+      "equity": 59070.518408,
+      "collateral": 69799.451637,
+      "unrealizedPnl": -10728.933229,
+      "unifiedCash": 128148.39768194,
+      "cashNeutralPerpPnl": -10760.823529,
+      "nonCashNeutralPerpPnl": 31.890299999999115,
       "positionCount": 3
     },
     "derive": {
       "usdcBalance": 113641.72223400223,
-      "portfolioValue": 81025.72476526297,
+      "portfolioValue": 82140.85696186981,
       "shortCount": 5,
       "longCount": 0
     },
     "rysk": {
-      "usdcCollateral": 29250,
+      "usdcCollateral": 0,
       "usdt0Collateral": 0,
       "vaultCount": 41
     },
     "hyperLend": {
-      "totalCollateralUsd": 282464.40088287,
-      "totalDebtUsd": 0,
-      "netValueUsd": 282464.40088287,
+      "totalCollateralUsd": 277944.37191444,
+      "totalDebtUsd": 92857.27907691,
+      "netValueUsd": 185087.09283753,
       "supplies": {
-        "WHYPE": 2204.527051766486,
-        "KHYPE": 1.468273234e-9,
-        "USDT0": 134564.974331
+        "WHYPE": 0.000055855223993036,
+        "KHYPE": 1963.200258151249,
+        "USDC": 144250.546957
       },
-      "debts": {},
-      "stableSupplyUsd": 134564.974331,
-      "stableDebtUsd": 0,
-      "stableNetUsd": 134564.974331,
-      "hypeCollateralValueUsd": 148800.98238900158,
-      "rawNetValueUsd": 283365.9567200016
+      "debts": {
+        "WHYPE": 800.0004853511776,
+        "USDT0": 33317.748993
+      },
+      "stableSupplyUsd": 144250.546957,
+      "stableDebtUsd": 33317.748993,
+      "stableNetUsd": 110932.79796400001,
+      "hypeCollateralValueUsd": 80383.50187186648,
+      "rawNetValueUsd": 191316.2998358665
     },
     "pendle": {
       "positionCount": 0
     }
   },
   "optionBook": {
-    "currentMtm": -308.71794811915606,
-    "intrinsicOnlyGap": -1737.1939172160346,
-    "optionExtrinsicNet": 1428.4759690968785,
-    "deriveShortMtmCost": -32615.997468739253,
-    "deriveShortIntrinsicCost": -32187.73066532064,
-    "ryskLongMark": 21227.87001347986,
-    "ryskLongIntrinsic": 19371.12724096433,
-    "upperBoundIfAllOtm": 11079.409507140284,
+    "currentMtm": -3024.0786516962107,
+    "intrinsicOnlyGap": -2974.025647802744,
+    "optionExtrinsicNet": -50.053003893466666,
+    "deriveShortMtmCost": -31500.865272132418,
+    "deriveShortIntrinsicCost": -30938.412268238888,
+    "ryskLongMark": 1942.7793001311823,
+    "ryskLongIntrinsic": 1430.3793001311824,
+    "upperBoundIfAllOtm": 26534.007320304983,
     "deriveShortCount": 5,
     "deriveLongCount": 0,
-    "ryskUnmatchedLegs": 40,
+    "ryskUnmatchedLegs": 18,
     "expiries": [
       "2026-06-26"
     ]
