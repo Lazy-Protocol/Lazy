@@ -53,9 +53,9 @@ const RYSK_MARGIN_POOL_BALANCE_TIMEOUT_MS = parseInt(process.env.RYSK_MARGIN_POO
 const RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_RESPONSE_TIMEOUT_MS || '10000', 10) || 10000;
 const RYSK_LIVE_POSITIONS_TIMEOUT_MS = parseInt(process.env.RYSK_LIVE_POSITIONS_TIMEOUT_MS || '20000', 10) || 20000;
 const KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS = parseInt(process.env.KINETIQ_QUEUE_MAX_REQUESTS_PER_ADDRESS || '500', 10) || 500;
-const MANUAL_HYPE_ADJUSTMENT = 0;
-const MANUAL_USDC_ADJUSTMENT = 0;
-const MANUAL_ADJUSTMENT_LABEL = '';
+const MANUAL_HYPE_ADJUSTMENT = 2500;
+const MANUAL_USDC_ADJUSTMENT = -143750;
+const MANUAL_ADJUSTMENT_LABEL = '+2500 HYPE / -143750 USDC manual entry';
 
 // Token addresses
 const TOKENS = {
@@ -1454,6 +1454,11 @@ function deriveInstrumentName(underlying, expiryMs, strike, isPut) {
 }
 
 async function fetchDeriveMark(instrument) {
+  const ticker = await fetchDeriveTicker(instrument);
+  return ticker?.mark ?? null;
+}
+
+async function fetchDeriveTicker(instrument) {
   try {
     const resp = await fetch(DERIVE_TICKER_URL, {
       method: 'POST',
@@ -1464,10 +1469,24 @@ async function fetchDeriveMark(instrument) {
     const body = await resp.json();
     const t = body?.result;
     if (!t) return null;
+    let mark = null;
     for (const k of ['mark_price', 'best_ask_price', 'best_bid_price']) {
       const v = parseFloat(t[k] || '0');
-      if (v > 0) return v;
+      if (v > 0) {
+        mark = v;
+        break;
+      }
     }
+    const delta = parseFloat(
+      t?.option_pricing?.delta
+      ?? t?.greeks?.delta
+      ?? t?.delta
+      ?? 0
+    );
+    return {
+      mark,
+      delta: Number.isFinite(delta) ? delta : 0,
+    };
   } catch {}
   return null;
 }
@@ -1517,7 +1536,9 @@ async function markRyskLongs(groups, deriveMarks = new Map()) {
   }
 
   await mapWithConcurrency(missingGroups, RYSK_MARK_CONCURRENCY, async (g) => {
-    g.mark = await fetchDeriveMark(g.instrument);
+    const ticker = await fetchDeriveTicker(g.instrument);
+    g.mark = ticker?.mark ?? null;
+    g.deltaPerContract = ticker?.delta ?? null;
     if (g.mark != null) {
       g.markRef = "derive-ticker";
       tickerMarks += 1;
@@ -2451,6 +2472,53 @@ function calculateDeriveIntrinsicAtSpot(positions, spotPrices) {
   };
 }
 
+function derivePositionDelta(pos) {
+  const amount = Number(pos.amount || 0);
+  const delta = Number(pos.delta || 0);
+  if (!amount || !Number.isFinite(delta)) return 0;
+  // Derive has returned both per-contract and position-level delta in related
+  // payloads. Values inside [-1, 1] are treated as per-contract greeks.
+  if (Math.abs(delta) <= 1.000001 && Math.abs(amount) > 1.000001) {
+    return amount * delta;
+  }
+  return delta;
+}
+
+function intrinsicOptionDelta(strike, isPut, size, spot) {
+  if (!spot || spot <= 0) return 0;
+  if (isPut) return spot < strike ? -size : 0;
+  return spot > strike ? size : 0;
+}
+
+function ryskLongPositionDelta(pos, spotPrices) {
+  const size = Number(pos.size || 0);
+  if (!size) return 0;
+  const perContract = Number(pos.deltaPerContract);
+  if (Number.isFinite(perContract) && perContract !== 0) {
+    return perContract * size;
+  }
+  const spot = spotPrices?.[pos.underlying];
+  return intrinsicOptionDelta(Number(pos.strike || 0), pos.optionType === 'PUT', size, spot);
+}
+
+function calculateHypeOptionDelta(derivePositions, ryskLongMarkData, spotPrices) {
+  const deriveRows = (derivePositions || [])
+    .filter(pos => parseDeriveOptionInstrument(pos.instrument)?.underlying === 'HYPE');
+  const deriveDelta = deriveRows.reduce((sum, pos) => sum + derivePositionDelta(pos), 0);
+  const ryskRows = (ryskLongMarkData?.positions || [])
+    .filter(pos => pos.underlying === 'HYPE');
+  const ryskDelta = ryskRows.reduce((sum, pos) => sum + ryskLongPositionDelta(pos, spotPrices), 0);
+  const ryskTickerDeltaRows = ryskRows.filter(pos => Number.isFinite(Number(pos.deltaPerContract)) && Number(pos.deltaPerContract) !== 0).length;
+  const ryskIntrinsicDeltaRows = ryskRows.length - ryskTickerDeltaRows;
+  return {
+    deriveDelta,
+    ryskDelta,
+    netOptionDelta: deriveDelta + ryskDelta,
+    ryskTickerDeltaRows,
+    ryskIntrinsicDeltaRows,
+  };
+}
+
 function formatExpiryFromMs(expiryMs) {
   const date = new Date(expiryMs);
   if (!Number.isFinite(date.getTime())) return 'unknown';
@@ -3269,6 +3337,11 @@ async function calculateYield() {
   printLighterBook('other operator', lighterOtherBook);
   const lighterSplitEquity = lighterNettedBook.equity + lighterGammaBook.equity + lighterOtherBook.equity;
   const lighterSplitDrift = lighterOperatorData.equity - lighterSplitEquity;
+  const lighterOperatorHypeDirectional = lighterOperatorData.positions.reduce((sum, pos) => {
+    if (pos.market !== 'HYPE') return sum;
+    const size = Number(pos.size || 0);
+    return sum + (String(pos.side || '').toLowerCase() === 'long' ? size : -size);
+  }, 0);
   if (Math.abs(lighterSplitDrift) > 1) {
     console.log(`  WARN split drift: total operator equity differs from split by $${lighterSplitDrift.toFixed(2)}`);
   }
@@ -3532,7 +3605,8 @@ async function calculateYield() {
       console.log(`  Open positions:`);
       for (const pos of deriveData.positions) {
         const side = pos.amount < 0 ? 'SHORT' : 'LONG';
-        console.log(`    ${pos.instrument} ${side} ${Math.abs(pos.amount)} @ $${pos.averagePrice.toFixed(2)} (mark: $${pos.markPrice.toFixed(2)}, P&L: $${pos.unrealizedPnl.toFixed(2)})`);
+        const positionDelta = derivePositionDelta(pos);
+        console.log(`    ${pos.instrument} ${side} ${Math.abs(pos.amount)} @ $${pos.averagePrice.toFixed(2)} (mark: $${pos.markPrice.toFixed(2)}, P&L: $${pos.unrealizedPnl.toFixed(2)}, delta: ${positionDelta >= 0 ? '+' : ''}${positionDelta.toFixed(2)})`);
       }
     }
     if (deriveData.openOrders.length > 0) {
@@ -3590,6 +3664,22 @@ async function calculateYield() {
     netted: lighterNettedBook,
     gamma: lighterGammaBook,
   });
+  const hypeOptionDelta = calculateHypeOptionDelta(deriveData.positions, ryskLongMarkData, ryskLongSpotPrices);
+  const portfolioHypeDirectional = netExposure + lighterOperatorHypeDirectional;
+  const portfolioHypeWithOptionDelta = portfolioHypeDirectional + hypeOptionDelta.netOptionDelta;
+  console.log('');
+  console.log('HYPE DELTA EXPOSURE:');
+  console.log(`  Core HYPE book:          ${netExposure.toFixed(2)} HYPE`);
+  console.log(`  Lighter operator HYPE:   ${lighterOperatorHypeDirectional >= 0 ? '+' : ''}${lighterOperatorHypeDirectional.toFixed(2)} HYPE`);
+  console.log(`  Portfolio directional:   ${portfolioHypeDirectional.toFixed(2)} HYPE ($${(portfolioHypeDirectional * hypeCurrentPrice).toFixed(2)})`);
+  console.log(`  Derive option delta:     ${hypeOptionDelta.deriveDelta >= 0 ? '+' : ''}${hypeOptionDelta.deriveDelta.toFixed(2)} HYPE`);
+  console.log(`  Rysk long option delta:  ${hypeOptionDelta.ryskDelta >= 0 ? '+' : ''}${hypeOptionDelta.ryskDelta.toFixed(2)} HYPE`);
+  console.log(`  Net option delta:        ${hypeOptionDelta.netOptionDelta >= 0 ? '+' : ''}${hypeOptionDelta.netOptionDelta.toFixed(2)} HYPE`);
+  console.log(`  All-in spot delta:       ${portfolioHypeWithOptionDelta.toFixed(2)} HYPE ($${(portfolioHypeWithOptionDelta * hypeCurrentPrice).toFixed(2)})`);
+  console.log(`  Portfolio HYPE directional exposure incl options: ${portfolioHypeWithOptionDelta.toFixed(2)} HYPE ($${(portfolioHypeWithOptionDelta * hypeCurrentPrice).toFixed(2)})`);
+  if (hypeOptionDelta.ryskIntrinsicDeltaRows > 0) {
+    console.log(`    (Rysk delta: ${hypeOptionDelta.ryskTickerDeltaRows} ticker-greek legs, ${hypeOptionDelta.ryskIntrinsicDeltaRows} intrinsic-fallback legs)`);
+  }
 
   const totalNav = totalHypeValue + ethValue + btcValue + totalUsdcBalance + lighterData.collateral + lighterOperatorData.equity + litValue + ryskStableCollateral + hyperLendNonHypeValue + deriveUsdcBalance + ryskLongMarkValue;
 
