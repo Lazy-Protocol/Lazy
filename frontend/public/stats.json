@@ -18,9 +18,9 @@
   "aprSource": "calculated",
   "aprPeriod": "7d",
   "apr7d": 0,
-  "apr30d": 3.47,
+  "apr30d": 3.45,
   "apr30dSource": "calculated",
-  "updatedAt": "2026-09-04T10:46:29.225Z",
+  "updatedAt": "2026-09-04T14:47:54.798Z",
   "vaultAddress": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
   "chainId": 1,
   "lastYieldReportTime": "1786696391"
