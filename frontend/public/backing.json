@@ -1,42 +1,38 @@
 {
-  "publishedAt": "2026-09-18T08:33:23.747Z",
+  "publishedAt": "2026-10-02T12:59:57.039Z",
   "vault": {
     "address": "0xd53B68fB4eb907c3c1E348CD7d7bEDE34f763805",
-    "sharePrice": 1.049466,
-    "totalShares": 898456.2600520881,
-    "totalAssets": 942899.801672,
-    "accumulatedYield": 48608.324065
+    "sharePrice": 1.05282,
+    "totalShares": 859195.3650652134,
+    "totalAssets": 904578.834779,
+    "accumulatedYield": 52208.324065
   },
   "cumulativeFlows": {
     "deposited": 1417831.71379,
-    "withdrawn": 523540.236183
+    "withdrawn": 565461.203076
   },
   "nav": {
-    "total": 946477.7566659868,
+    "total": 905264.1024391513,
     "breakdown": [
       {
         "label": "Derive (USDC)",
-        "value": 52654.07120170276
+        "value": 50035.74578128716
       },
       {
         "label": "LIT (hedged)",
-        "value": 382670.1224902751
+        "value": 383250.02914471494
       },
       {
         "label": "HYPE incl. HyperLend",
-        "value": 149882.35664647428
+        "value": 99068.65451003693
       },
       {
         "label": "Lighter (collateral)",
-        "value": 224716.311381
+        "value": 209795.139592
       },
       {
         "label": "Lighter operator",
-        "value": 31914.517065000004
-      },
-      {
-        "label": "Rysk longs (mark)",
-        "value": 17948.93514785
+        "value": 28620.654885
       },
       {
         "label": "Rysk (stables)",
@@ -44,70 +40,66 @@
       },
       {
         "label": "USDC (idle)",
-        "value": 41415.20456892
+        "value": 101552.83784636
       },
       {
         "label": "ETH exposure",
-        "value": 13937.282352124703
-      },
-      {
-        "label": "BTC perp PnL",
-        "value": 27270.74651364
+        "value": 28872.828781987268
       }
     ]
   },
   "exposures": {
     "hype": {
-      "totalHoldings": 1777.824036812417,
-      "kinetiqQueueHype": 0,
-      "totalShort": 588.27,
-      "netExposure": 1189.554036812417,
-      "currentPrice": 87.9995,
-      "totalValue": 149882.35664647428
+      "totalHoldings": 1103.862598462165,
+      "kinetiqQueueHype": 852.1704477691601,
+      "totalShort": 89.27,
+      "netExposure": 1014.5925984621649,
+      "currentPrice": 90.883,
+      "totalValue": 99068.65451003693
     },
     "lit": {
-      "totalHoldings": 90968.23603373748,
+      "totalHoldings": 91177.81140971075,
       "totalShort": 90795.03,
-      "netExposure": 173.206033737486,
-      "currentPrice": 5.0189,
-      "totalValue": 382670.1224902751
+      "netExposure": 382.78140971074754,
+      "currentPrice": 3.786,
+      "totalValue": 383250.02914471494
     },
     "eth": {
-      "spot": 5.5819461930531284,
-      "netExposure": 5.5819461930531284,
-      "currentPrice": 2496.85,
-      "totalValue": 13937.282352124703
+      "spot": 10.599730130483016,
+      "netExposure": 0.04263013048301545,
+      "currentPrice": 2747.25,
+      "totalValue": 28872.828781987268
     },
     "btc": {
-      "netExposure": 0.35004456,
-      "currentPrice": 77906.5,
-      "totalValue": 27270.74651364
+      "netExposure": 3e-8,
+      "currentPrice": 86625.5,
+      "totalValue": 0.002598765
     }
   },
   "venues": {
     "lighter": {
-      "collateral": 224716.311381,
-      "unrealizedPnl": -74053.751257,
-      "positionCount": 1
+      "collateral": 209795.139592,
+      "unrealizedPnl": 37724.621391,
+      "positionCount": 2
     },
     "lighterOperator": {
-      "equity": 31914.517065000004,
-      "unrealizedPnl": -21213.976132,
+      "equity": 28620.654885,
+      "unrealizedPnl": -9209.505987,
       "positionCount": 2
     },
     "hyperliquid": {
-      "equity": 7750.605543,
-      "collateral": 14305.546082,
-      "unrealizedPnl": -6554.940539,
-      "unifiedCash": 38104.56221692,
-      "cashNeutralPerpPnl": -6554.940539,
+      "equity": 1878.925558,
+      "collateral": 3134.663579,
+      "unrealizedPnl": -1255.738021,
+      "unifiedCash": 9336.20911036,
+      "cashNeutralPerpPnl": -1255.738021,
       "nonCashNeutralPerpPnl": 0,
       "positionCount": 1
     },
     "derive": {
-      "usdcBalance": 72748.82853121377,
-      "portfolioValue": 52654.07120170276,
-      "shortCount": 16,
+      "usdcBalance": 50033.289852041555,
+      "portfolioValue": 50035.74578128716,
+      "shortCount": 0,
       "longCount": 0
     },
     "rysk": {
@@ -116,40 +108,37 @@
       "vaultCount": 42
     },
     "hyperLend": {
-      "totalCollateralUsd": 118470.19551038,
+      "totalCollateralUsd": 22583.49528981,
       "totalDebtUsd": 0,
-      "netValueUsd": 118470.19551038,
+      "netValueUsd": 22583.49528981,
       "supplies": {
-        "WHYPE": 844.5734298412261,
-        "KHYPE": 488.8656584096089,
+        "WHYPE": 249.1662991150268,
         "BTC": 3e-8,
-        "ETH": 0.000015746847534138
+        "ETH": 0.00001575629139435
       },
       "debts": {},
       "stableSupplyUsd": 0,
       "stableDebtUsd": 0,
       "stableNetUsd": 0,
-      "hypeCollateralValueUsd": 118415.39951186054,
-      "rawNetValueUsd": 118415.39951186054
+      "hypeCollateralValueUsd": 22644.98076247098,
+      "rawNetValueUsd": 22644.98076247098
     },
     "pendle": {
       "positionCount": 0
     }
   },
   "optionBook": {
-    "currentMtm": 3577.954993986874,
-    "intrinsicOnlyGap": 3617.832394921221,
-    "optionExtrinsicNet": -39.87740093434695,
-    "deriveShortMtmCost": -20094.757329511012,
-    "deriveShortIntrinsicCost": -19732.49478072666,
-    "ryskLongMark": 17948.93514785,
-    "ryskLongIntrinsic": 17626.549999999996,
-    "upperBoundIfAllOtm": 5723.777175647905,
-    "deriveShortCount": 16,
+    "currentMtm": 685.2676601512358,
+    "intrinsicOnlyGap": 682.8117309056688,
+    "optionExtrinsicNet": 2.4559292455669492,
+    "deriveShortMtmCost": 2.455929245603329,
+    "deriveShortIntrinsicCost": 0,
+    "ryskLongMark": 0,
+    "ryskLongIntrinsic": 0,
+    "upperBoundIfAllOtm": 682.8117309056688,
+    "deriveShortCount": 0,
     "deriveLongCount": 0,
-    "ryskUnmatchedLegs": 3,
-    "expiries": [
-      "2026-09-25"
-    ]
+    "ryskUnmatchedLegs": 0,
+    "expiries": []
   }
 }
