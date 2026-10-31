@@ -2,8 +2,8 @@ name: Update Protocol Stats
 
 on:
   schedule:
-    # Run every hour
-    - cron: '0 * * * *'
+    # Run hourly away from GitHub's busy top-of-hour window
+    - cron: '17 * * * *'
   workflow_dispatch: # Allow manual trigger
 
 permissions:
