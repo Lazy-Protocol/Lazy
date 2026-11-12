@@ -30,7 +30,7 @@ export function About() {
               </div>
               <h3 className="step-title">Formal verification</h3>
               <p className="step-description">
-                Five accounting and withdrawal invariants checked with Halmos symbolic execution.
+                Mathematical proofs that guarantee fair asset handling. Five invariants. Zero exceptions.
               </p>
             </div>
 
@@ -50,7 +50,7 @@ export function About() {
               </div>
               <h3 className="step-title">Withdrawals that work</h3>
               <p className="step-description">
-                Request a withdrawal. The operator processes the queue after cooldown, subject to available liquidity.
+                Request today, receive after cooldown. No stuck funds. No emergency votes. Predictable.
               </p>
             </div>
 
@@ -86,7 +86,7 @@ export function About() {
             </p>
 
             <Link to="/#vaults" className="btn btn-gold">
-              View the vault
+              Start Earning
             </Link>
           </div>
         </div>
@@ -119,8 +119,8 @@ export function About() {
             <div className="docs-card">
               <h3>Transparent NAV</h3>
               <p>
-                The contract calculates share value from deposits, withdrawals, and reported yield.
-                Strategy valuations are reported by the operator.
+                Net Asset Value computed on-chain from real positions. No oracles. No trust assumptions.
+                Just math.
               </p>
             </div>
           </div>

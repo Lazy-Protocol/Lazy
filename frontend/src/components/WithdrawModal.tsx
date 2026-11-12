@@ -1,8 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Info, Clock } from 'lucide-react';
-import { useAccount, usePublicClient } from 'wagmi';
-import { mainnet } from 'wagmi/chains';
-import { useChainModal, useConnectModal } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
 import {
   useUserData,
   useVaultStats,
@@ -25,21 +23,20 @@ interface WithdrawModalProps {
 export function WithdrawModal({ onClose }: WithdrawModalProps) {
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const submitting = useRef(false);
-  const mounted = useRef(false);
-  const { address, isConnected, chainId } = useAccount();
-  const client = usePublicClient({ chainId: mainnet.id });
-  const { openConnectModal } = useConnectModal();
-  const { openChainModal } = useChainModal();
-  const { shareBalance, usdcValue, isLoading, refetch } = useUserData(address);
+  const { address } = useAccount();
+  const { shareBalance, usdcValue, refetch } = useUserData(address);
   const { sharePrice, cooldownPeriod } = useVaultStats();
 
-  const { requestWithdrawal } = useRequestWithdrawal();
+  const {
+    requestWithdrawal,
+    hash,
+    isSuccess,
+    error,
+  } = useRequestWithdrawal();
 
   const parsedAmount = parseShares(amount);
   const hasInsufficientBalance = shareBalance !== undefined && parsedAmount > shareBalance;
-  const isMainnet = chainId === mainnet.id;
-  const isValidAmount = isConnected && isMainnet && shareBalance !== undefined && parsedAmount > 0n && !hasInsufficientBalance;
+  const isValidAmount = parsedAmount > 0n && !hasInsufficientBalance;
 
   // Get estimated USDC value for input amount
   const estimatedUsdc = useReadContract({
@@ -57,69 +54,60 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
     ? Number(formatUnits(sharePrice, 6)).toFixed(4)
     : '1.0000';
 
-  const cooldownDays = cooldownPeriod !== undefined ? Number(cooldownPeriod) / 86400 : undefined;
+  const cooldownDays = cooldownPeriod ? Number(cooldownPeriod) / 86400 : 7;
 
+  // Handle success
   useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
-
-  const handleSubmit = async () => {
-    if (!isValidAmount || !address || !client || submitting.current) return;
-    submitting.current = true;
-    setIsProcessing(true);
-    let awaitingReceipt = false;
-    try {
-      const hash = await requestWithdrawal(parsedAmount, address);
-      awaitingReceipt = true;
-      const receipt = await client.waitForTransactionReceipt({ hash });
-      awaitingReceipt = false;
-      if (receipt.status !== 'success') {
-        toast.error('Withdrawal request reverted. Review and retry.');
-        return;
-      }
+    if (isSuccess && isProcessing) {
       toast.success(
         <span>
           Withdrawal queued.{' '}
-          <a href={ETHERSCAN_TX_URL(receipt.transactionHash)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
+          <a href={ETHERSCAN_TX_URL(hash!)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--yield-gold)', textDecoration: 'underline' }}>
             View tx
           </a>
         </span>
       );
       refetch();
-      if (mounted.current) onClose();
-    } catch {
-      toast.error(awaitingReceipt
-        ? 'Could not confirm the request. Check your wallet or explorer before retrying.'
-        : 'Request did not complete. Review and retry.');
-    } finally {
-      submitting.current = false;
-      if (mounted.current) setIsProcessing(false);
+      setIsProcessing(false);
+      onClose();
     }
+  }, [isSuccess]);
+
+  // Handle errors
+  useEffect(() => {
+    if (error) {
+      toast.error('Request did not complete. Review and retry.');
+      setIsProcessing(false);
+    }
+  }, [error]);
+
+  const handleSubmit = () => {
+    if (!isValidAmount) return;
+    setIsProcessing(true);
+    requestWithdrawal(parsedAmount);
   };
 
   const handleMaxClick = () => {
     if (shareBalance) {
-      setAmount(formatUnits(shareBalance, 18));
+      setAmount((Number(shareBalance) / 1e18).toString());
     }
   };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="withdraw-title">
+      <div className="modal">
         <div className="modal-header">
-          <h3 className="modal-title" id="withdraw-title">Withdraw</h3>
-          <button className="modal-close" onClick={onClose} aria-label="Close withdrawal">
+          <h3 className="modal-title">Withdraw</h3>
+          <button className="modal-close" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
 
         <div className="input-group">
-          <label className="input-label" htmlFor="withdraw-amount">lazyUSD Amount</label>
+          <label className="input-label">lazyUSD Amount</label>
           <div className="input-wrapper">
             <input
               type="text"
-              id="withdraw-amount"
               className="input"
               placeholder="0.00"
               value={amount}
@@ -151,7 +139,7 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
             <span className="conversion-label">Cooldown period</span>
             <span className="conversion-value" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Clock size={14} />
-              {cooldownDays !== undefined ? `${cooldownDays} days` : 'Loading...'}
+              {cooldownDays} days
             </span>
           </div>
         </div>
@@ -159,30 +147,21 @@ export function WithdrawModal({ onClose }: WithdrawModalProps) {
         <div className="modal-info" style={{ background: 'rgba(196, 160, 82, 0.08)' }}>
           <Info size={20} style={{ color: 'var(--yield-gold)' }} />
           <div>
-            <p style={{ fontWeight: 500, color: 'var(--yield-gold)', marginBottom: '4px' }}>Queued withdrawal</p>
+            <p style={{ fontWeight: 500, color: 'var(--yield-gold)', marginBottom: '4px' }}>Two-step withdrawal</p>
             <p>
-              Request a withdrawal to escrow your shares. After the cooldown, the operator
-              processes requests in order and sends USDC directly to your wallet.
-              You do not need to submit a separate claim.
+              1. Request withdrawal (shares are escrowed)<br />
+              2. Claim USDC after {cooldownDays}-day cooldown
             </p>
           </div>
         </div>
 
-        {!isConnected ? (
-          <button className="btn btn-primary w-full" onClick={openConnectModal}>Connect Wallet</button>
-        ) : !isMainnet ? (
-          <button className="btn btn-primary w-full" onClick={openChainModal}>Switch to Ethereum</button>
-        ) : <button
+        <button
           className="btn btn-primary w-full"
           onClick={handleSubmit}
-          disabled={!isValidAmount || isProcessing || !client}
+          disabled={!isValidAmount || isProcessing}
         >
-          {isProcessing ? 'Confirming...' : shareBalance === undefined ? (isLoading ? 'Loading balance...' : 'Balance unavailable') : 'Request Withdrawal'}
-        </button>}
-
-        {isConnected && isMainnet && shareBalance === undefined && !isLoading && (
-          <button className="btn btn-secondary w-full mt-3" onClick={refetch}>Refresh balance</button>
-        )}
+          {isProcessing ? 'Confirming...' : 'Request Withdrawal'}
+        </button>
 
         {hasInsufficientBalance && (
           <p className="text-red-500 text-sm text-center mt-3">

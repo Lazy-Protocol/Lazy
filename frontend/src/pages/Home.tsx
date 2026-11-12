@@ -15,7 +15,6 @@ import { Shield, Clock, Eye, Activity, ArrowRight } from 'lucide-react';
 const VAULT_LAUNCH = new Date('2026-01-07T00:00:00Z');
 
 export function Home() {
-  const [daysLive] = useState(() => Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24))));
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
@@ -45,6 +44,9 @@ export function Home() {
     : protocolStats?.aprPeriod === '7d'
       ? '7d Realised APR'
       : 'Realised APR';
+
+  // Calculate days since vault launch
+  const daysLive = Math.max(0, Math.floor((Date.now() - VAULT_LAUNCH.getTime()) / (1000 * 60 * 60 * 24)));
 
   // Legacy string display for vault cards
   const tvlDisplay = tvlValue > 0
@@ -77,13 +79,13 @@ export function Home() {
         <div className="container">
           <h1 className="hero-title">Be <em>lazy.</em></h1>
           <p className="hero-subtitle">
-            Patient capital, rewarded.
+            Patient capital, rewarded. The vault manages positions so you don't have to.
           </p>
           <div className="hero-cta-group">
             <button className="btn btn-primary" onClick={() => setShowDeposit(true)}>
               Deposit
             </button>
-            <Link to="/backing" className="btn btn-secondary">View backing</Link>
+            <Link to="/docs" className="btn btn-secondary">Read the docs</Link>
           </div>
         </div>
       </section>
@@ -162,7 +164,6 @@ export function Home() {
               <div>
                 <h3 className="vault-title">lazyUSD</h3>
                 <p className="vault-subtitle">Lazy USDC Vault</p>
-                <span className="vault-access-label">By invitation</span>
               </div>
             </div>
 
@@ -185,7 +186,7 @@ export function Home() {
 
             <div className="vault-notice">
               <Clock size={14} />
-              <span>Up to 7-day withdrawal cooldown</span>
+              <span>Designed for patient capital · Up to 7-day withdrawal cooldown</span>
             </div>
 
             <div className="vault-user-section">
@@ -290,18 +291,18 @@ export function Home() {
           <div className="security-text">
             <h3>Built by paranoid engineers.</h3>
             <p>
-              We use Halmos symbolic execution to check five properties of the
-              vault's accounting and withdrawal logic.
+              Lazy vaults are secured by formal mathematical proofs. Five invariants
+              guarantee your assets are handled fairly, always.
             </p>
           </div>
           <div className="security-badges">
             <div className="security-badge">
               <Shield size={20} />
-              5 invariants checked
+              5 invariants verified
             </div>
             <div className="security-badge">
               <Eye size={20} />
-              Halmos checks
+              Halmos proven
             </div>
             <div className="security-badge">
               <Activity size={20} />
@@ -316,7 +317,10 @@ export function Home() {
       <section className="section" style={{ textAlign: 'center' }}>
         <div className="container-narrow">
           <h2 className="section-title">Patience <em>pays.</em></h2>
-          <div className="hero-cta-group" style={{ justifyContent: 'center', marginTop: 'var(--space-xl)' }}>
+          <p className="section-subtitle" style={{ marginBottom: 'var(--space-xl)' }}>
+            Your capital is ready. Patience is the only requirement.
+          </p>
+          <div className="hero-cta-group" style={{ justifyContent: 'center' }}>
             <button className="btn btn-gold" onClick={() => setShowDeposit(true)}>Deposit</button>
             <Link to="/docs" className="btn btn-secondary">Read the docs</Link>
           </div>

@@ -1,24 +1,5 @@
 # React + TypeScript + Vite
 
-## Deposit access
-
-The website allows deposits only from wallets in either of these files:
-
-- `src/config/grandfathered-depositors.json`: the fixed list of existing and past depositors, captured from mainnet Deposit events and reconciled against the vault's cumulative deposits at the recorded block.
-- `src/config/invited-depositors.json`: a JSON array of additional Ethereum wallet addresses. Add a new invitation here, then run `npm test`, `npm run lint`, and `npm run build` before deploying the frontend through the normal release process.
-
-Fully withdrawn depositors keep access. Holding transferred shares does not grant deposit access. Deposits made directly through the contract after the recorded cutoff do not automatically add a wallet to the website's access list.
-
-Keep the original grandfathered snapshot. Do not refresh it as part of stats updates or routine deployment. The one-time capture script, `node scripts/snapshot-depositors.mjs` from the repository root, refuses to overwrite it. New invitations belong in the separate invitation list.
-
-Before rollout, run `node scripts/snapshot-depositors.mjs --verify` from the repository root. It checks the recorded block and cumulative deposits, and reports whether any deposits occurred after the cutoff so those wallets can be reviewed for invitations. It does not change the saved list. The script uses the existing root `ETH_RPC_URL`; the initial capture also needs `ETHERSCAN_API_KEY`. Credentials are never included in the frontend.
-
-The deposit dialog and both approval/deposit write hooks check the same policy. Invalid configuration fails the build. Public information, portfolio access, and withdrawals do not require deposit eligibility.
-
-This restricts the official frontend only. The deployed public contract remains callable directly. The wallet list is public build configuration, not a secret or a server-side authorization boundary.
-
----
-
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
