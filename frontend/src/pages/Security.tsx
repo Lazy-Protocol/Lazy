@@ -12,31 +12,31 @@ const INVARIANTS: Invariant[] = [
     id: 'I.1',
     name: 'Conservation of Value',
     body:
-      'USDC only exits the vault when lazyUSD is burned at the current net asset value. There is no path by which USDC can leave the vault without a corresponding burn.',
+      'Fulfilling a withdrawal burns escrowed lazyUSD and pays USDC at the vault’s current net asset value.',
   },
   {
     id: 'I.2',
     name: 'Token Escrow Safety',
     body:
-      'lazyUSD held in the withdrawal queue is locked. It cannot be double-spent, transferred, or re-redeemed. Each unit can only be redeemed once.',
+      'Withdrawal requests move lazyUSD into escrow. The vault holds those shares until the request is fulfilled or cancelled.',
   },
   {
     id: 'I.3',
     name: 'Universal NAV Application',
     body:
-      'The per-token NAV applies uniformly. No depositor, including those in the queue, receives a different price for the same block.',
+      'The same share-price calculation applies to shares held in wallets and in the withdrawal queue.',
   },
   {
     id: 'I.4',
     name: 'Fee Isolation',
     body:
-      'Performance fees are taken only on positive yield, and only via newly-minted lazyUSD. Fees never touch principal, and they are not charged on losing periods.',
+      'Positive yield can mint fee shares to the treasury. The fee calculation is separate from deposits and withdrawals.',
   },
   {
     id: 'I.5',
     name: 'Withdrawal Queue Liveness',
     body:
-      'Withdrawal requests are fulfilled in first-in-first-out order. The queue degrades gracefully under partial liquidity and never reverts.',
+      'Requests are processed in queue order. Processing stops when a request is still in cooldown or available liquidity is insufficient.',
   },
 ];
 
@@ -65,9 +65,9 @@ function Section({ num, tag, title, children }: Section) {
 
 export function Security() {
   usePageMeta({
-    title: 'Lazy Security · How we prove it.',
+    title: 'Lazy Security · How we check the vault.',
     description:
-      'Lazy was not audited by a third-party security firm. Instead the vault is built on battle-tested ERC-4626 contracts and its critical properties are proven mathematically using Halmos symbolic execution.',
+      'How Lazy uses OpenZeppelin components, Halmos symbolic execution, and invariant tests to check vault accounting and withdrawals.',
     canonical: '/security',
   });
 
@@ -85,14 +85,13 @@ export function Security() {
 
           <h1 className="sec-title">
             How we<br />
-            <em>prove it.</em>
+            <em>check it.</em>
           </h1>
 
           <p className="sec-dek">
-            Lazy was not audited by a third-party security firm. Instead, the vault is built on
-            battle-tested ERC-4626 contracts shipped by Yearn and others, and its critical
-            properties are proven mathematically using Halmos symbolic execution. The artifacts
-            are public.
+            Lazy uses Halmos symbolic execution and invariant tests to check its accounting
+            and withdrawal logic. The test source is public. No third-party security audit
+            has been commissioned.
           </p>
 
           <div className="sec-rule" aria-hidden />
@@ -101,28 +100,21 @@ export function Security() {
         {/* §01 Thesis */}
         <Section num="§01" tag="Thesis" title={<>What we chose, <em>and why.</em></>}>
           <p>
-            Lazy's security posture is built on two ideas. The first is that mathematical proof,
-            run against the contract itself, gives stronger guarantees than a human auditor
-            reading the code. A proof under symbolic execution explores every possible input
-            within a property's domain. An audit can only check what the auditor thought to
-            check. The second is that the safest foundation is one that has already held billions
-            of dollars across multiple market cycles, so Lazy inherits its vault structure from
-            the ERC-4626 patterns refined by Yearn, Morpho, and the rest of the ecosystem.
+            The checks focus on how shares are issued, how withdrawals are escrowed and paid,
+            and how yield and fees affect net asset value.
           </p>
           <p>
-            The trade-off is real and worth saying plainly. Formal verification only proves the
-            properties you wrote. If a property is missing, the proof cannot save you. Audits
-            occasionally catch what proofs miss because human reviewers look at the code from
-            angles a property specification does not. We chose proof over audit because we
-            wanted certainty on the properties that matter most, not a signature on a report.
+            Each check has a defined setup, range of inputs, and set of assumptions. A passing
+            check supports the property it tests. Missing properties and paths outside the
+            model still need review.
           </p>
         </Section>
 
         {/* §02 Invariants */}
-        <Section num="§02" tag="Invariants" title={<>Five verified <em>invariants.</em></>}>
+        <Section num="§02" tag="Invariants" title={<>Five vault <em>invariants.</em></>}>
           <p className="sec-section-intro">
-            These hold across every reachable state of the vault, proven under Halmos symbolic
-            execution. The full test source is in the repository.
+            These are properties the vault's test suite is designed to check. The source
+            shows the setup and assumptions for each test.
           </p>
 
           <ol className="sec-register">
@@ -172,24 +164,16 @@ export function Security() {
         {/* §03 Halmos */}
         <Section num="§03" tag="Method" title={<>Halmos, in <em>plain English.</em></>}>
           <p>
-            Halmos is a symbolic execution tool for Solidity. Instead of testing your contract
-            with specific input values, it represents inputs as mathematical symbols and explores
-            every path the contract could take. If an invariant holds under Halmos, it holds for
-            all reachable states reachable through the modeled paths, not just the cases someone
-            thought to test.
+            Halmos represents inputs symbolically and explores the execution paths reached by
+            a test. That lets a single check cover a range of inputs within the model.
           </p>
           <p>
-            Regular tests answer the question "does this work for the inputs I tried?" Symbolic
-            execution answers "does this work for any input that could possibly reach this code?"
-            The difference matters when the cost of being wrong is depositor capital. Halmos
-            cannot find a bug that hides in an input you wrote a test for; it proves a property
-            holds across the entire input space at once.
+            A result depends on the test setup, assumptions, and paths explored. The published
+            sources make those boundaries visible.
           </p>
           <p>
-            What Halmos cannot do is reason about off-chain components or operator behavior. It
-            proves the on-chain contract logic, full stop. The trust assumptions outside that
-            scope, like the multisig returning capital, live in the residual risk section below
-            and on the docs page.
+            Venue behaviour, operator decisions, and market losses sit outside these contract
+            checks. Those risks are described below and on the docs page.
           </p>
 
           <a
@@ -203,15 +187,12 @@ export function Security() {
           </a>
         </Section>
 
-        {/* §04 Battle-tested */}
-        <Section num="§04" tag="Foundation" title={<>Battle-tested <em>base contracts.</em></>}>
+        {/* §04 Contract components */}
+        <Section num="§04" tag="Foundation" title={<>OpenZeppelin <em>components.</em></>}>
           <p>
-            Lazy's vault inherits from the ERC-4626 pattern shipped by Yearn and refined across
-            the rest of the ecosystem by Morpho, Sommelier, Origin, and others. These contracts
-            have collectively held billions of dollars across multiple market cycles, through bear
-            markets, depegs, and protocol failures elsewhere. They are not academic code. The
-            risk of an unknown bug in those base layers is materially lower than the risk in
-            equivalent custom code. The parts Lazy modified are the parts we proved with Halmos.
+            Lazy uses OpenZeppelin's ERC20, SafeERC20, ReentrancyGuard, and Math libraries.
+            Share accounting, yield reporting, and the withdrawal queue are implemented in
+            Lazy's own contract.
           </p>
         </Section>
 
@@ -224,9 +205,8 @@ export function Security() {
               <span>Residual risk</span>
             </div>
             <p>
-              No traditional third-party audit has been engaged. Formal verification covers the
-              properties we wrote and proved. It does not cover properties we did not think to
-              write.
+              No third-party security audit has been commissioned. Symbolic execution and
+              invariant tests cover the properties and scenarios specified in the test suite.
             </p>
             <p>
               The vault is semi-custodial. Multisig operators must return capital deployed in

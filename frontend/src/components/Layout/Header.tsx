@@ -44,6 +44,9 @@ export function Header() {
           >
             Vaults
           </Link>
+          <Link to="/portfolio" className={`nav-link ${location.pathname === '/portfolio' ? 'active' : ''}`}>
+            Portfolio
+          </Link>
           <Link
             to="/#how-it-works"
             className="nav-link"

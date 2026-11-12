@@ -49,18 +49,18 @@ export function KOL() {
   // Not connected state
   if (!isConnected) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center py-20">
-          <div className="w-20 h-20 bg-lazy-navy-light rounded-full flex items-center justify-center mx-auto mb-6">
-            <Wallet className="w-10 h-10 text-drift-white/50" />
+      <div className="dashboard-page">
+        <div className="dashboard-empty">
+          <div className="w-20 h-20 bg-yield-gold/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Wallet className="w-10 h-10 text-slate" />
           </div>
-          <h2 className="text-2xl font-bold text-drift-white mb-4">
+          <h2 className="text-2xl font-bold text-lazy-navy mb-4">
             Connect Your Wallet
           </h2>
-          <p className="text-drift-white/70 mb-8 max-w-md mx-auto">
+          <p className="text-slate mb-8 max-w-md mx-auto">
             Connect your wallet to view your KOL dashboard.
           </p>
-          <ConnectButton />
+          <div className="flex justify-center"><ConnectButton /></div>
         </div>
       </div>
     );
@@ -69,15 +69,15 @@ export function KOL() {
   // Not a KOL state
   if (!kolData.isKOL) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center py-20">
-          <div className="w-20 h-20 bg-lazy-navy-light rounded-full flex items-center justify-center mx-auto mb-6">
-            <Users className="w-10 h-10 text-drift-white/50" />
+      <div className="dashboard-page">
+        <div className="dashboard-empty">
+          <div className="w-20 h-20 bg-yield-gold/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Users className="w-10 h-10 text-slate" />
           </div>
-          <h2 className="text-2xl font-bold text-drift-white mb-4">
+          <h2 className="text-2xl font-bold text-lazy-navy mb-4">
             KOL Program
           </h2>
-          <p className="text-drift-white/70 mb-8 max-w-md mx-auto">
+          <p className="text-slate mb-8 max-w-md mx-auto">
             This wallet is not registered as a KOL partner. The referral program
             is invite-only. Contact the team if you're interested in partnering.
           </p>
@@ -95,16 +95,16 @@ export function KOL() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex items-center justify-between mb-8">
+    <div className="dashboard-page">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-drift-white">KOL Dashboard</h1>
-          <p className="text-drift-white/70 mt-1">
+          <h1 className="text-3xl font-bold text-lazy-navy">KOL Dashboard</h1>
+          <p className="text-slate mt-1">
             Welcome back, <span className="text-yield-gold">@{kolData.handle}</span>
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-sm text-drift-white/50">Your share</div>
+        <div className="sm:text-right">
+          <div className="text-sm text-slate">Your share</div>
           <div className="text-xl font-bold text-yield-gold">
             {kolData.feeSharePercent}% of fees
           </div>
@@ -114,65 +114,65 @@ export function KOL() {
       {/* Stats Grid */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {/* Total Referrals */}
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
+        <div className="bg-white rounded-2xl p-6 border border-cloud">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-yield-gold/10 rounded-xl flex items-center justify-center">
               <Users className="w-5 h-5 text-yield-gold" />
             </div>
-            <span className="text-drift-white/70">Total Referrals</span>
+            <span className="text-slate">Total Referrals</span>
           </div>
-          <div className="text-2xl font-bold text-drift-white">
+          <div className="text-2xl font-bold text-lazy-navy">
             {kolData.totalReferred}
           </div>
-          <div className="text-sm text-drift-white/50 mt-1">
+          <div className="text-sm text-slate mt-1">
             depositors referred
           </div>
         </div>
 
         {/* Total AUM */}
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
+        <div className="bg-white rounded-2xl p-6 border border-cloud">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-yield-gold/10 rounded-xl flex items-center justify-center">
               <DollarSign className="w-5 h-5 text-yield-gold" />
             </div>
-            <span className="text-drift-white/70">Referral AUM</span>
+            <span className="text-slate">Referral AUM</span>
           </div>
-          <div className="text-2xl font-bold text-drift-white">
+          <div className="text-2xl font-bold text-lazy-navy">
             ${formatUsdcAmount(earnings.totalAUM)}
           </div>
-          <div className="text-sm text-drift-white/50 mt-1">
+          <div className="text-sm text-slate mt-1">
             total deposits from referrals
           </div>
         </div>
 
         {/* Total Earned */}
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
+        <div className="bg-white rounded-2xl p-6 border border-cloud">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-yield-gold/10 rounded-xl flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-yield-gold" />
             </div>
-            <span className="text-drift-white/70">Total Earned</span>
+            <span className="text-slate">Total Earned</span>
           </div>
           <div className="text-2xl font-bold text-success">
             ${kolData.totalEarnedFormatted}
           </div>
-          <div className="text-sm text-drift-white/50 mt-1">
+          <div className="text-sm text-slate mt-1">
             lifetime earnings
           </div>
         </div>
 
         {/* Pending Earnings */}
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
+        <div className="bg-white rounded-2xl p-6 border border-cloud">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-yield-gold/10 rounded-xl flex items-center justify-center">
               <Clock className="w-5 h-5 text-yield-gold" />
             </div>
-            <span className="text-drift-white/70">Pending</span>
+            <span className="text-slate">Pending</span>
           </div>
           <div className="text-2xl font-bold text-yield-gold">
             ${earnings.pendingEarningsFormatted}
           </div>
-          <div className="text-sm text-drift-white/50 mt-1">
+          <div className="text-sm text-slate mt-1">
             {earnings.canDistribute
               ? 'ready to distribute'
               : `in ${formatTimeRemaining(earnings.timeUntilDistribution)}`}
@@ -181,12 +181,12 @@ export function KOL() {
       </div>
 
       {/* Referral Link */}
-      <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light mb-8">
-        <h2 className="text-lg font-semibold text-drift-white mb-4">
+      <div className="bg-white rounded-2xl p-6 border border-cloud mb-8">
+        <h2 className="text-lg font-semibold text-lazy-navy mb-4">
           Your Referral Link
         </h2>
         <div className="flex items-center gap-4">
-          <div className="flex-1 bg-lazy-navy rounded-xl px-4 py-3 font-mono text-sm text-drift-white/90 overflow-x-auto">
+          <div className="flex-1 min-w-0 bg-lazy-navy rounded-xl px-4 py-3 font-mono text-sm text-drift-white overflow-x-auto">
             {referralLink}
           </div>
           <button
@@ -197,50 +197,50 @@ export function KOL() {
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
-        <p className="text-sm text-drift-white/50 mt-3">
+        <p className="text-sm text-slate mt-3">
           Share this link with your audience. When they deposit, you'll earn{' '}
           {kolData.feeSharePercent}% of the protocol fees from their yield.
         </p>
       </div>
 
       {/* Distribution Info */}
-      <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light mb-8">
-        <h2 className="text-lg font-semibold text-drift-white mb-4">
+      <div className="bg-white rounded-2xl p-6 border border-cloud mb-8">
+        <h2 className="text-lg font-semibold text-lazy-navy mb-4">
           Fee Distribution
         </h2>
         <div className="grid md:grid-cols-3 gap-6">
           <div>
-            <div className="text-drift-white/50 text-sm mb-1">
+            <div className="text-slate text-sm mb-1">
               This Period's Yield
             </div>
-            <div className="text-xl font-semibold text-drift-white">
+            <div className="text-xl font-semibold text-lazy-navy">
               ${earnings.referralYieldFormatted}
             </div>
-            <div className="text-xs text-drift-white/40">
+            <div className="text-xs text-slate">
               from your referrals
             </div>
           </div>
           <div>
-            <div className="text-drift-white/50 text-sm mb-1">
+            <div className="text-slate text-sm mb-1">
               Your Share (Est.)
             </div>
             <div className="text-xl font-semibold text-yield-gold">
               ${earnings.pendingEarningsFormatted}
             </div>
-            <div className="text-xs text-drift-white/40">
+            <div className="text-xs text-slate">
               {kolData.feeSharePercent}% of 20% protocol fee
             </div>
           </div>
           <div>
-            <div className="text-drift-white/50 text-sm mb-1">
+            <div className="text-slate text-sm mb-1">
               Next Distribution
             </div>
-            <div className="text-xl font-semibold text-drift-white">
+            <div className="text-xl font-semibold text-lazy-navy">
               {earnings.canDistribute
                 ? 'Available now'
                 : formatTimeRemaining(earnings.timeUntilDistribution)}
             </div>
-            <div className="text-xs text-drift-white/40">
+            <div className="text-xs text-slate">
               weekly automated payouts
             </div>
           </div>
@@ -249,18 +249,18 @@ export function KOL() {
 
       {/* Referrals Table */}
       {kolData.referrals.length > 0 && (
-        <div className="bg-lazy-navy-light/50 rounded-2xl p-6 border border-lazy-navy-light">
-          <h2 className="text-lg font-semibold text-drift-white mb-4">
+        <div className="bg-white rounded-2xl p-6 border border-cloud">
+          <h2 className="text-lg font-semibold text-lazy-navy mb-4">
             Your Referrals ({kolData.referrals.length})
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-lazy-navy-light">
-                  <th className="text-left text-drift-white/50 text-sm font-medium py-3 px-4">
+                <tr className="border-b border-cloud">
+                  <th className="text-left text-slate text-sm font-medium py-3 px-4">
                     Address
                   </th>
-                  <th className="text-right text-drift-white/50 text-sm font-medium py-3 px-4">
+                  <th className="text-right text-slate text-sm font-medium py-3 px-4">
                     Status
                   </th>
                 </tr>
@@ -269,14 +269,14 @@ export function KOL() {
                 {kolData.referrals.slice(0, 20).map((referral) => (
                   <tr
                     key={referral}
-                    className="border-b border-lazy-navy-light/50"
+                    className="border-b border-cloud/50"
                   >
                     <td className="py-3 px-4">
                       <a
                         href={`https://etherscan.io/address/${referral}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-drift-white hover:text-yield-gold font-mono text-sm flex items-center gap-2"
+                        className="text-lazy-navy hover:text-yield-gold font-mono text-sm flex items-center gap-2"
                       >
                         {shortenAddress(referral)}
                         <ExternalLink size={12} />
@@ -292,7 +292,7 @@ export function KOL() {
               </tbody>
             </table>
             {kolData.referrals.length > 20 && (
-              <p className="text-center text-drift-white/50 text-sm py-4">
+              <p className="text-center text-slate text-sm py-4">
                 Showing 20 of {kolData.referrals.length} referrals
               </p>
             )}
@@ -301,8 +301,8 @@ export function KOL() {
       )}
 
       {/* How It Works */}
-      <div className="mt-8 bg-lazy-navy/50 rounded-2xl p-6 border border-lazy-navy-light">
-        <h3 className="text-lg font-semibold text-drift-white mb-4">
+      <div className="mt-8 bg-white rounded-2xl p-6 border border-cloud">
+        <h3 className="text-lg font-semibold text-lazy-navy mb-4">
           How Fee Sharing Works
         </h3>
         <div className="grid md:grid-cols-4 gap-4 text-sm">
@@ -310,7 +310,7 @@ export function KOL() {
             <div className="w-8 h-8 bg-yield-gold/20 rounded-full flex items-center justify-center mx-auto mb-2 text-yield-gold font-bold">
               1
             </div>
-            <p className="text-drift-white/70">
+            <p className="text-slate">
               User deposits via your link
             </p>
           </div>
@@ -318,7 +318,7 @@ export function KOL() {
             <div className="w-8 h-8 bg-yield-gold/20 rounded-full flex items-center justify-center mx-auto mb-2 text-yield-gold font-bold">
               2
             </div>
-            <p className="text-drift-white/70">
+            <p className="text-slate">
               Their deposit earns yield
             </p>
           </div>
@@ -326,7 +326,7 @@ export function KOL() {
             <div className="w-8 h-8 bg-yield-gold/20 rounded-full flex items-center justify-center mx-auto mb-2 text-yield-gold font-bold">
               3
             </div>
-            <p className="text-drift-white/70">
+            <p className="text-slate">
               Protocol takes 20% fee on yield
             </p>
           </div>
@@ -334,7 +334,7 @@ export function KOL() {
             <div className="w-8 h-8 bg-yield-gold/20 rounded-full flex items-center justify-center mx-auto mb-2 text-yield-gold font-bold">
               4
             </div>
-            <p className="text-drift-white/70">
+            <p className="text-slate">
               You get {kolData.feeSharePercent}% of that fee weekly
             </p>
           </div>

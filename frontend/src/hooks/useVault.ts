@@ -1,6 +1,8 @@
-import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract, useReadContracts, useWriteContract } from 'wagmi';
+import { mainnet } from 'wagmi/chains';
 import { vaultAbi, erc20Abi } from '@/config/abis';
 import { CONTRACTS } from '@/config/wagmi';
+import { assertDepositAccess } from '@/config/depositAccess';
 import { formatUnits, parseUnits } from 'viem';
 
 // Format USDC (6 decimals)
@@ -151,11 +153,13 @@ export function useUserData(address: `0x${string}` | undefined) {
 
 // Hook for deposit transaction
 export function useDeposit() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { writeContractAsync } = useWriteContract();
 
-  const deposit = (amount: bigint) => {
-    writeContract({
+  const deposit = (amount: bigint, account: `0x${string}`) => {
+    assertDepositAccess(account);
+    return writeContractAsync({
+      account,
+      chainId: mainnet.id,
       address: CONTRACTS.vault,
       abi: vaultAbi,
       functionName: 'deposit',
@@ -163,23 +167,18 @@ export function useDeposit() {
     });
   };
 
-  return {
-    deposit,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { deposit };
 }
 
 // Hook for USDC approval
 export function useApprove() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { writeContractAsync } = useWriteContract();
 
-  const approve = (amount: bigint) => {
-    writeContract({
+  const approve = (amount: bigint, account: `0x${string}`) => {
+    assertDepositAccess(account);
+    return writeContractAsync({
+      account,
+      chainId: mainnet.id,
       address: CONTRACTS.usdc,
       abi: erc20Abi,
       functionName: 'approve',
@@ -187,23 +186,17 @@ export function useApprove() {
     });
   };
 
-  return {
-    approve,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { approve };
 }
 
 // Hook for withdrawal request
 export function useRequestWithdrawal() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { writeContractAsync } = useWriteContract();
 
-  const requestWithdrawal = (shares: bigint) => {
-    writeContract({
+  const requestWithdrawal = (shares: bigint, account: `0x${string}`) => {
+    return writeContractAsync({
+      account,
+      chainId: mainnet.id,
       address: CONTRACTS.vault,
       abi: vaultAbi,
       functionName: 'requestWithdrawal',
@@ -211,14 +204,7 @@ export function useRequestWithdrawal() {
     });
   };
 
-  return {
-    requestWithdrawal,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { requestWithdrawal };
 }
 
 // Hook to get user's withdrawal requests and queue info

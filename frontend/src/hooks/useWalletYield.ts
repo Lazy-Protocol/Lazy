@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { usePublicClient, useBlockNumber } from 'wagmi';
-import { formatUnits, parseAbiItem, type PublicClient } from 'viem';
+import { formatUnits, parseAbiItem, type AbiEvent, type GetLogsParameters, type PublicClient } from 'viem';
 import { CONTRACTS } from '@/config/wagmi';
 
 // Vault deployed at block 24,184,528 (2026-01-07T18:14 UTC)
@@ -17,12 +17,12 @@ const TRANSFER_EVENT = parseAbiItem(
 // Chunk size for log queries (9999 blocks max per call on public RPCs)
 const CHUNK_SIZE = 9999n;
 
-async function getLogsInChunks(
+async function getLogsInChunks<const Event extends AbiEvent>(
   client: PublicClient,
   params: {
     address: `0x${string}`;
-    event: ReturnType<typeof parseAbiItem>;
-    args: Record<string, `0x${string}` | null>;
+    event: Event;
+    args: GetLogsParameters<Event>['args'];
     fromBlock: bigint;
     toBlock: bigint;
   }
@@ -41,18 +41,18 @@ async function getLogsInChunks(
 
   // Cap concurrency to be friendly to public RPCs.
   const CONCURRENCY = 8;
-  const logs: Awaited<ReturnType<typeof client.getLogs>>= [];
+  const fetchRange = (fromBlock: bigint, toBlock: bigint) => client.getLogs({
+    address: params.address,
+    event: params.event,
+    args: params.args,
+    strict: true,
+    fromBlock,
+    toBlock,
+  });
+  const logs: Awaited<ReturnType<typeof fetchRange>> = [];
   for (let i = 0; i < ranges.length; i += CONCURRENCY) {
     const batch = ranges.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(([from, to]) =>
-      client.getLogs({
-        address: params.address,
-        event: params.event as any,
-        args: params.args,
-        fromBlock: from,
-        toBlock: to,
-      })
-    ));
+    const results = await Promise.all(batch.map(([from, to]) => fetchRange(from, to)));
     for (const r of results) logs.push(...r);
   }
 
@@ -115,7 +115,7 @@ async function fetchWalletYield(
   let firstDepositBlock: bigint | null = null;
 
   for (const log of depositLogs) {
-    const assets = (log as any).args.usdcAmount as bigint;
+    const assets = log.args.usdcAmount;
     totalDeposited += assets;
     if (log.blockNumber !== null && (firstDepositBlock === null || log.blockNumber < firstDepositBlock)) {
       firstDepositBlock = log.blockNumber;
@@ -125,7 +125,7 @@ async function fetchWalletYield(
   // Sum total redeemed (USDC received from vault)
   let totalRedeemed = 0n;
   for (const log of usdcTransferLogs) {
-    const value = (log as any).args.value as bigint;
+    const value = log.args.value;
     totalRedeemed += value;
   }
 
